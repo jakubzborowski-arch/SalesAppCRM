@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #090c9b;
+  --blue: #4b6bff;
+  --ink: #0b0f8a;
+  --foreground: #1a1c3d;
+  --muted: #7d849d;
+  --muted-soft: #8b8fa3;
+  --background: #ffffff;
+  --surface: #f7f9fc;
+  --chip: #eef1fb;
+  --chip-mid: #e8edff;
+  --chip-strong: #d5ddff;
+  --cream: #f7f3ea;
+  --gold: #f0c96a;
+  --gold-dark: #5c4508;
+  --gold-ring: #c49228;
+  --line: #e8edff;
+  --lutra: var(--blue);
+  --lutra-dark: var(--navy);
+  --lutra-soft: var(--chip);
+}
+
+@theme inline {
+  --color-navy: var(--navy);
+  --color-blue: var(--blue);
+  --color-ink: var(--ink);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-soft: var(--muted-soft);
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-chip: var(--chip);
+  --color-chip-mid: var(--chip-mid);
+  --color-chip-strong: var(--chip-strong);
+  --color-cream: var(--cream);
+  --color-gold: var(--gold);
+  --color-gold-dark: var(--gold-dark);
+  --color-gold-ring: var(--gold-ring);
+  --color-line: var(--line);
+  --color-lutra: var(--lutra);
+  --color-lutra-dark: var(--lutra-dark);
+  --color-lutra-soft: var(--lutra-soft);
+  --font-sans: var(--font-inter);
+  --font-brand: "Comfortaa", ui-rounded, ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--surface);
+  color: var(--foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-brand {
+  font-family: var(--font-brand);
+  font-weight: 700;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: var(--chip-strong);
+}

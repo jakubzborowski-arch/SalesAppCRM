@@ -1,0 +1,187 @@
+import { OBJECTION_LIBRARY } from "./playbook";
+import type { AppState, Mission, Partner } from "./types";
+
+const novaContact = {
+  id: "contact-anna",
+  name: "Anna Kowalska",
+  role: "właścicielka",
+  isDecisionMaker: true,
+  phone: "+48 600 000 001",
+  email: "anna@kawiarnianova.pl",
+  linkedin: "linkedin.com/in/annakowalska",
+};
+
+export const nova: Partner = {
+  id: "partner-nova",
+  name: "Kawiarnia Nova",
+  segment: "venue",
+  city: "Kraków",
+  address: "ul. Długa 12",
+  category: "kawiarnia",
+  subcategory: "specialty coffee",
+  website: "",
+  priority: "",
+  priorityReason: "",
+  source: "publiczny research / mapa",
+  dnc: false,
+  hours: "Pon–sob do 21:00",
+  notes: "Lokal w centrum. W weekend pełny, w środku tygodnia lżej po 16:00.",
+  contacts: [novaContact],
+  consents: [
+    { channel: "phone", purpose: "contact", status: "granted" },
+    { channel: "email", purpose: "contact", status: "granted" },
+    { channel: "linkedin", purpose: "contact", status: "unknown" },
+    { channel: "in_person", purpose: "contact", status: "unknown" },
+  ],
+};
+
+const zielone: Partner = {
+  id: "partner-zielone",
+  name: "Bistro Zielone",
+  segment: "venue",
+  city: "Kraków",
+  address: "ul. Karmelicka 8",
+  category: "bistro",
+  subcategory: "wege",
+  website: "",
+  priority: "",
+  priorityReason: "",
+  source: "polecenie",
+  dnc: false,
+  hours: "Codziennie 12:00–22:00",
+  contacts: [
+    {
+      id: "contact-marek",
+      name: "Marek Lis",
+      role: "kierownik",
+      isDecisionMaker: false,
+      phone: "+48 600 000 002",
+      email: "marek@bistrozielone.pl",
+    },
+  ],
+  consents: [
+    { channel: "phone", purpose: "contact", status: "unknown" },
+    { channel: "email", purpose: "contact", status: "unknown" },
+  ],
+};
+
+const etna: Partner = {
+  id: "partner-etna",
+  name: "Pizzeria Etna",
+  segment: "venue",
+  city: "Warszawa",
+  address: "ul. Hoża 21",
+  category: "pizzeria",
+  subcategory: "neapolitańska",
+  website: "",
+  priority: "",
+  priorityReason: "",
+  source: "event branżowy",
+  dnc: true,
+  hours: "Pn–nd 12:00–23:00",
+  notes: "Poprosili, żeby nie dzwonić do odwołania.",
+  contacts: [
+    {
+      id: "contact-ola",
+      name: "Aleksandra Nowak",
+      role: "właścicielka",
+      isDecisionMaker: true,
+      email: "ola@etna.waw.pl",
+    },
+  ],
+  consents: [{ channel: "email", purpose: "contact", status: "denied" }],
+};
+
+export function emptyMission(partnerId: string, id = crypto.randomUUID()): Mission {
+  return {
+    id,
+    partnerId,
+    status: "active",
+    currentStage: "research",
+    completedStages: [],
+    nextStepLabel: "Dokończ research i umów discovery",
+    nextStepAt: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+    checklist: {},
+    selectedChannel: null,
+    conversationNote: "",
+    recordingConsent: "pending",
+    disclosureShown: false,
+    discovery: {
+      category: "",
+      categorySource: "",
+      priority: 3,
+      description: "",
+      quote: "",
+      decisionMakerId: "",
+      decisionDeadline: "",
+      previousAttempts: "",
+      constraints: [],
+    },
+    needs: [],
+    decision: {
+      problem: "",
+      expectedResult: "",
+      constraintSummary: "",
+      decisionMakerId: "",
+      decisionDeadline: "",
+      previousAttempts: "",
+      nextStep: "",
+    },
+    recommendedVariant: "A",
+    selectedVariant: null,
+    offerApproved: false,
+    objections: OBJECTION_LIBRARY.map((item) => ({
+      key: item.key,
+      checked: false,
+      argumentWorked: false,
+    })),
+    outcome: null,
+    lossReason: "",
+    calls: [],
+    contract: {
+      companyName: "",
+      nip: "",
+      address: "",
+      startAt: "",
+      endAt: "",
+      changeRules: "Zmiany warunków tylko pisemnie. Potwierdzenie kwartalne.",
+      signedByHuman: false,
+      status: "draft",
+    },
+    activation: {
+      partnerCode: "",
+      hoursConfirmed: false,
+      opsContactName: "",
+      opsContactPhone: "",
+      testPassed: false,
+      testNotes: "",
+      checkInAt: "",
+    },
+  };
+}
+
+export const seedState: AppState = {
+  user: { name: "Anna Krajewska", initials: "AK", role: "Handlowiec" },
+  workspace: { name: "Lutra", id: "" },
+  partners: [nova, zielone, etna],
+  missions: [
+    {
+      ...emptyMission("partner-nova", "mission-nova"),
+      checklist: {
+        "research:profile": true,
+        "research:hours": true,
+      },
+      nextStepLabel: "Zdobądź zgodę na krótki discovery call",
+      nextStepAt: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+    },
+  ],
+  tasks: [
+    {
+      id: "task-nova-next",
+      missionId: "mission-nova",
+      title: "Zdobądź zgodę na krótki discovery call",
+      dueAt: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+      source: "next_step",
+    },
+  ],
+};

@@ -1,0 +1,29 @@
+---
+description: Lutra CRM product principles, mission flow, and offer gates
+alwaysApply: true
+---
+
+# Lutra CRM
+
+Lutra organizuje grupowe wyjścia. Ten repo to CRM sprzedaży partnerskiej (lokale, firmy, społeczności).
+
+Pełna baza: `docs/knowledge-base.md`, `docs/data-model.md`, `docs/ai-pipeline.md`, `docs/plan.md`.
+
+## Zasady
+
+- Nie ma jednej oferty dla wszystkich. Oferta tylko z potwierdzonych faktów z rozmowy.
+- AI nie ustala rabatów, nie ocenia emocji, nie odrzuca partnerów, nie wysyła wiążących dokumentów.
+- Hipoteza AI nigdy nie jest faktem, dopóki handlowiec nie potwierdzi.
+- Przed ofertą wymagane: problem, rezultat, ograniczenie, decydent, termin decyzji, wcześniejsze próby, następny krok z datą.
+- Oferty A/B/C wyłącznie z `offer_library`. Obiekcje wyłącznie z biblioteki.
+- Nie obiecujemy liczby klientów, wyłączności, Premium, funkcji z backlogu, retencji, warunków bez pisma.
+- Do treningu modelu idą tylko zatwierdzone `training_examples`, nigdy surowe nagrania.
+- Nagranie musi złapać obu rozmówców. Handlowiec dzwoni telefonem: v1 = głośnik + mikrofon CRM (wyłączone tłumienie echa). Zwykłe API telefonu nie oddaje drugiej strony. Docelowo mostek telefoniczny (np. Twilio), nie sam mikrofon laptopa.
+
+## Flow UI
+
+Research → Kontakt → Discovery → Potrzeby → Oferta A/B/C → Negocjacje → Umowa → Aktywacja. Potem opieka i uczenie.
+
+Pilot v1: segment lokale. Stack: Next.js + Supabase + nagranie → darmowy transkrypt (Chrome) → recenzja człowieka.
+
+Buduj według `docs/plan.md`. Nie skacz do Infelda, zanim stoją misja, mapa potrzeb i bramka oferty.
