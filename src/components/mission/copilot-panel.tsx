@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getCopilot, categoryLabel } from "@/lib/playbook";
 import { infeldDesk } from "@/lib/infeld";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
+import type { KnowledgeHint } from "@/lib/infeld-suggest";
 
 function clip(text: string, n = 160) {
   const t = text.trim();
@@ -17,6 +18,53 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
   const { cards, warning } = getCopilot(mission.currentStage, partner, mission);
   const desk = infeldDesk(partner, mission);
   const [quote, setQuote] = useState("");
+  const [kbHints, setKbHints] = useState<KnowledgeHint[]>([]);
+  const [kbStatus, setKbStatus] = useState<"idle" | "loading" | "ok" | "empty" | "error">("idle");
+  const [kbError, setKbError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setKbStatus("loading");
+    setKbError(null);
+    void fetch("/api/infeld/suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ partner, mission }),
+    })
+      .then(async (res) => {
+        const data = (await res.json()) as {
+          hints?: KnowledgeHint[];
+          error?: string;
+          code?: string;
+          empty?: boolean;
+        };
+        if (cancelled) return;
+        if (res.status === 503 && data.code === "missing_key") {
+          setKbHints([]);
+          setKbStatus("error");
+          setKbError("Brak klucza Infelda — dodaj INFELD_API_KEY w .env.local / Vercel.");
+          return;
+        }
+        if (!res.ok) {
+          setKbHints([]);
+          setKbStatus("error");
+          setKbError(data.error || "Infeld nie odpowiedział.");
+          return;
+        }
+        const hints = data.hints ?? [];
+        setKbHints(hints);
+        setKbStatus(hints.length ? "ok" : "empty");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setKbStatus("error");
+        setKbError("Nie udało się zapytać Infelda.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [partner.id, mission.id, mission.currentStage, desk.facts.length]);
+
   const saveLabel =
     saveState === "saving"
       ? "Zapisuję do bazy…"
@@ -130,6 +178,36 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
               Dodaj jako obserwację
             </button>
           </>
+        ) : null}
+      </div>
+
+      <div className="rounded-[28px] border border-chip-mid bg-white p-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
+          Z bazy Infelda
+        </p>
+        <p className="mt-1 text-[11px] leading-4 text-muted">
+          Podpowiedzi z knowledge, nie z transkryptu. Fakty nadal zatwierdzasz Ty.
+        </p>
+        {kbStatus === "loading" ? (
+          <p className="mt-3 text-[12px] text-muted">Szukam w Infeldzie…</p>
+        ) : null}
+        {kbStatus === "error" ? (
+          <p className="mt-3 text-[12px] text-rose-600">{kbError}</p>
+        ) : null}
+        {kbStatus === "empty" ? (
+          <p className="mt-3 text-[12px] text-muted">
+            Infeld nic nie znalazł na ten krok. Wrzuć playbook do knowledge w Infeldzie.
+          </p>
+        ) : null}
+        {kbHints.length ? (
+          <div className="mt-3 space-y-4">
+            {kbHints.map((card, i) => (
+              <div key={`${card.title}-${i}`}>
+                <p className="text-[13px] font-semibold text-foreground">{card.title}</p>
+                <p className="mt-1 text-[12px] leading-5 text-muted">{card.body}</p>
+              </div>
+            ))}
+          </div>
         ) : null}
       </div>
 
