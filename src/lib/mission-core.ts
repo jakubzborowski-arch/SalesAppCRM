@@ -1,4 +1,4 @@
-import { dateOrNull, uuidOrNull } from "./sql-coerce";
+import { dateOrNull, persistNeedId, uuidOrNull } from "./sql-coerce";
 import { ACTIVATION_ITEMS, CONTRACT_ITEMS, RESEARCH_ITEMS } from "./playbook";
 import { getSupabase, isMissingCrmTable } from "./supabase";
 import type {
@@ -174,12 +174,22 @@ export async function syncMissionCore(
   const sb = getSupabase();
   if (!sb) return "skipped";
   const d = mission.decision;
+  const makerId = uuidOrNull(d.decisionMakerId);
+  let decisionMakerId: string | null = null;
+  if (makerId) {
+    const { data: existingContact } = await sb
+      .from("partner_contacts")
+      .select("id")
+      .eq("id", makerId)
+      .maybeSingle();
+    decisionMakerId = (existingContact?.id as string) ?? null;
+  }
   const { error: decisionError } = await sb.from("decision_context").upsert({
     mission_id: mission.id,
     problem: d.problem || null,
     expected_result: d.expectedResult || null,
     constraint_summary: d.constraintSummary || null,
-    decision_maker_contact_id: uuidOrNull(d.decisionMakerId),
+    decision_maker_contact_id: decisionMakerId,
     decision_deadline: d.decisionDeadline || null,
     previous_attempts: d.previousAttempts || null,
     next_step: d.nextStep || null,
@@ -194,13 +204,13 @@ export async function syncMissionCore(
     .select("id")
     .eq("mission_id", mission.id);
   if (listNeedsError) throw listNeedsError;
-  const keep = new Set(mission.needs.map((n) => n.id));
+  const keep = new Set(mission.needs.map((n) => persistNeedId(n.id)));
   const stale = (existingNeeds ?? []).map((n) => n.id as string).filter((id) => !keep.has(id));
   if (stale.length) await sb.from("needs").delete().in("id", stale);
   if (mission.needs.length) {
     const { error } = await sb.from("needs").upsert(
       mission.needs.map((need) => ({
-        id: need.id,
+        id: persistNeedId(need.id),
         mission_id: mission.id,
         category: need.category,
         title: need.title || null,

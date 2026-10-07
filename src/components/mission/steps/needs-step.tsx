@@ -5,7 +5,7 @@ import { NEED_CATEGORIES, PRIORITIES, categoryLabel } from "@/lib/playbook";
 import { offerBlockers } from "@/lib/gates";
 import { cn } from "@/lib/cn";
 import { useStore } from "@/lib/store";
-import type { Mission, NeedCategory } from "@/lib/types";
+import type { Mission, NeedCategory, Partner } from "@/lib/types";
 import { Field, TagInput, inputClass } from "@/components/ui";
 
 const SUGGESTED_TAGS = ["Środa 16–19", "Min. 4 osoby", "Bez alkoholu", "Limit dzienny"];
@@ -17,20 +17,34 @@ function tagsFrom(text?: string) {
     .filter(Boolean);
 }
 
-export function NeedsStep({ mission }: { mission: Mission }) {
-  const { seedNeedsIfEmpty, confirmNeed, updateDecision, upsertNeed, removeNeed } = useStore();
+export function NeedsStep({ mission, partner }: { mission: Mission; partner: Partner }) {
+  const {
+    seedNeedsIfEmpty,
+    confirmNeed,
+    updateDecision,
+    updateDiscovery,
+    upsertNeed,
+    removeNeed,
+    addPartnerContact,
+  } = useStore();
+  const [contactName, setContactName] = useState("");
+  const [contactRole, setContactRole] = useState("");
+  const [contactBusy, setContactBusy] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
   const missing = offerBlockers(mission);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [quote, setQuote] = useState("");
   const [expectedResult, setExpectedResult] = useState("");
-  const [constraints, setConstraints] = useState<string[]>([]);
   const [category, setCategory] = useState<NeedCategory>("off_peak");
   const [priority, setPriority] = useState(3);
+  const constraints = mission.discovery.constraints;
 
   useEffect(() => {
     seedNeedsIfEmpty(mission.id);
-  }, [mission.id, seedNeedsIfEmpty]);
+    // tylko raz na misję — seedNeedsIfEmpty w deps zapętlał setState
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mission.id]);
 
   const addNeed = () => {
     if (!title.trim() && !description.trim() && !quote.trim()) return;
@@ -50,7 +64,25 @@ export function NeedsStep({ mission }: { mission: Mission }) {
     setDescription("");
     setQuote("");
     setExpectedResult("");
-    setConstraints([]);
+  };
+
+  const addDecisionMaker = async () => {
+    if (!contactName.trim()) return;
+    setContactBusy(true);
+    setContactError(null);
+    const result = await addPartnerContact(partner.id, {
+      name: contactName,
+      role: contactRole,
+      isDecisionMaker: true,
+    });
+    setContactBusy(false);
+    if (!result.ok || !result.id) {
+      setContactError(result.error ?? "Nie udało się dodać osoby.");
+      return;
+    }
+    updateDiscovery(mission.id, { decisionMakerId: result.id });
+    setContactName("");
+    setContactRole("");
   };
 
   return (
@@ -201,7 +233,7 @@ export function NeedsStep({ mission }: { mission: Mission }) {
             value={constraints}
             suggestions={SUGGESTED_TAGS}
             placeholder="Własny warunek albo ograniczenie"
-            onChange={setConstraints}
+            onChange={(next) => updateDiscovery(mission.id, { constraints: next })}
           />
         </div>
         <button
@@ -237,7 +269,70 @@ export function NeedsStep({ mission }: { mission: Mission }) {
               onChange={(e) => updateDecision(mission.id, { nextStep: e.target.value })}
             />
           </Field>
+          <Field label="Decydent">
+            <select
+              className={inputClass}
+              value={mission.decision.decisionMakerId || mission.discovery.decisionMakerId}
+              onChange={(e) => updateDiscovery(mission.id, { decisionMakerId: e.target.value })}
+            >
+              <option value="">Wybierz osobę</option>
+              {partner.contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} · {c.role}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Termin decyzji">
+            <input
+              className={inputClass}
+              placeholder="Np. piątek po recapie"
+              value={mission.decision.decisionDeadline || mission.discovery.decisionDeadline}
+              onChange={(e) => updateDiscovery(mission.id, { decisionDeadline: e.target.value })}
+            />
+          </Field>
+          <Field label="Wcześniejsze próby">
+            <input
+              className={inputClass}
+              placeholder="Co nie zadziałało w poprzednich promocjach?"
+              value={mission.decision.previousAttempts || mission.discovery.previousAttempts}
+              onChange={(e) => updateDiscovery(mission.id, { previousAttempts: e.target.value })}
+            />
+          </Field>
         </div>
+        <div className="mt-3 rounded-2xl border border-chip-mid bg-surface px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
+            Dodaj decydenta, jeśli nie ma na liście
+          </p>
+          <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2">
+            <input
+              className={inputClass}
+              placeholder="Imię i nazwisko"
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+            />
+            <input
+              className={inputClass}
+              placeholder="Rola, np. właściciel"
+              value={contactRole}
+              onChange={(e) => setContactRole(e.target.value)}
+            />
+            <button
+              type="button"
+              disabled={contactBusy}
+              onClick={() => void addDecisionMaker()}
+              className="rounded-full bg-lutra px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {contactBusy ? "…" : "Dodaj"}
+            </button>
+          </div>
+          {contactError ? <p className="mt-2 text-xs text-rose-600">{contactError}</p> : null}
+        </div>
+        {missing.includes("potwierdzona potrzeba (fakt)") ? (
+          <p className="mt-3 text-xs text-amber-700">
+            Potwierdź jedną kartę powyżej jako fakt — hipoteza AI nie otwiera oferty.
+          </p>
+        ) : null}
       </div>
     </div>
   );

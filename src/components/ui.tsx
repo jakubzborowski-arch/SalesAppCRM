@@ -51,15 +51,20 @@ export function CheckRow({
 
 export function Field({
   label,
+  optional,
   children,
 }: {
   label: string;
+  optional?: boolean;
   children: ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
-        {label}
+      <span className="mb-1.5 flex items-baseline gap-2 text-[11px] font-semibold text-navy">
+        <span className="uppercase tracking-[0.08em]">{label}</span>
+        {optional ? (
+          <span className="text-[10px] font-medium normal-case tracking-normal text-muted">opcjonalne</span>
+        ) : null}
       </span>
       {children}
     </label>

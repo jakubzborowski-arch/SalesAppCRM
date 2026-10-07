@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { STAGES } from "@/lib/types";
-import { useStore } from "@/lib/store";
 import { inputClass } from "@/components/ui";
+import { PARTNER_PRIORITIES } from "@/lib/partner-priority";
+import { useStore } from "@/lib/store";
+import { STAGES } from "@/lib/types";
 
 const SEGMENT: Record<string, string> = {
   venue: "Lokal",
@@ -30,8 +31,10 @@ export default function PartnersPage() {
   const [error, setError] = useState<string | null>(null);
 
   const priorities = useMemo(() => {
-    const values = [...new Set(state.partners.map((p) => p.priority.trim()).filter(Boolean))];
-    return values.sort((a, b) => a.localeCompare(b, "pl"));
+    const extra = state.partners
+      .map((p) => p.priority.trim())
+      .filter((value) => value && !PARTNER_PRIORITIES.includes(value as (typeof PARTNER_PRIORITIES)[number]));
+    return [...PARTNER_PRIORITIES, ...new Set(extra)];
   }, [state.partners]);
 
   const categories = useMemo(() => {
@@ -56,6 +59,9 @@ export default function PartnersPage() {
         partner.subcategory,
         partner.priority,
         partner.website,
+        partner.instagram,
+        partner.facebook,
+        partner.socialOther,
       ]
         .map(fold)
         .join(" ");

@@ -3,8 +3,21 @@
 import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PriorityChecks } from "@/components/partners/priority-checks";
 import { CONTACT_CHANNELS } from "@/lib/playbook";
+import { socialUrl, type SocialKind } from "@/lib/social";
 import { useStore } from "@/lib/store";
+
+function SocialLink({ kind, value }: { kind: SocialKind; value: string }) {
+  const href = socialUrl(kind, value);
+  if (!value.trim()) return "—";
+  if (!href.startsWith("http")) return <span>{value}</span>;
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="text-lutra">
+      {value}
+    </a>
+  );
+}
 
 export default function PartnerDetailPage({
   params,
@@ -133,8 +146,31 @@ export default function PartnerDetailPage({
                 </dd>
               </div>
               <div>
+                <dt className="text-muted">Instagram</dt>
+                <dd>
+                  <SocialLink kind="instagram" value={partner.instagram} />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">Facebook</dt>
+                <dd>
+                  <SocialLink kind="facebook" value={partner.facebook} />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">Inne social</dt>
+                <dd>
+                  <SocialLink kind="other" value={partner.socialOther} />
+                </dd>
+              </div>
+              <div>
                 <dt className="text-muted">Priorytet</dt>
-                <dd>{partner.priority || "—"}</dd>
+                <dd className="mt-2">
+                  <PriorityChecks
+                    value={partner.priority}
+                    onChange={(next) => updatePartner(partner.id, { priority: next })}
+                  />
+                </dd>
               </div>
               <div>
                 <dt className="text-muted">Uzasadnienie priorytetu</dt>

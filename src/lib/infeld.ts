@@ -1,13 +1,15 @@
 import { activationBlockers, contractBlockers, offerBlockers } from "./gates";
-import { FORBIDDEN_PROMISES, OFFER_LIBRARY, suggestVariant } from "./playbook";
+import { offerName, suggestVariant } from "./playbook";
 import type { Mission, Partner } from "./types";
 
 export function infeldDesk(partner: Partner, mission: Mission) {
   const facts = mission.needs.filter((n) => n.confirmed && n.status === "fact");
   const observations = mission.needs.filter((n) => !n.confirmed);
   const recommended = suggestVariant(facts.map((n) => n.category));
-  const offer = OFFER_LIBRARY.find((item) => item.variant === recommended);
-  const selected = OFFER_LIBRARY.find((item) => item.variant === mission.selectedVariant);
+  const offer = { variant: recommended, name: offerName(recommended) };
+  const selected = mission.selectedVariant
+    ? { variant: mission.selectedVariant, name: offerName(mission.selectedVariant) }
+    : null;
   const readyCalls = (mission.calls ?? []).filter((c) => c.transcriptStatus === "ready" && c.transcriptText?.trim());
   const latestTranscript = readyCalls[0]?.transcriptText?.trim() ?? "";
 
@@ -32,7 +34,7 @@ export function infeldDesk(partner: Partner, mission: Mission) {
     blockers,
     latestTranscript,
     owner,
-    forbidden: FORBIDDEN_PROMISES,
+    forbidden: [] as string[],
     nextStep: [mission.nextStepLabel, mission.nextStepAt].filter(Boolean).join(" · "),
   };
 }

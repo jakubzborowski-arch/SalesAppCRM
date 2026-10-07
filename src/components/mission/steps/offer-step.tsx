@@ -1,7 +1,7 @@
 "use client";
 
-import { OFFER_LIBRARY } from "@/lib/playbook";
-import { offerBlockers } from "@/lib/gates";
+import { OFFER_VARIANTS } from "@/lib/playbook";
+import { constraintText, offerBlockers } from "@/lib/gates";
 import { cn } from "@/lib/cn";
 import { useStore } from "@/lib/store";
 import type { Mission } from "@/lib/types";
@@ -15,7 +15,7 @@ export function OfferStep({ mission }: { mission: Mission }) {
     <div>
       <h2 className="text-lg font-semibold">Oferta A/B/C</h2>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        Porównaj trzy bezpieczne sesje. Wybierz wariant, który wynika po de-risk personalizacji.
+        Wybierz A, B albo C. Opis wariantu i zakazy bierzesz z Infelda, nie z lokalnej biblioteki.
       </p>
 
       {blocked ? (
@@ -25,7 +25,7 @@ export function OfferStep({ mission }: { mission: Mission }) {
       ) : null}
 
       <div className="mt-5 grid grid-cols-2 gap-3">
-        {OFFER_LIBRARY.map((offer) => {
+        {OFFER_VARIANTS.map((offer) => {
           const selected = mission.selectedVariant === offer.variant;
           const recommended = mission.recommendedVariant === offer.variant;
           return (
@@ -51,14 +51,14 @@ export function OfferStep({ mission }: { mission: Mission }) {
                   </span>
                 ) : null}
               </div>
-              <p className="mt-2 text-xs leading-5 text-muted">{offer.summary}</p>
+              <p className="mt-2 text-xs leading-5 text-muted">Treść i warunki — panel Infeld.</p>
             </button>
           );
         })}
         <div className="rounded-2xl border border-dashed border-chip-strong p-4 text-sm text-muted">
           Warunki z tej misji
           <p className="mt-1 text-xs">
-            {mission.decision.constraintSummary.trim() ||
+            {constraintText(mission) ||
               "Wróć do mapy potrzeb i zapisz ograniczenia, zanim wyślesz ofertę."}
           </p>
           {mission.decision.expectedResult.trim() ? (

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CallRecorder } from "@/components/mission/call-recorder";
-import { DISCOVERY_QUESTIONS_VENUE, NEED_CATEGORIES, PRIORITIES, categoryLabel } from "@/lib/playbook";
+import { NEED_CATEGORIES, PRIORITIES, categoryLabel } from "@/lib/playbook";
 import { cn } from "@/lib/cn";
 import { useStore } from "@/lib/store";
 import type { Mission, NeedCategory, Partner } from "@/lib/types";
@@ -63,8 +62,14 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
     <div>
       <h2 className="text-lg font-semibold">Rozmowa discovery</h2>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        Zbierz problem, rezultat, ograniczenia i proces decyzji. Ty wpisujesz — Infeld tego jeszcze nie wyciąga.
+        Zbierz problem, rezultat, ograniczenia i proces decyzji. Hipoteza z transkryptu nie jest faktem, dopóki jej nie potwierdzisz.
       </p>
+
+      {mission.calls?.some((c) => c.transcriptText?.trim()) ? (
+        <div className="mt-4 max-h-48 overflow-auto rounded-2xl border border-chip-mid bg-surface px-4 py-3 text-xs leading-5 text-muted whitespace-pre-wrap">
+          {mission.calls.find((c) => c.transcriptText?.trim())?.transcriptText}
+        </div>
+      ) : null}
 
       <div className="mt-5 grid grid-cols-2 gap-3">
         <Field label="Główna potrzeba · kategoria">
@@ -243,15 +248,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
         </button>
       </div>
 
-      <div className="mt-5 rounded-2xl bg-surface px-4 py-3">
-        <p className="text-xs font-semibold text-muted">Pytania discovery (lokale)</p>
-        <ul className="mt-2 space-y-1 text-xs text-muted">
-          {DISCOVERY_QUESTIONS_VENUE.map((q) => (
-            <li key={q}>• {q}</li>
-          ))}
-        </ul>
-      </div>
-      <CallRecorder mission={mission} partner={partner} />
+      <p className="mt-5 text-xs text-muted">Pytania discovery na ten lokal — w Infeldzie po prawej.</p>
     </div>
   );
 }

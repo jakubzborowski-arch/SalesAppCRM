@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { OFFER_LIBRARY, categoryLabel } from "@/lib/playbook";
+import { OFFER_VARIANTS, offerName } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/cn";
 
@@ -19,7 +19,7 @@ export default function OffersPage() {
     .map((m) => ({
       mission: m,
       partner: partnerById(m.partnerId),
-      offer: OFFER_LIBRARY.find((o) => o.variant === m.selectedVariant),
+      offerName: offerName(m.selectedVariant),
       status: offerStatus(m),
     }));
 
@@ -31,23 +31,19 @@ export default function OffersPage() {
       <div className="px-8 pb-10">
         <h1 className="text-3xl font-semibold tracking-tight">Oferty</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Biblioteka A/B/C i warianty z misji. Warunki biorą się z discovery, wysyłka tylko po zatwierdzeniu
-          handlowca.
+          Warianty A/B/C z misji. Treść oferty i zakazy są w Infeldzie. Wysyłka tylko po Twoim zatwierdzeniu.
         </p>
 
         <h2 className="mt-8 text-sm font-semibold uppercase tracking-[0.12em] text-navy">
-          Biblioteka
+          Warianty
         </h2>
         <div className="mt-3 grid max-w-4xl gap-3 md:grid-cols-3">
-          {OFFER_LIBRARY.map((offer) => (
+          {OFFER_VARIANTS.map((offer) => (
             <div key={offer.variant} className="rounded-[24px] border border-line bg-white p-5">
               <p className="font-semibold">
                 {offer.variant}. {offer.name}
               </p>
-              <p className="mt-2 text-sm leading-5 text-muted">{offer.summary}</p>
-              <p className="mt-3 text-[11px] text-muted">
-                Pasuje do: {offer.matches.map((id) => categoryLabel(id)).join(", ")}
-              </p>
+              <p className="mt-2 text-sm leading-5 text-muted">Opis i dopasowanie — baza Infelda.</p>
             </div>
           ))}
         </div>
@@ -56,7 +52,7 @@ export default function OffersPage() {
           W misjach
         </h2>
         <div className="mt-3 max-w-3xl space-y-3">
-          {offers.map(({ mission, partner, offer, status }) => (
+          {offers.map(({ mission, partner, offerName: name, status }) => (
             <div
               key={mission.id}
               className="flex items-start justify-between gap-4 rounded-[24px] border border-line bg-white px-5 py-4"
@@ -66,7 +62,7 @@ export default function OffersPage() {
                   {partner?.name} · wariant {mission.selectedVariant}
                 </p>
                 <p className="mt-1 text-sm text-muted">
-                  {offer?.name} · {status}
+                  {name} · {status}
                   {mission.offerSentAt ? ` ${mission.offerSentAt.slice(0, 10)}` : ""}
                 </p>
                 <p className="mt-2 text-sm leading-5 text-muted">

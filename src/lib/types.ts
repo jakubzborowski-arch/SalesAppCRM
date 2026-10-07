@@ -55,6 +55,9 @@ export type Partner = {
   category: string;
   subcategory: string;
   website: string;
+  instagram: string;
+  facebook: string;
+  socialOther: string;
   priority: string;
   priorityReason: string;
   source: string;
@@ -196,6 +199,9 @@ export type NewPartnerInput = {
   category: string;
   subcategory: string;
   website: string;
+  instagram: string;
+  facebook: string;
+  socialOther: string;
   priority: string;
   priorityReason: string;
   source: string;

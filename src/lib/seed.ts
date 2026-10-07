@@ -1,4 +1,4 @@
-import { OBJECTION_LIBRARY } from "./playbook";
+import { OBJECTION_KEYS } from "./playbook";
 import type { AppState, Mission, Partner } from "./types";
 
 const novaContact = {
@@ -20,6 +20,9 @@ export const nova: Partner = {
   category: "kawiarnia",
   subcategory: "specialty coffee",
   website: "",
+  instagram: "",
+  facebook: "",
+  socialOther: "",
   priority: "",
   priorityReason: "",
   source: "publiczny research / mapa",
@@ -44,6 +47,9 @@ const zielone: Partner = {
   category: "bistro",
   subcategory: "wege",
   website: "",
+  instagram: "",
+  facebook: "",
+  socialOther: "",
   priority: "",
   priorityReason: "",
   source: "polecenie",
@@ -74,6 +80,9 @@ const etna: Partner = {
   category: "pizzeria",
   subcategory: "neapolitańska",
   website: "",
+  instagram: "",
+  facebook: "",
+  socialOther: "",
   priority: "",
   priorityReason: "",
   source: "event branżowy",
@@ -130,7 +139,7 @@ export function emptyMission(partnerId: string, id = crypto.randomUUID()): Missi
     recommendedVariant: "A",
     selectedVariant: null,
     offerApproved: false,
-    objections: OBJECTION_LIBRARY.map((item) => ({
+    objections: OBJECTION_KEYS.map((item) => ({
       key: item.key,
       checked: false,
       argumentWorked: false,

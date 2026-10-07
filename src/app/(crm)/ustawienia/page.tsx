@@ -1,6 +1,5 @@
 "use client";
 
-import { FORBIDDEN_PROMISES } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 
 export default function SettingsPage() {
@@ -43,11 +42,9 @@ export default function SettingsPage() {
 
         <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
           <h2 className="font-semibold">Czego nie obiecywać</h2>
-          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted">
-            {FORBIDDEN_PROMISES.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
+          <p className="mt-2 text-sm text-muted">
+            Lista zakazów jest w Infeldzie (playbook / guardrails). CRM jej nie dubluje.
+          </p>
         </section>
 
         <button

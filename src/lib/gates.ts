@@ -10,12 +10,23 @@ export function hasContactConsent(partner: Partner) {
   );
 }
 
+export function constraintText(mission: Mission) {
+  const fromDecision = mission.decision.constraintSummary.trim();
+  if (fromDecision) return fromDecision;
+  const fromDiscovery = mission.discovery.constraints.map((item) => item.trim()).filter(Boolean).join(", ");
+  if (fromDiscovery) return fromDiscovery;
+  return mission.needs
+    .filter((n) => n.confirmed && n.constraints?.trim())
+    .map((n) => n.constraints!.trim())
+    .join(", ");
+}
+
 export function offerBlockers(mission: Mission) {
   const d = mission.decision;
   const missing: string[] = [];
   if (!d.problem.trim()) missing.push("problem");
   if (!d.expectedResult.trim()) missing.push("oczekiwany rezultat");
-  if (!d.constraintSummary.trim()) missing.push("ograniczenie");
+  if (!constraintText(mission)) missing.push("ograniczenie");
   if (!d.decisionMakerId) missing.push("decydent");
   if (!d.decisionDeadline.trim()) missing.push("termin decyzji");
   if (!d.previousAttempts.trim()) missing.push("wcześniejsze próby");
@@ -68,10 +79,10 @@ export function canEnterStage(
     return { ok: false, reason: "Status „nie kontaktować” blokuje kanał." };
   }
 
-  if (stage === "contact" && !hasContactConsent(partner)) {
+  if (stage === "discovery" && !hasContactConsent(partner)) {
     return {
       ok: false,
-      reason: "Brak zgody na kontakt w żadnym kanale.",
+      reason: "Zaznacz zgodę na kanał w kroku Kontakt.",
     };
   }
 

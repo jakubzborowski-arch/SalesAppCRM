@@ -85,6 +85,9 @@ create table if not exists missions (
 
 alter table partners add column if not exists subcategory text;
 alter table partners add column if not exists website text;
+alter table partners add column if not exists instagram text;
+alter table partners add column if not exists facebook text;
+alter table partners add column if not exists social_other text;
 alter table partners add column if not exists priority text;
 alter table partners add column if not exists priority_reason text;
 alter table missions add column if not exists details jsonb not null default '{}'::jsonb;

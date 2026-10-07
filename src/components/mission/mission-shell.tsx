@@ -11,6 +11,7 @@ import { DiscoveryStep } from "@/components/mission/steps/discovery-step";
 import { NeedsStep } from "@/components/mission/steps/needs-step";
 import { NegotiationStep } from "@/components/mission/steps/negotiation-step";
 import { OfferStep } from "@/components/mission/steps/offer-step";
+import { SkillSmokeBar } from "@/components/mission/skill-smoke-bar";
 import { ResearchStep } from "@/components/mission/steps/research-step";
 import { STAGES, type StageId } from "@/lib/types";
 import { STAGE_BADGE, STAGE_CTA } from "@/lib/playbook";
@@ -126,12 +127,13 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
 
       <div className="mt-6 flex flex-1 gap-6 px-8 pb-8">
         <section className="min-w-0 flex-1 rounded-[28px] border border-line bg-white p-6 shadow-[0_8px_40px_rgba(9,12,155,0.06)]">
+          <SkillSmokeBar partner={partner} mission={mission} />
           {stage === "research" ? <ResearchStep mission={mission} /> : null}
           {stage === "contact" ? <ContactStep mission={mission} partner={partner} /> : null}
           {stage === "discovery" ? <DiscoveryStep mission={mission} partner={partner} /> : null}
-          {stage === "needs" ? <NeedsStep mission={mission} /> : null}
+          {stage === "needs" ? <NeedsStep mission={mission} partner={partner} /> : null}
           {stage === "offer" ? <OfferStep mission={mission} /> : null}
-          {stage === "negotiation" ? <NegotiationStep mission={mission} /> : null}
+          {stage === "negotiation" ? <NegotiationStep mission={mission} partner={partner} /> : null}
           {stage === "contract" ? <ContractStep mission={mission} partner={partner} /> : null}
           {stage === "activation" ? (
             <ActivationStep mission={mission} partner={partner} />

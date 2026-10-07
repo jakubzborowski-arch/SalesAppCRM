@@ -21,9 +21,13 @@ import {
   persistPartner,
   deletePartner as deletePartnerRow,
   insertPartnerContact,
+  saveManualTranscript,
   saveRecording,
   updateTranscriptText,
 } from "./db";
+import { fetchInfeldSuggest, type InfeldSuggestResult } from "./infeld-client";
+import { buildSmokeInfeldQuery } from "./infeld-suggest";
+import { SKILL_SMOKE_TRANSCRIPT, skillSmokeFullMission } from "./skill-smoke-test";
 import {
   generatePartnerCode,
   insertTask,
@@ -81,6 +85,10 @@ type Store = {
     transcriptText?: string,
   ) => Promise<{ ok: boolean; error?: string }>;
   saveTranscript: (conversationId: string, text: string) => Promise<{ ok: boolean; error?: string }>;
+  applySkillSmokeTest: (
+    missionId: string,
+    partnerId: string,
+  ) => Promise<{ ok: boolean; error?: string; infeld?: InfeldSuggestResult }>;
   partnerById: (id: string) => Partner | undefined;
   missionByPartner: (partnerId: string) => Mission | undefined;
   urgentMission: () => { partner: Partner; mission: Mission } | undefined;
@@ -157,6 +165,9 @@ function readLocal(): AppState {
       partners: (parsed.partners ?? []).map((p) => ({
         ...p,
         website: p.website ?? "",
+        instagram: p.instagram ?? "",
+        facebook: p.facebook ?? "",
+        socialOther: p.socialOther ?? "",
         priority: p.priority ?? "",
         priorityReason: p.priorityReason ?? "",
       })),
@@ -199,6 +210,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!workspaceId || !userId) return;
     setSaveState("saving");
     try {
+      const related = new Set(missions.map((m) => m.partnerId));
+      for (const partner of state.partners) {
+        if (!related.has(partner.id)) continue;
+        try {
+          await persistPartner(partner);
+        } catch {
+          /* kontakt dociągniemy przy następnym zapisie — misji nie blokujemy */
+        }
+      }
       for (const mission of missions) {
         await persistMission(mission, workspaceId, userId);
       }
@@ -315,10 +335,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [ready, state.missions, dbStatus]);
 
   const patchMission = (missionId: string, fn: (m: Mission) => Mission) => {
-    setState((prev) => ({
-      ...prev,
-      missions: prev.missions.map((m) => (m.id === missionId ? fn(m) : m)),
-    }));
+    setState((prev) => {
+      let changed = false;
+      const missions = prev.missions.map((m) => {
+        if (m.id !== missionId) return m;
+        const next = fn(m);
+        if (next === m) return m;
+        changed = true;
+        return next;
+      });
+      return changed ? { ...prev, missions } : prev;
+    });
   };
 
   const store = useMemo<Store>(() => {
@@ -476,6 +503,83 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } catch (err) {
           const error = err as { message?: string };
           return { ok: false, error: error.message ?? "Nie udało się zapisać nagrania." };
+        }
+      },
+      applySkillSmokeTest: async (missionId, partnerId) => {
+        const mission = state.missions.find((m) => m.id === missionId);
+        const partner = partnerById(partnerId);
+        if (!mission || !partner) return { ok: false, error: "Brak partnera albo misji." };
+        try {
+          let contactId =
+            partner.contacts.find((c) => c.isDecisionMaker)?.id ??
+            partner.contacts.find((c) => /anna/i.test(c.name))?.id;
+          if (!contactId) {
+            try {
+              const added = await insertPartnerContact(partnerId, {
+                name: "Anna Kowalska",
+                role: "właścicielka",
+                isDecisionMaker: true,
+              });
+              contactId = added.id;
+              setState((prev) => ({
+                ...prev,
+                partners: prev.partners.map((p) =>
+                  p.id === partnerId ? { ...p, contacts: [...p.contacts, added] } : p,
+                ),
+              }));
+            } catch {
+              contactId = undefined;
+            }
+          }
+
+          let call;
+          try {
+            call = await saveManualTranscript({
+              missionId,
+              channel: "phone",
+              text: SKILL_SMOKE_TRANSCRIPT,
+              note: "Smoke test skilla — przykładowa rozmowa discovery",
+            });
+          } catch (err) {
+            const error = err as { message?: string };
+            call = {
+              id: crypto.randomUUID(),
+              channel: "phone" as const,
+              recordingConsent: "denied" as const,
+              durationSec: 0,
+              transcriptStatus: "ready" as const,
+              transcriptText: SKILL_SMOKE_TRANSCRIPT,
+              createdAt: new Date().toISOString(),
+              error: error.message,
+            };
+          }
+
+          const nextMission = withRecommended(
+            skillSmokeFullMission(mission, partner, { contactId, call }),
+          );
+          patchMission(missionId, () => nextMission);
+          const partnerWithConsent: Partner = {
+            ...partner,
+            consents: partner.consents.some((c) => c.channel === "phone" && c.purpose === "contact")
+              ? partner.consents.map((c) =>
+                  c.channel === "phone" && c.purpose === "contact" ? { ...c, status: "granted" as const } : c,
+                )
+              : [...partner.consents, { channel: "phone" as const, purpose: "contact" as const, status: "granted" as const }],
+          };
+          setState((prev) => {
+            const partners = prev.partners.map((p) => (p.id === partnerId ? partnerWithConsent : p));
+            void persistPartner(partnerWithConsent);
+            return { ...prev, partners };
+          });
+          const infeld = await fetchInfeldSuggest(
+            partnerWithConsent,
+            nextMission,
+            buildSmokeInfeldQuery(partnerWithConsent, nextMission),
+          );
+          return { ok: true, infeld };
+        } catch (err) {
+          const error = err as { message?: string };
+          return { ok: false, error: error.message ?? "Nie udało się wczytać przykładu skilla." };
         }
       },
       saveTranscript: async (conversationId, text) => {

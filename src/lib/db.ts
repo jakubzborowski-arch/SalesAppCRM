@@ -1,7 +1,8 @@
 import { loadMissionCore, syncMissionCore } from "./mission-core";
-import { OBJECTION_LIBRARY } from "./playbook";
+import { nextPriorityForDb, normalizePartnerPriority, priorityForDb } from "./partner-priority";
+import { OBJECTION_KEYS } from "./playbook";
 import { emptyMission } from "./seed";
-import { dateOrNull } from "./sql-coerce";
+import { dateOrNull, uuidOrNull } from "./sql-coerce";
 import { getSupabase, isMissingCrmTable } from "./supabase";
 import type {
   CallRecord,
@@ -101,7 +102,7 @@ function missionFromRow(
     activation: { ...base.activation, ...(d.activation ?? {}) },
     objections: d.objections?.length
       ? d.objections
-      : OBJECTION_LIBRARY.map((item) => ({
+      : OBJECTION_KEYS.map((item) => ({
           key: item.key,
           checked: false,
           argumentWorked: false,
@@ -120,6 +121,9 @@ function mapPartner(
     category: string | null;
     subcategory: string | null;
     website?: string | null;
+    instagram?: string | null;
+    facebook?: string | null;
+    social_other?: string | null;
     priority?: string | null;
     priority_reason?: string | null;
     source: string | null;
@@ -139,7 +143,10 @@ function mapPartner(
     category: row.category ?? "",
     subcategory: row.subcategory ?? "",
     website: row.website ?? "",
-    priority: row.priority ?? "",
+    instagram: row.instagram ?? "",
+    facebook: row.facebook ?? "",
+    socialOther: row.social_other ?? "",
+    priority: normalizePartnerPriority(row.priority ?? "") || row.priority || "",
     priorityReason: row.priority_reason ?? "",
     source: row.source ?? "",
     dnc: row.dnc_status === "do_not_contact",
@@ -200,7 +207,7 @@ export async function loadCrm(workspaceId: string): Promise<{
         .filter((c) => c.partner_id === row.id)
         .map((c) => ({
           id: c.id as string,
-          name: c.name as string,
+          name: String(c.name ?? c.contact_person ?? "").trim(),
           role: (c.role as string) ?? "",
           isDecisionMaker: Boolean(c.is_decision_maker),
           phone: (c.phone as string) ?? undefined,
@@ -323,6 +330,9 @@ export async function insertPartner(
     input.priority.trim() && `Priorytet: ${input.priority.trim()}`,
     input.priorityReason.trim() && `Uzasadnienie: ${input.priorityReason.trim()}`,
     input.website.trim() && `www: ${input.website.trim()}`,
+    input.instagram.trim() && `Instagram: ${input.instagram.trim()}`,
+    input.facebook.trim() && `Facebook: ${input.facebook.trim()}`,
+    input.socialOther.trim() && `Inne social: ${input.socialOther.trim()}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -337,17 +347,21 @@ export async function insertPartner(
     category: input.category.trim(),
     subcategory: input.subcategory.trim() || null,
     website: input.website.trim() || null,
-    priority: input.priority.trim() || null,
+    instagram: input.instagram.trim() || null,
+    facebook: input.facebook.trim() || null,
+    social_other: input.socialOther.trim() || null,
+    priority: priorityForDb(input.priority) || undefined,
     priority_reason: input.priorityReason.trim() || null,
     source: input.source.trim() || "ręczne dodanie",
     hours: input.hours.trim() || null,
     notes: input.notes.trim() || null,
     dnc_status: "ok",
   };
+  if (!payload.priority) delete payload.priority;
 
   let partner: Parameters<typeof mapPartner>[0] | null = null;
   let lastError: { message?: string; code?: string } | null = null;
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 12; attempt++) {
     const { data, error } = await sb.from("partners").insert(payload).select("*").single();
     if (!error && data) {
       partner = data;
@@ -355,13 +369,33 @@ export async function insertPartner(
     }
     lastError = error;
     const message = `${error?.message ?? ""} ${error?.code ?? ""}`;
+    const rejectedPriority = message.match(/invalid input value for enum partner_priority: "([^"]*)"/i)?.[1];
+    if (rejectedPriority != null) {
+      const next = nextPriorityForDb(input.priority, rejectedPriority);
+      if (next) {
+        payload.priority = next;
+        continue;
+      }
+      delete payload.priority;
+      continue;
+    }
+    const notNullCol = message.match(/null value in column "([^"]+)"/i)?.[1];
+    if (notNullCol && notNullCol in payload) {
+      payload[notNullCol] = "";
+      continue;
+    }
     const missing =
       message.match(/Could not find the '([a-z_]+)' column/i)?.[1] ??
       message.match(/column (?:public\.)?partners\.([a-z_]+) does not exist/i)?.[1] ??
       message.match(/column "([a-z_]+)" does not exist/i)?.[1];
     if (missing && missing in payload) {
       delete payload[missing];
-      if (["subcategory", "website", "priority", "priority_reason"].includes(missing) && extraNote) {
+      if (
+        ["subcategory", "website", "instagram", "facebook", "social_other", "priority", "priority_reason"].includes(
+          missing,
+        ) &&
+        extraNote
+      ) {
         payload.notes = [input.notes.trim(), extraNote].filter(Boolean).join("\n") || null;
       }
       continue;
@@ -374,29 +408,14 @@ export async function insertPartner(
 
   let contacts: PartnerContact[] = [];
   if (input.contactName.trim()) {
-    const { data: contact, error: contactError } = await sb
-      .from("partner_contacts")
-      .insert({
-        partner_id: partner.id,
-        name: input.contactName.trim(),
-        role: input.contactRole.trim() || "kontakt",
-        is_decision_maker: true,
-        phone: input.contactPhone.trim() || null,
-        email: input.contactEmail.trim() || null,
-      })
-      .select("*")
-      .single();
-    if (contactError) throw contactError;
-    contacts = [
-      {
-        id: contact.id as string,
-        name: contact.name as string,
-        role: (contact.role as string) ?? "",
-        isDecisionMaker: true,
-        phone: (contact.phone as string) ?? undefined,
-        email: (contact.email as string) ?? undefined,
-      },
-    ];
+    const contact = await insertPartnerContact(partner.id, {
+      name: input.contactName.trim(),
+      role: input.contactRole.trim() || "kontakt",
+      isDecisionMaker: true,
+      phone: input.contactPhone.trim() || undefined,
+      email: input.contactEmail.trim() || undefined,
+    });
+    contacts = [contact];
   }
 
   const consentRows = [
@@ -420,6 +439,40 @@ export async function insertPartner(
   );
 }
 
+function contactWritePayload(partnerId: string, contact: PartnerContact) {
+  const name = contact.name.trim();
+  return {
+    id: contact.id,
+    partner_id: partnerId,
+    name,
+    contact_person: name,
+    role: contact.role || null,
+    is_decision_maker: contact.isDecisionMaker,
+    phone: contact.phone ?? null,
+    email: contact.email ?? null,
+  } satisfies Record<string, unknown>;
+}
+
+function adaptContactPayload(payload: Record<string, unknown>, message: string) {
+  const missing =
+    message.match(/Could not find the '([a-z_]+)' column/i)?.[1] ??
+    message.match(/column "([a-z_]+)" of relation/i)?.[1];
+  if (missing && missing in payload) {
+    delete payload[missing];
+    return true;
+  }
+  const required = message.match(/null value in column "([^"]+)"/i)?.[1];
+  if (required === "contact_person" && payload.name) {
+    payload.contact_person = payload.name;
+    return true;
+  }
+  if (required === "name" && payload.contact_person) {
+    payload.name = payload.contact_person;
+    return true;
+  }
+  return false;
+}
+
 export async function insertPartnerContact(
   partnerId: string,
   input: { name: string; role?: string; isDecisionMaker?: boolean; phone?: string; email?: string },
@@ -434,28 +487,43 @@ export async function insertPartnerContact(
   };
   const sb = getSupabase();
   if (sb) {
-    const { data, error } = await sb
-      .from("partner_contacts")
-      .insert({
-        id: contact.id,
-        partner_id: partnerId,
-        name: contact.name,
-        role: contact.role,
-        is_decision_maker: contact.isDecisionMaker,
-        phone: contact.phone ?? null,
-        email: contact.email ?? null,
-      })
-      .select("id")
-      .single();
-    if (error) throw error;
-    if (data?.id) contact.id = data.id as string;
+    const payload: Record<string, unknown> = contactWritePayload(partnerId, contact);
+    let lastError: { message?: string } | null = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const { data, error } = await sb.from("partner_contacts").insert(payload).select("id").single();
+      if (!error && data) {
+        contact.id = data.id as string;
+        lastError = null;
+        break;
+      }
+      lastError = error;
+      if (adaptContactPayload(payload, `${error?.message ?? ""}`)) continue;
+      break;
+    }
+    if (lastError) throw lastError;
   }
   return contact;
+}
+
+async function upsertPartnerContactRow(partnerId: string, contact: PartnerContact) {
+  const sb = getSupabase();
+  const id = uuidOrNull(contact.id);
+  if (!sb || !id || !contact.name.trim()) return;
+  const payload: Record<string, unknown> = contactWritePayload(partnerId, { ...contact, id });
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { error } = await sb.from("partner_contacts").upsert(payload);
+    if (!error) return;
+    if (adaptContactPayload(payload, `${error.message ?? ""}`)) continue;
+    throw error;
+  }
 }
 
 export async function persistPartner(partner: Partner) {
   const sb = getSupabase();
   if (!sb) return;
+  for (const contact of partner.contacts) {
+    await upsertPartnerContactRow(partner.id, contact);
+  }
   await sb
     .from("partners")
     .update({
@@ -465,7 +533,10 @@ export async function persistPartner(partner: Partner) {
       category: partner.category,
       subcategory: partner.subcategory || null,
       website: partner.website || null,
-      priority: partner.priority || null,
+      instagram: partner.instagram || null,
+      facebook: partner.facebook || null,
+      social_other: partner.socialOther || null,
+      priority: priorityForDb(partner.priority) || partner.priority || null,
       priority_reason: partner.priorityReason || null,
       source: partner.source,
       hours: partner.hours ?? null,
@@ -581,6 +652,45 @@ async function syncConversationMeta(mission: Mission) {
     ...payload,
   });
   if (insertError) throw insertError;
+}
+
+export async function saveManualTranscript(params: {
+  missionId: string;
+  channel: Channel;
+  text: string;
+  note?: string;
+}): Promise<CallRecord> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const conversationId = crypto.randomUUID();
+  const { error: convoError } = await sb.from("conversations").insert({
+    id: conversationId,
+    mission_id: params.missionId,
+    channel: params.channel,
+    recording_consent: "denied",
+    summary_human: params.note?.trim() || "Transkrypt wklejony (skill / Spinach)",
+  });
+  if (convoError) throw convoError;
+
+  const { error: transcriptError } = await sb.from("transcripts").insert({
+    conversation_id: conversationId,
+    provider: "manual",
+    language: "pl",
+    status: "ready",
+    full_text: params.text.trim(),
+    segments: [],
+  });
+  if (transcriptError) throw transcriptError;
+
+  return {
+    id: conversationId,
+    channel: params.channel,
+    recordingConsent: "denied",
+    durationSec: 0,
+    transcriptStatus: "ready",
+    transcriptText: params.text.trim(),
+    createdAt: new Date().toISOString(),
+  };
 }
 
 export async function updateTranscriptText(conversationId: string, text: string) {

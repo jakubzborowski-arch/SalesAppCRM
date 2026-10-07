@@ -1,23 +1,26 @@
 "use client";
 
-import { CallRecorder } from "@/components/mission/call-recorder";
-import { CONTACT_CHANNELS, CONTACT_SCRIPT, RECORDING_DISCLOSURE } from "@/lib/playbook";
+import { CONTACT_CHANNELS } from "@/lib/playbook";
 import { cn } from "@/lib/cn";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
 
 export function ContactStep({ mission, partner }: { mission: Mission; partner: Partner }) {
   const { setChannel, setRecording, setConsent } = useStore();
+  const selectedConsent = partner.consents.find(
+    (c) => c.channel === mission.selectedChannel && c.purpose === "contact",
+  );
 
   return (
     <div>
       <h2 className="text-lg font-semibold">Pierwszy kontakt</h2>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        Celem pierwszego kontaktu jest rozmowa discovery, a nie sprzedaż ogólnej oferty.
+        Cel: umówić discovery. Oferty nie sprzedajesz na pierwszym sygnale. Zgodę na kanał
+        zaznaczasz tutaj, nie w researchu.
       </p>
 
       <p className="mt-6 text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
-        Wybierz kanał
+        Kanał
       </p>
       <div className="mt-2 grid grid-cols-2 gap-3">
         {CONTACT_CHANNELS.map((channel) => {
@@ -32,9 +35,7 @@ export function ContactStep({ mission, partner }: { mission: Mission; partner: P
               onClick={() => setChannel(mission.id, channel.id)}
               className={cn(
                 "rounded-2xl border px-4 py-4 text-left transition",
-                selected
-                  ? "border-lutra bg-chip"
-                  : "border-chip-mid bg-surface hover:border-blue",
+                selected ? "border-lutra bg-chip" : "border-chip-mid bg-surface hover:border-blue",
               )}
             >
               <div className="flex items-center justify-between">
@@ -60,75 +61,44 @@ export function ContactStep({ mission, partner }: { mission: Mission; partner: P
         })}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-chip-mid bg-surface px-4 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
-          Proponowana rozmowa
-        </p>
-        <p className="mt-2 text-sm leading-6 text-foreground">{CONTACT_SCRIPT}</p>
-      </div>
-
-      <div className="mt-4 rounded-2xl border border-line px-4 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
-          Nagranie i zgoda
-        </p>
-        <p className="mt-2 text-sm leading-6 text-muted">{RECORDING_DISCLOSURE}</p>
-        <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={mission.disclosureShown}
-            onChange={(e) =>
-              setRecording(mission.id, { disclosureShown: e.target.checked })
-            }
-          />
-          Poinformowałem rozmówcę
-        </label>
-        <div className="mt-3 flex flex-wrap gap-2">
+      {mission.selectedChannel ? (
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={!mission.disclosureShown}
-            onClick={() => setRecording(mission.id, { recordingConsent: "granted" })}
+            onClick={() => setConsent(partner.id, mission.selectedChannel!, "granted")}
             className={cn(
               "rounded-full px-4 py-2 text-sm font-medium",
-              mission.recordingConsent === "granted"
-                ? "bg-emerald-500 text-white"
-                : "bg-chip text-lutra disabled:opacity-40",
+              selectedConsent?.status === "granted" ? "bg-emerald-500 text-white" : "bg-chip text-lutra",
             )}
           >
-            Zgoda na nagranie
+            Zgoda na ten kanał
           </button>
           <button
             type="button"
-            onClick={() => setRecording(mission.id, { recordingConsent: "denied" })}
+            onClick={() => setConsent(partner.id, mission.selectedChannel!, "denied")}
             className={cn(
               "rounded-full px-4 py-2 text-sm font-medium",
-              mission.recordingConsent === "denied"
-                ? "bg-ink text-white"
-                : "bg-surface text-muted",
+              selectedConsent?.status === "denied" ? "bg-ink text-white" : "bg-surface text-muted",
             )}
           >
-            Rozmowa bez nagrania
+            Brak zgody
           </button>
         </div>
-        <textarea
-          className="mt-3 w-full rounded-2xl border border-chip-mid bg-white px-4 py-3 text-sm outline-none"
-          rows={3}
-          placeholder="Notatka z kontaktu…"
-          value={mission.conversationNote}
-          onChange={(e) => setRecording(mission.id, { conversationNote: e.target.value })}
-        />
-        {mission.selectedChannel ? (
-          <button
-            type="button"
-            className="mt-3 text-xs font-semibold text-lutra"
-            onClick={() =>
-              setConsent(partner.id, mission.selectedChannel!, "granted")
-            }
-          >
-            Oznacz zgodę na wybrany kanał
-          </button>
-        ) : null}
-        <CallRecorder mission={mission} partner={partner} />
-      </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted">Wybierz kanał, potem zaznacz zgodę.</p>
+      )}
+
+      <p className="mt-4 text-xs text-muted">
+        Wybierz kanał — po prawej skrypt pod telefon, mail, LinkedIn albo wizytę. Nie ten sam tekst na każdy kanał.
+      </p>
+
+      <textarea
+        className="mt-4 w-full rounded-2xl border border-chip-mid bg-white px-4 py-3 text-sm outline-none"
+        rows={3}
+        placeholder="Notatka z kontaktu…"
+        value={mission.conversationNote}
+        onChange={(e) => setRecording(mission.id, { conversationNote: e.target.value })}
+      />
     </div>
   );
 }

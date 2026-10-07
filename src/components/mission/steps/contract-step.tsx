@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { OFFER_LIBRARY } from "@/lib/playbook";
+import { offerName } from "@/lib/playbook";
 import { contractBlockers, isValidNip } from "@/lib/gates";
 import { contractPdfUrl } from "@/lib/mission-core";
 import { useStore } from "@/lib/store";
@@ -15,7 +15,7 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner?:
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const c = mission.contract;
   const missing = contractBlockers(mission);
-  const offer = OFFER_LIBRARY.find((item) => item.variant === mission.selectedVariant);
+  const selectedOfferName = offerName(mission.selectedVariant);
   const pdfName = c.documentPath?.split("/").pop();
   const localOnly = Boolean(c.documentPath?.startsWith("local/"));
 
@@ -51,7 +51,7 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner?:
       <div className="mt-4 rounded-2xl bg-surface px-4 py-3 text-sm">
         <p className="font-medium text-foreground">
           Wariant {mission.selectedVariant ?? "—"}
-          {offer ? ` · ${offer.name}` : ""}
+          {selectedOfferName ? ` · ${selectedOfferName}` : ""}
         </p>
         <p className="mt-1 text-muted">
           {mission.offerApproved

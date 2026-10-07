@@ -1,3 +1,4 @@
+import { normalizePartnerPriority } from "./partner-priority";
 import type { NewPartnerInput } from "./types";
 
 export const PARTNER_IMPORT_FIELDS = [
@@ -7,7 +8,10 @@ export const PARTNER_IMPORT_FIELDS = [
   { key: "category", label: "Kategoria", hint: "kawiarnia, restauracja…" },
   { key: "subcategory", label: "Subkategoria", hint: "np. specialty, wege" },
   { key: "website", label: "Strona www", hint: "https://…" },
-  { key: "priority", label: "Priorytet", hint: "np. wysoki, średni" },
+  { key: "instagram", label: "Instagram", hint: "@konto albo link" },
+  { key: "facebook", label: "Facebook", hint: "Strona albo profil" },
+  { key: "socialOther", label: "Inne social", hint: "LinkedIn, TikTok, mapa…" },
+  { key: "priority", label: "Priorytet", hint: "Wysoki / Średni / Niski" },
   { key: "priorityReason", label: "Uzasadnienie priorytetu", hint: "Dlaczego ten lokal teraz" },
   { key: "source", label: "Źródło", hint: "Skąd rekord" },
   { key: "hours", label: "Godziny", hint: "Godziny otwarcia" },
@@ -38,6 +42,9 @@ const ALIASES: Record<PartnerImportField, string[]> = {
   category: ["kategoria", "category", "typ", "rodzaj", "branża", "branza"],
   subcategory: ["subkategoria", "subcategory", "podkategoria", "podtyp", "sub kategoria"],
   website: ["strona www", "strona", "www", "url", "website", "link", "strona internetowa"],
+  instagram: ["instagram", "ig", "insta", "insta gram"],
+  facebook: ["facebook", "fb", "fanpage"],
+  socialOther: ["inne social", "social", "linkedin", "tiktok", "inne", "social media"],
   priority: ["priorytet", "priority"],
   priorityReason: [
     "uzasadnienie priorytetu",
@@ -140,7 +147,10 @@ export function rowToPartnerInput(row: string[], mapping: ColumnMapping): NewPar
     category: cell(row, mapping.category),
     subcategory: cell(row, mapping.subcategory),
     website: cell(row, mapping.website),
-    priority: cell(row, mapping.priority),
+    instagram: cell(row, mapping.instagram),
+    facebook: cell(row, mapping.facebook),
+    socialOther: cell(row, mapping.socialOther),
+    priority: normalizePartnerPriority(cell(row, mapping.priority)) || cell(row, mapping.priority),
     priorityReason: cell(row, mapping.priorityReason),
     source: cell(row, mapping.source) || "import z pliku",
     hours: cell(row, mapping.hours),
@@ -154,6 +164,6 @@ export function rowToPartnerInput(row: string[], mapping: ColumnMapping): NewPar
   };
 }
 
-export const SAMPLE_CSV = `Nazwa;Miasto;Adres;Kategoria;Subkategoria;Priorytet;Uzasadnienie priorytetu;Strona www;Telefon;E-mail
-Kawiarnia Nova;Kraków;ul. Długa 12, 31-147 Kraków;kawiarnia;specialty coffee;Wysoki;Puste środy po 16;https://nova.example;500100200;nova@example.com
+export const SAMPLE_CSV = `Nazwa;Miasto;Adres;Kategoria;Subkategoria;Priorytet;Uzasadnienie priorytetu;Strona www;Instagram;Facebook;Inne social;Telefon;E-mail
+Kawiarnia Nova;Kraków;ul. Długa 12, 31-147 Kraków;kawiarnia;specialty coffee;Wysoki;Puste środy po 16;https://nova.example;@kawiarnianova;facebook.com/nova;linkedin.com/company/nova;500100200;nova@example.com
 `;

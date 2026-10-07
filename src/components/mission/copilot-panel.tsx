@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getCopilot, categoryLabel } from "@/lib/playbook";
+import { useState } from "react";
+import { categoryLabel, CONTACT_CHANNELS } from "@/lib/playbook";
 import { infeldDesk } from "@/lib/infeld";
+import { readableInfeldCards } from "@/lib/infeld-suggest";
+import { useInfeldHints } from "@/lib/use-infeld-hints";
+import { STAGES } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
-import type { KnowledgeHint } from "@/lib/infeld-suggest";
 
 function clip(text: string, n = 160) {
   const t = text.trim();
@@ -15,55 +17,13 @@ function clip(text: string, n = 160) {
 
 export function CopilotPanel({ partner, mission }: { partner: Partner; mission: Mission }) {
   const { saveState, dbError, upsertNeed } = useStore();
-  const { cards, warning } = getCopilot(mission.currentStage, partner, mission);
   const desk = infeldDesk(partner, mission);
+  const { loading: infeldLoading, result: infeld } = useInfeldHints(partner, mission);
+  const hints = readableInfeldCards(infeld?.hints ?? []);
+  const stageLabel = STAGES.find((s) => s.id === mission.currentStage)?.label ?? mission.currentStage;
+  const channelLabel = CONTACT_CHANNELS.find((c) => c.id === mission.selectedChannel)?.label;
+  const place = [partner.category, partner.city].filter(Boolean).join(" · ") || "lokal";
   const [quote, setQuote] = useState("");
-  const [kbHints, setKbHints] = useState<KnowledgeHint[]>([]);
-  const [kbStatus, setKbStatus] = useState<"idle" | "loading" | "ok" | "empty" | "error">("idle");
-  const [kbError, setKbError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setKbStatus("loading");
-    setKbError(null);
-    void fetch("/api/infeld/suggest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ partner, mission }),
-    })
-      .then(async (res) => {
-        const data = (await res.json()) as {
-          hints?: KnowledgeHint[];
-          error?: string;
-          code?: string;
-          empty?: boolean;
-        };
-        if (cancelled) return;
-        if (res.status === 503 && data.code === "missing_key") {
-          setKbHints([]);
-          setKbStatus("error");
-          setKbError("Brak klucza Infelda — dodaj INFELD_API_KEY w .env.local / Vercel.");
-          return;
-        }
-        if (!res.ok) {
-          setKbHints([]);
-          setKbStatus("error");
-          setKbError(data.error || "Infeld nie odpowiedział.");
-          return;
-        }
-        const hints = data.hints ?? [];
-        setKbHints(hints);
-        setKbStatus(hints.length ? "ok" : "empty");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setKbStatus("error");
-        setKbError("Nie udało się zapytać Infelda.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [partner.id, mission.id, mission.currentStage, desk.facts.length]);
 
   const saveLabel =
     saveState === "saving"
@@ -96,59 +56,51 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
       <div className="rounded-[28px] bg-chip p-5">
         <h2 className="font-brand text-lg font-semibold text-navy">Infeld</h2>
         <p className="mt-1 text-xs leading-4 text-muted">
-          Czyta tylko zatwierdzone fakty. Transkrypt i hipotezy nie są ofertą.
+          Playbook na krok {stageLabel}
+          {mission.currentStage === "contact" && channelLabel ? ` · ${channelLabel}` : ""} · {place}.
+          Szuka w bazie Infelda; wpisy z misji tylko filtrują, nic tam nie zapisujemy.
+          {mission.currentStage === "contact" && !channelLabel
+            ? " Wybierz kanał po lewej — wtedy daję skrypt pod telefon albo mail."
+            : ""}
         </p>
         <p
           className={`mt-3 text-[11px] font-medium ${
-            saveState === "error" ? "text-rose-600" : "text-lutra"
+            saveState === "error" || infeld?.error ? "text-rose-600" : "text-lutra"
           }`}
         >
-          {saveLabel}
+          {infeldLoading
+            ? "Szukam w Twojej bazie wiedzy…"
+            : infeld?.error
+              ? infeld.error
+              : hints.length
+                ? `${hints.length} podpowiedzi z Infelda`
+                : saveLabel}
         </p>
 
-        <dl className="mt-4 space-y-3 text-[12px] leading-5 text-muted">
+        <div className="mt-4 space-y-3">
+          {infeldLoading && !hints.length ? (
+            <p className="text-[12px] leading-5 text-muted">Dopytuję playbook pod ten lokal i etap.</p>
+          ) : null}
+          {hints.map((hint) => (
+            <div key={hint.title}>
+              <p className="text-[13px] font-semibold text-foreground">{hint.title}</p>
+              <p className="mt-1 text-[12px] leading-5 text-muted">{hint.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <dl className="mt-4 space-y-2 border-t border-white/60 pt-3 text-[12px] leading-5 text-muted">
           <div>
-            <dt className="font-semibold text-foreground">Fakty</dt>
+            <dt className="font-semibold text-foreground">Fakty w tej misji</dt>
             <dd>
               {desk.facts.length
                 ? desk.facts.map((n) => n.title || n.description).join(" · ")
-                : "Brak potwierdzonego faktu"}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-foreground">Obserwacje</dt>
-            <dd>
-              {desk.observations.length
-                ? `${desk.observations.length} do potwierdzenia na mapie potrzeb`
-                : "Brak hipotez"}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-foreground">Rekomendacja A/B/C</dt>
-            <dd>
-              {desk.facts.length
-                ? `Wariant ${desk.recommended}${desk.offer ? ` · ${desk.offer.name}` : ""} — z potwierdzonych kategorii, nie z modelu.`
-                : "Najpierw potwierdź choć jedną potrzebę."}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-foreground">Wybrany wariant</dt>
-            <dd>
-              {mission.selectedVariant
-                ? `${mission.selectedVariant}${desk.selected ? ` · ${desk.selected.name}` : ""}${mission.offerApproved ? " · zatwierdzony" : " · szkic"}`
-                : "Nie wybrano"}
+                : "Brak potwierdzonego faktu — Infeld nie zrobi z tego oferty"}
             </dd>
           </div>
           <div>
             <dt className="font-semibold text-foreground">Bramka</dt>
             <dd>{desk.blockers.length ? `Brakuje: ${desk.blockers.join(", ")}` : "Komplet na ten krok"}</dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-foreground">Następny krok</dt>
-            <dd>
-              {desk.nextStep}
-              {desk.owner ? ` · ${desk.owner}` : ""}
-            </dd>
           </div>
         </dl>
       </div>
@@ -179,60 +131,6 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
             </button>
           </>
         ) : null}
-      </div>
-
-      <div className="rounded-[28px] border border-chip-mid bg-white p-5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
-          Z bazy Infelda
-        </p>
-        <p className="mt-1 text-[11px] leading-4 text-muted">
-          Podpowiedzi z knowledge, nie z transkryptu. Fakty nadal zatwierdzasz Ty.
-        </p>
-        {kbStatus === "loading" ? (
-          <p className="mt-3 text-[12px] text-muted">Szukam w Infeldzie…</p>
-        ) : null}
-        {kbStatus === "error" ? (
-          <p className="mt-3 text-[12px] text-rose-600">{kbError}</p>
-        ) : null}
-        {kbStatus === "empty" ? (
-          <p className="mt-3 text-[12px] text-muted">
-            Infeld nic nie znalazł na ten krok. Wrzuć playbook do knowledge w Infeldzie.
-          </p>
-        ) : null}
-        {kbHints.length ? (
-          <div className="mt-3 space-y-4">
-            {kbHints.map((card, i) => (
-              <div key={`${card.title}-${i}`}>
-                <p className="text-[13px] font-semibold text-foreground">{card.title}</p>
-                <p className="mt-1 text-[12px] leading-5 text-muted">{card.body}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="rounded-[28px] border border-chip-mid bg-white p-5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
-          Na tym kroku
-        </p>
-        <div className="mt-3 space-y-4">
-          {cards.map((card) => (
-            <div key={card.title}>
-              <p className="text-[13px] font-semibold text-foreground">{card.title}</p>
-              <p className="mt-1 text-[12px] leading-5 text-muted">{card.body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-gold-ring/25 bg-cream px-4 py-3 text-[12px] leading-5 text-gold-dark">
-        <p className="font-semibold">Nie obiecuj</p>
-        <ul className="mt-2 list-disc space-y-1 pl-4">
-          {desk.forbidden.slice(0, 4).map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-        <p className="mt-2">{warning}</p>
       </div>
 
       {desk.facts.length ? (
