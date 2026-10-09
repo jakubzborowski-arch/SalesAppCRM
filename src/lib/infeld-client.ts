@@ -6,6 +6,11 @@ export type InfeldSuggestResult = {
   query?: string;
   hints: KnowledgeHint[];
   preview?: string;
+  label?: string;
+  voice?: string;
+  voiceError?: string;
+  composer?: "cursor" | "playbook" | "needs-key" | "cursor-error" | "mcp";
+  empty?: boolean;
   error?: string;
 };
 
@@ -35,7 +40,11 @@ export async function fetchInfeldSuggest(
       query: data.query,
       hints: data.hints ?? [],
       preview: data.preview,
-      error: data.empty ? "Infeld nic nie znalazł w knowledge base." : undefined,
+      label: data.label,
+      voice: data.voice,
+      voiceError: data.voiceError,
+      composer: data.composer,
+      error: data.voice ? undefined : data.error || "Infeld nic nie znalazł w knowledge base.",
     };
   } catch (err) {
     return {

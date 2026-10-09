@@ -1,25 +1,20 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { searchViaCursorBridge } from "@/lib/infeld-bridge-client";
 import { infeldSearch, resolveInfeldMcpConfig } from "@/lib/infeld-mcp";
 import {
   buildInfeldSearchQuery,
-  hintsFromInfeldText,
-  hintsFromPlaybookText,
-  pickStageHints,
+  composeFromInfeld,
+  composeKlubVoice,
+  infeldSectionLabel,
+  isKlubCategory,
+  klubSectionHints,
+  venueInfeldText,
 } from "@/lib/infeld-suggest";
 import type { Mission, Partner } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-function localCategoryHints(category?: string) {
-  if (!/klub/i.test(category ?? "")) return [];
-  try {
-    const text = readFileSync(join(process.cwd(), "docs/infeld-playbook-klub.txt"), "utf8");
-    return hintsFromPlaybookText(text);
-  } catch {
-    return [];
-  }
-}
+export const maxDuration = 120;
 
 type Body = {
   partner?: Partner;
@@ -29,9 +24,6 @@ type Body = {
 
 export async function POST(request: Request) {
   const config = resolveInfeldMcpConfig();
-  if ("error" in config) {
-    return Response.json({ error: config.error, code: config.code, hints: [] }, { status: 503 });
-  }
 
   let body: Body;
   try {
@@ -45,33 +37,76 @@ export async function POST(request: Request) {
   }
 
   const query = body.query?.trim() || buildInfeldSearchQuery(body.partner, body.mission);
-  const opts = {
-    stage: body.mission.currentStage,
-    channel: body.mission.selectedChannel,
-    category: body.partner.category,
-    objections: (body.mission.objections ?? []).filter((o) => o.checked).map((o) => o.key),
-  };
 
-  try {
-    const found = await infeldSearch(config, query, 8);
-    const fromInfeld = hintsFromInfeldText(found.text, opts);
-    const hints = pickStageHints([...localCategoryHints(body.partner.category), ...fromInfeld], opts);
+  if (isKlubCategory(body.partner.category)) {
+    let playbook = "";
+    try {
+      playbook = readFileSync(join(process.cwd(), "docs/infeld-playbook-klub.txt"), "utf8");
+    } catch {
+      playbook = "";
+    }
+    let remote = "";
+    let composer: "mcp" | "playbook" = "playbook";
+    try {
+      remote = await searchViaCursorBridge(query, 4);
+      if (remote.trim()) composer = "mcp";
+    } catch {
+      remote = "";
+    }
+    if (!remote.trim() && !("error" in config)) {
+      try {
+        const found = await infeldSearch(config, query, 4);
+        remote = found.text;
+      } catch {
+        remote = "";
+      }
+    }
+    const hints = klubSectionHints(playbook, body.mission, remote);
+    const label = hints.map((hint) => hint.title.split("·")[0]?.trim()).filter(Boolean).join(" + ");
+    const voice = composeKlubVoice(body.partner, body.mission, hints, remote);
     return Response.json({
       ok: true,
       query,
       hints,
-      preview: found.text.trim().slice(0, 900),
-      source: "infeld",
-      empty: hints.length === 0,
+      label,
+      voice,
+      source: composer === "mcp" ? "infeld-mcp" : "playbook-section",
+      composer,
+      empty: !voice,
     });
-  } catch (err) {
-    return Response.json(
-      {
-        error: err instanceof Error ? err.message : "Infeld nie odpowiedział",
-        code: "search_failed",
-        hints: [],
-      },
-      { status: 502 },
-    );
   }
+
+  let remote = "";
+  try {
+    remote = await searchViaCursorBridge(query, 8);
+  } catch {
+    remote = "";
+  }
+  if (!remote.trim() && !("error" in config)) {
+    try {
+      const found = await infeldSearch(config, query, 8);
+      remote = found.text;
+    } catch {
+      remote = "";
+    }
+  }
+  const text = venueInfeldText(remote);
+  const voice = composeFromInfeld(body.partner, body.mission, remote);
+  const label = text ? infeldSectionLabel(text) : "";
+  const at = text.indexOf(label);
+  const hints =
+    voice && text
+      ? [{ title: label, body: text.slice(at >= 0 ? at : 0, (at >= 0 ? at : 0) + 700).trim() }]
+      : [];
+  return Response.json({
+    ok: true,
+    query,
+    hints,
+    voice,
+    label,
+    source: "infeld-mcp",
+    composer: voice ? "mcp" : "playbook",
+    empty: !voice,
+    error: voice ? undefined : "Infeld nie oddał sekcji dla tej kategorii.",
+  });
 }

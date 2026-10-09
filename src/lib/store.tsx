@@ -117,6 +117,7 @@ type Store = {
   upsertNeed: (missionId: string, need: Need) => void;
   confirmNeed: (missionId: string, needId: string, confirmed: boolean) => void;
   updateDecision: (missionId: string, patch: Partial<Mission["decision"]>) => void;
+  setNextStepAt: (missionId: string, at: string) => void;
   selectVariant: (missionId: string, variant: OfferVariant) => void;
   approveOffer: (missionId: string) => { ok: boolean; reason?: string };
   markOfferSent: (missionId: string) => { ok: boolean; reason?: string };
@@ -660,6 +661,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }));
           return { ok: true };
         }
+        if (mission.currentStage === "discovery") {
+          const toNeeds = canEnterStage("needs", mission, partner);
+          if (!toNeeds.ok) return toNeeds;
+          const missing = offerBlockers(mission);
+          if (missing.length) return { ok: false, reason: `Brakuje: ${missing.join(", ")}.` };
+          patchMission(missionId, (m) => ({
+            ...m,
+            completedStages: [...new Set([...m.completedStages, "discovery" as const, "needs" as const])],
+            currentStage: "offer",
+          }));
+          return { ok: true };
+        }
         const gate = canEnterStage(nxt, mission, partner);
         if (!gate.ok) return gate;
         patchMission(missionId, (m) => ({
@@ -784,7 +797,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
       },
       updateDecision: (missionId, patch) => {
-        patchMission(missionId, (m) => ({ ...m, decision: { ...m.decision, ...patch } }));
+        patchMission(missionId, (m) => ({
+          ...m,
+          nextStepLabel: patch.nextStep !== undefined ? patch.nextStep : m.nextStepLabel,
+          decision: { ...m.decision, ...patch },
+        }));
+      },
+      setNextStepAt: (missionId, at) => {
+        patchMission(missionId, (m) => ({ ...m, nextStepAt: at }));
       },
       selectVariant: (missionId, variant) => {
         patchMission(missionId, (m) => ({ ...m, selectedVariant: variant }));

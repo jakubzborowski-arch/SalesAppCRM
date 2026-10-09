@@ -79,7 +79,7 @@ export const ACTIVATION_ITEMS = [
 export const STAGE_CTA: Record<StageId, string> = {
   research: "Dalej: Pierwszy kontakt",
   contact: "Dalej: Rozmowa discovery",
-  discovery: "Dalej: Mapa potrzeb",
+  discovery: "Dalej: Oferta A/B/C",
   needs: "Dalej: Oferta A/B/C",
   offer: "Dalej: Negocjacje i obiekcje",
   negotiation: "Dalej: Umowa i podpis",

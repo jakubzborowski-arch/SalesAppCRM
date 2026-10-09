@@ -31,50 +31,14 @@ Nie obiecuj, że „wypełnimy wam parkiet”. Publiczny Instagram to nie mapa p
 
 ---
 
-S-KLUB-03 · Kontakt — cel pierwszego sygnału
+S-KLUB-03 · Kontakt
 
-Cel: 15 minut discovery z osobą, która decyduje o cenniku albo o oknie sali (właściciel, manager, booker). Nie sprzedawaj wariantu A/B/C na pierwszym sygnale. Kanał wybierasz w CRM.
+Cel: 15 minut discovery z osobą, która decyduje o cenniku albo o oknie sali (właściciel, manager, booker). Nie sprzedawaj wariantu A/B/C na pierwszym sygnale.
 
----
-
-S-KLUB-10 · Telefon — pierwszy sygnał
-
-Cel: umówić 15 min, nie sprzedać oferty.
-
-Skrypt:
+Skrypt (klub):
 Dzień dobry, tu [imię] z Lutry. Pomagamy grupom wybrać miejsce na wspólne wyjście — konkretne okno, nie kupon na weekend. Czy 15 minut w tym tygodniu, żeby zrozumieć, które dni u Państwa są puste, będzie w porządku?
 
-Jeśli nie odbiera: jeden SMS z tym samym celem, bez oferty.
 Jeśli „zadzwoń w piątek wieczór”: nie wciskaj oferty. Zostaw termin na dzień roboczy.
-
----
-
-S-KLUB-11 · E-mail — pierwszy kontakt
-
-Cel: ten sam co telefon — 15 min discovery, nie oferta.
-
-Temat: Lutra — 15 min o słabym oknie w klubie (nie o weekendzie)
-
-Treść:
-Dzień dobry, piszę z Lutry. Łączymy grupy, które już planują wyjście, z lokalami — w konkretne, słabe godziny, nie jako kupon na piątek/sobotę. Czy mogę umówić 15 minut w tym tygodniu, żeby zapytać, które dni są u Państwa naprawdę puste i kto decyduje o oknie sali / cenniku?
-
-Bez załącznika z ofertą A/B/C. Bez „wypełnimy parkiet”. Jeśli nie odpiszą: jeden follow-up po 3 dniach roboczych, potem telefon.
-
----
-
-S-KLUB-12 · LinkedIn — krótka wiadomość
-
-Cel: 15 min, nie pitch. Do właściciela / managera / bookera.
-
-Cześć [imię], jestem z Lutry — grupy na wspólne wyjście, nie event na weekend. Szukam 15 minut, żeby zrozumieć puste okno w klubie, zanim cokolwiek zaproponujemy.
-
-Nie wklejaj A/B/C. Nie pisz liczby użytkowników Lutry.
-
----
-
-S-KLUB-13 · Kontakt osobisty / polecenie
-
-Cel: nie pitchuj przy barze w szczycie. Poproś o 15 min w dzień roboczy z osobą od cennika. Zostaw imię i że wrócisz mailem albo telefonem. Oferty nie zostawiasz na serwetce.
 
 ---
 
@@ -141,14 +105,6 @@ Dopytaj: Kto na zmianie potwierdza grupę — bar czy ochrona?
 „Muszę zapytać właściciela / bookera.”
 Odpowiedź: Zrobimy recap z oknem i wyłączeniami, bez wiążącej oferty.
 Dopytaj: Co będzie dla właściciela twarde: bar, wpisowe czy sala?
-
-„Mam inne aplikacje ze zniżkami.”
-Odpowiedź: Lutra nie jest kolejnym kuponem na weekend. Szukamy słabego okna, które oni kontrolują.
-Dopytaj: Które z tych aplikacji ruszają Wam szczyt, a które zostawiają tydzień pusty?
-
-„Wróćcie, jak będzie więcej użytkowników.”
-Odpowiedź: Nie obiecuje liczby. Możemy zacząć od pilotażu C na jednym słabym dniu, bez obietnicy ruchu.
-Dopytaj: Jaki wynik po 4–6 tygodniach uznaliby Państwo za „wystarczająco dużo”, zanim wrócimy do rozmowy?
 
 ---
 

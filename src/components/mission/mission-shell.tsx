@@ -157,7 +157,9 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
             </div>
           </div>
         </section>
-        <CopilotPanel partner={partner} mission={mission} />
+        {stage === "discovery" || stage === "needs" ? null : (
+          <CopilotPanel partner={partner} mission={mission} />
+        )}
       </div>
     </div>
   );

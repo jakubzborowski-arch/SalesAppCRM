@@ -89,7 +89,9 @@ export function ContactStep({ mission, partner }: { mission: Mission; partner: P
       )}
 
       <p className="mt-4 text-xs text-muted">
-        Wybierz kanał — po prawej skrypt pod telefon, mail, LinkedIn albo wizytę. Nie ten sam tekst na każdy kanał.
+        {/klub/i.test(partner.category)
+          ? "Kanał zostaje w CRM. Playbook klubu ma jeden skrypt kontaktu: 15 minut discovery, bez oferty."
+          : "Wybierz kanał — po prawej skrypt pod telefon, mail, LinkedIn albo wizytę. Nie ten sam tekst na każdy kanał."}
       </p>
 
       <textarea

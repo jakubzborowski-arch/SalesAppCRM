@@ -1,8 +1,8 @@
 "use client";
 
 import { use, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { MissionDossier } from "@/components/partners/mission-dossier";
 import { PriorityChecks } from "@/components/partners/priority-checks";
 import { CONTACT_CHANNELS } from "@/lib/playbook";
 import { socialUrl, type SocialKind } from "@/lib/social";
@@ -10,10 +10,10 @@ import { useStore } from "@/lib/store";
 
 function SocialLink({ kind, value }: { kind: SocialKind; value: string }) {
   const href = socialUrl(kind, value);
-  if (!value.trim()) return "—";
-  if (!href.startsWith("http")) return <span>{value}</span>;
+  if (!value.trim()) return <span className="font-semibold text-foreground">—</span>;
+  if (!href.startsWith("http")) return <span className="font-semibold text-foreground">{value}</span>;
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="text-lutra">
+    <a href={href} target="_blank" rel="noreferrer" className="font-semibold text-lutra">
       {value}
     </a>
   );
@@ -49,17 +49,36 @@ export default function PartnerDetailPage({
         </span>
       </div>
       <div className="px-8 pb-10">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
-          Karta partnera
-        </p>
-        <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight">{partner.name}</h1>
-            <p className="mt-2 text-sm text-muted">
-              Lokal · {partner.city} · {partner.address} · źródło: {partner.source}
+        <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-navy">
+              Karta partnera
+            </p>
+            <h1 className="mt-1 text-4xl font-bold tracking-tight text-navy">{partner.name}</h1>
+            <p className="mt-2 text-sm font-semibold text-foreground">
+              {[partner.category, partner.city, partner.address, partner.source ? `źródło: ${partner.source}` : ""]
+                .filter(Boolean)
+                .join(" · ") || "Lokal"}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-[11px] font-bold uppercase tracking-[0.08em] text-navy">
+              Partner
+              <select
+                className="mt-1 block rounded-full border border-line bg-white px-4 py-2 text-sm font-semibold text-foreground"
+                value={partner.id}
+                onChange={(event) => router.push(`/partners/${event.target.value}`)}
+              >
+                {[...state.partners]
+                  .sort((a, b) => a.name.localeCompare(b.name, "pl"))
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                      {item.category ? ` · ${item.category}` : ""}
+                    </option>
+                  ))}
+              </select>
+            </label>
           <button
             type="button"
             onClick={() => {
@@ -71,7 +90,7 @@ export default function PartnerDetailPage({
               if (created) router.push(`/partners/${partner.id}/mission`);
             }}
             disabled={partner.dnc && !mission}
-            className="rounded-full bg-lutra px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-chip-strong disabled:text-white"
+            className="rounded-full bg-lutra px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-chip-strong disabled:text-white"
           >
             {mission ? "Otwórz misję" : "Zajmuję się partnerem"}
           </button>
@@ -90,7 +109,7 @@ export default function PartnerDetailPage({
                   }
                   router.push("/partners");
                 }}
-                className="rounded-full bg-rose-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-full bg-rose-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
               >
                 {deleting ? "Usuwam…" : "Usuń na pewno"}
               </button>
@@ -102,7 +121,7 @@ export default function PartnerDetailPage({
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="rounded-full border border-rose-200 px-4 py-2.5 text-sm font-medium text-rose-700"
+              className="rounded-full border border-rose-200 px-4 py-2.5 text-sm font-bold text-rose-700"
             >
               Usuń
             </button>
@@ -111,60 +130,60 @@ export default function PartnerDetailPage({
         </div>
         {deleteError ? <p className="mt-3 text-sm text-rose-600">{deleteError}</p> : null}
 
-        <div className="mt-6 grid max-w-5xl gap-4 lg:grid-cols-2">
-          <section className="rounded-[28px] border border-line bg-white p-6">
-            <h2 className="font-semibold">Znane fakty</h2>
-            <p className="mt-1 text-xs text-muted">Obserwacje publiczne, nie potrzeby.</p>
-            <dl className="mt-4 space-y-3 text-sm">
+        <div className="mt-6 grid items-start gap-4 lg:grid-cols-12">
+          <section className="rounded-2xl border border-line bg-white p-5 shadow-[0_8px_30px_rgba(9,12,155,0.05)] lg:col-span-7">
+            <h2 className="text-base font-bold text-navy">Znane fakty</h2>
+            <p className="mt-1 text-xs font-medium text-muted">Obserwacje publiczne, nie potrzeby.</p>
+            <dl className="mt-4 grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
               <div>
-                <dt className="text-muted">Godziny</dt>
-                <dd>{partner.hours ?? "—"}</dd>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Godziny</dt>
+                <dd className="mt-0.5 font-semibold text-foreground">{partner.hours ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-muted">Kategoria</dt>
-                <dd>{partner.category || "—"}</dd>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Kategoria</dt>
+                <dd className="mt-0.5 font-semibold text-foreground">{partner.category || "—"}</dd>
               </div>
               <div>
-                <dt className="text-muted">Subkategoria</dt>
-                <dd>{partner.subcategory || "—"}</dd>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Subkategoria</dt>
+                <dd className="mt-0.5 font-semibold text-foreground">{partner.subcategory || "—"}</dd>
               </div>
               <div>
-                <dt className="text-muted">Strona www</dt>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Strona www</dt>
                 <dd>
                   {partner.website ? (
                     <a
                       href={/^https?:\/\//i.test(partner.website) ? partner.website : `https://${partner.website}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-lutra"
+                      className="font-semibold text-lutra"
                     >
                       {partner.website}
                     </a>
                   ) : (
-                    "—"
+                    <span className="font-semibold text-foreground">—</span>
                   )}
                 </dd>
               </div>
               <div>
-                <dt className="text-muted">Instagram</dt>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Instagram</dt>
                 <dd>
                   <SocialLink kind="instagram" value={partner.instagram} />
                 </dd>
               </div>
               <div>
-                <dt className="text-muted">Facebook</dt>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Facebook</dt>
                 <dd>
                   <SocialLink kind="facebook" value={partner.facebook} />
                 </dd>
               </div>
               <div>
-                <dt className="text-muted">Inne social</dt>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Inne social</dt>
                 <dd>
                   <SocialLink kind="other" value={partner.socialOther} />
                 </dd>
               </div>
               <div>
-                <dt className="text-muted">Priorytet</dt>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Priorytet</dt>
                 <dd className="mt-2">
                   <PriorityChecks
                     value={partner.priority}
@@ -173,26 +192,26 @@ export default function PartnerDetailPage({
                 </dd>
               </div>
               <div>
-                <dt className="text-muted">Uzasadnienie priorytetu</dt>
-                <dd>{partner.priorityReason || "—"}</dd>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Uzasadnienie priorytetu</dt>
+                <dd className="mt-0.5 font-semibold text-foreground">{partner.priorityReason || "—"}</dd>
               </div>
               <div>
-                <dt className="text-muted">Notatka</dt>
-                <dd>{partner.notes ?? "—"}</dd>
+                <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Notatka</dt>
+                <dd className="mt-0.5 font-semibold text-foreground">{partner.notes ?? "—"}</dd>
               </div>
             </dl>
           </section>
 
-          <section className="rounded-[28px] border border-line bg-white p-6">
-            <h2 className="font-semibold">Kontakty</h2>
+          <section className="rounded-2xl border border-line bg-white p-5 shadow-[0_8px_30px_rgba(9,12,155,0.05)] lg:col-span-5">
+            <h2 className="text-base font-bold text-navy">Kontakty</h2>
             <ul className="mt-4 space-y-3 text-sm">
               {partner.contacts.map((c) => (
                 <li key={c.id}>
-                  <p className="font-medium">
+                  <p className="font-bold text-foreground">
                     {c.name} · {c.role}
                     {c.isDecisionMaker ? " · decydent" : ""}
                   </p>
-                  <p className="text-muted">
+                  <p className="font-medium text-muted">
                     {[c.phone, c.email].filter(Boolean).join(" · ") || "brak danych"}
                   </p>
                 </li>
@@ -205,10 +224,10 @@ export default function PartnerDetailPage({
             )}
           </section>
 
-          <section className="rounded-[28px] border border-line bg-white p-6 lg:col-span-2">
+          <section className="rounded-2xl border border-line bg-white p-5 shadow-[0_8px_30px_rgba(9,12,155,0.05)] lg:col-span-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="font-semibold">Zgody i DNC</h2>
+                <h2 className="text-base font-bold text-navy">Zgody i DNC</h2>
                 <p className="mt-1 text-xs text-muted">
                   Przed kontaktem CRM sprawdza źródło, zgodę kanału i status „nie kontaktować”.
                 </p>
@@ -257,13 +276,7 @@ export default function PartnerDetailPage({
           </section>
         </div>
 
-        {mission ? (
-          <p className="mt-6 text-sm">
-            <Link href={`/partners/${partner.id}/mission`} className="font-semibold text-lutra">
-              Kontynuuj misję →
-            </Link>
-          </p>
-        ) : null}
+        <MissionDossier partner={partner} mission={mission} />
       </div>
     </div>
   );

@@ -27,3 +27,5 @@ Research → Kontakt → Discovery → Potrzeby → Oferta A/B/C → Negocjacje 
 Pilot v1: segment lokale. Stack: Next.js + Supabase + nagranie → darmowy transkrypt (Chrome) → recenzja człowieka.
 
 Buduj według `docs/plan.md`. Nie skacz do Infelda, zanim stoją misja, mapa potrzeb i bramka oferty.
+
+Infeld: tylko projekt CRM-SalesApp (`5244d79d-0e79-42e8-8816-affb53716462`). Nie czytaj i nie zapisuj innych projektów organizacji Lutra.

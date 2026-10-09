@@ -20,6 +20,7 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
   const desk = infeldDesk(partner, mission);
   const { loading: infeldLoading, result: infeld } = useInfeldHints(partner, mission);
   const hints = readableInfeldCards(infeld?.hints ?? []);
+  const klub = /klub/i.test(partner.category);
   const stageLabel = STAGES.find((s) => s.id === mission.currentStage)?.label ?? mission.currentStage;
   const channelLabel = CONTACT_CHANNELS.find((c) => c.id === mission.selectedChannel)?.label;
   const place = [partner.category, partner.city].filter(Boolean).join(" · ") || "lokal";
@@ -56,12 +57,9 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
       <div className="rounded-[28px] bg-chip p-5">
         <h2 className="font-brand text-lg font-semibold text-navy">Infeld</h2>
         <p className="mt-1 text-xs leading-4 text-muted">
-          Playbook na krok {stageLabel}
-          {mission.currentStage === "contact" && channelLabel ? ` · ${channelLabel}` : ""} · {place}.
-          Szuka w bazie Infelda; wpisy z misji tylko filtrują, nic tam nie zapisujemy.
-          {mission.currentStage === "contact" && !channelLabel
-            ? " Wybierz kanał po lewej — wtedy daję skrypt pod telefon albo mail."
-            : ""}
+          {infeld?.composer === "mcp"
+            ? `Z Infelda, krok ${stageLabel}${channelLabel ? ` · ${channelLabel}` : ""} · ${place}.`
+            : `Krok ${stageLabel}${channelLabel ? ` · ${channelLabel}` : ""} · ${place}.`}
         </p>
         <p
           className={`mt-3 text-[11px] font-medium ${
@@ -69,24 +67,45 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
           }`}
         >
           {infeldLoading
-            ? "Szukam w Twojej bazie wiedzy…"
-            : infeld?.error
+            ? "Układam zdanie na ten krok…"
+            : infeld?.error && !infeld.voice
               ? infeld.error
-              : hints.length
-                ? `${hints.length} podpowiedzi z Infelda`
-                : saveLabel}
+              : infeld?.voice
+                ? infeld.label
+                : hints.length
+                  ? `${hints.length} podpowiedzi z Infelda`
+                  : saveLabel}
         </p>
 
-        <div className="mt-4 space-y-3">
-          {infeldLoading && !hints.length ? (
-            <p className="text-[12px] leading-5 text-muted">Dopytuję playbook pod ten lokal i etap.</p>
+        <div className={`mt-4 space-y-4 ${klub ? "max-h-[32rem] overflow-y-auto pr-1" : ""}`}>
+          {infeld?.voice ? (
+            <p className="whitespace-pre-wrap text-[13px] leading-5 text-foreground">{infeld.voice}</p>
           ) : null}
-          {hints.map((hint) => (
-            <div key={hint.title}>
-              <p className="text-[13px] font-semibold text-foreground">{hint.title}</p>
-              <p className="mt-1 text-[12px] leading-5 text-muted">{hint.body}</p>
-            </div>
-          ))}
+          {infeld?.voiceError ? (
+            <p className="text-[12px] leading-5 text-rose-600">{infeld.voiceError}</p>
+          ) : null}
+          {infeld?.voice && hints.length ? (
+            <details className="text-[12px] text-muted">
+              <summary className="cursor-pointer font-medium text-foreground">Sekcja playbooka</summary>
+              <div className="mt-3 space-y-4">
+                {hints.map((hint) => (
+                  <div key={hint.title}>
+                    <p className="text-[13px] font-semibold text-foreground">{hint.title}</p>
+                    <p className="mt-1 whitespace-pre-wrap leading-5">{hint.body}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : (
+            hints.map((hint) => (
+              <div key={hint.title}>
+                <p className="text-[13px] font-semibold text-foreground">{hint.title}</p>
+                <p className={`mt-1 text-[12px] leading-5 text-muted ${klub ? "whitespace-pre-wrap" : ""}`}>
+                  {hint.body}
+                </p>
+              </div>
+            ))
+          )}
         </div>
 
         <dl className="mt-4 space-y-2 border-t border-white/60 pt-3 text-[12px] leading-5 text-muted">
