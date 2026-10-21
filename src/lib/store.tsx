@@ -41,8 +41,6 @@ import {
   saveRecording,
   updateTranscriptText,
 } from "./db";
-import { fetchInfeldSuggest, type InfeldSuggestResult } from "./infeld-client";
-import { buildSmokeInfeldQuery } from "./infeld-suggest";
 import { SKILL_SMOKE_TRANSCRIPT, skillSmokeEnabled, skillSmokeFullMission } from "./skill-smoke-test";
 import {
   generatePartnerCode,
@@ -138,7 +136,7 @@ type Store = {
   applySkillSmokeTest: (
     missionId: string,
     partnerId: string,
-  ) => Promise<{ ok: boolean; error?: string; infeld?: InfeldSuggestResult }>;
+  ) => Promise<{ ok: boolean; error?: string }>;
   partnerById: (id: string) => Partner | undefined;
   /** Aktywna misja partnera (status „W toku”). */
   missionByPartner: (partnerId: string) => Mission | undefined;
@@ -1037,12 +1035,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...prev,
             partners: prev.partners.map((p) => (p.id === partnerId ? partnerWithConsent : p)),
           }));
-          const infeld = await fetchInfeldSuggest(
-            partnerWithConsent,
-            nextMission,
-            buildSmokeInfeldQuery(partnerWithConsent, nextMission),
-          );
-          return { ok: true, infeld };
+          return { ok: true };
         } catch (err) {
           const error = err as { message?: string };
           return { ok: false, error: error.message ?? "Nie udało się wczytać przykładu skilla." };

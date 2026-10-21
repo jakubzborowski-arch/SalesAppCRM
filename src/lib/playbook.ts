@@ -10,7 +10,19 @@ import {
   type StageId,
 } from "./types";
 
-/** Checklista i etykiety UI — nie treść sprzedażowa. Wiedza idzie z Infelda. */
+/** Checklista i etykiety UI — nie treść sprzedażowa. */
+
+/** Obietnice, których handlowiec (i AI) nie składa partnerowi. Źródło: docs/knowledge-base.md §11. */
+export const FORBIDDEN_PROMISES = [
+  "Określona liczba klientów",
+  "Pierwsze miejsce / pozycja w aplikacji",
+  "Wyłączność",
+  "Terminy niegotowych funkcji",
+  "Działanie funkcji z backlogu",
+  "Sprzedaż Premium przed uruchomieniem",
+  "Gwarantowany wpływ na retencję",
+  "Warunki niezatwierdzone pisemnie",
+];
 
 export const RESEARCH_ITEMS = [
   { key: "profile", label: "Profil, adres i kategoria lokalu sprawdzone" },

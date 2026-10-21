@@ -7,7 +7,7 @@ Repo CRM dla handlowców pozyskujących lokale, firmy i społeczności do Lutry.
 - Model danych: [docs/data-model.md](docs/data-model.md)
 - Głos / AI / uczenie: [docs/ai-pipeline.md](docs/ai-pipeline.md)
 
-Następny krok: SQL v2, zbieranie partnerów/misji/nagrań. Transkrypt: darmowe STT w Chrome/Edge albo ręcznie. Infeld później.
+Następny krok: SQL v2, zbieranie partnerów/misji/nagrań. Transkrypt: darmowe STT w Chrome/Edge albo ręcznie.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

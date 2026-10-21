@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActivityLog } from "@/components/mission/activity-log";
 import { CloseMissionPanel } from "@/components/mission/close-mission";
-import { CopilotPanel } from "@/components/mission/copilot-panel";
+import { MissionPanel } from "@/components/mission/mission-panel";
 import { DraftBubble } from "@/components/mission/draft-bubble";
 import { MissionStepper } from "@/components/mission/stepper";
 import { ActivationStep } from "@/components/mission/steps/activation-step";
@@ -334,7 +334,7 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
           </div>
         </section>
         {stage === "discovery" || stage === "needs" ? null : (
-          <CopilotPanel partner={partner} mission={shown} />
+          <MissionPanel partner={partner} mission={shown} />
         )}
       </div>
 

@@ -5,7 +5,6 @@ import { requestFactFill } from "@/components/mission/local-draft";
 import { TagInput, Field, inputClass } from "@/components/ui";
 import { offerBlockers } from "@/lib/gates";
 import { getSupabase } from "@/lib/supabase";
-import { useInfeldHints } from "@/lib/use-infeld-hints";
 import { useStore } from "@/lib/store";
 import type { Mission, NeedCategory, Partner } from "@/lib/types";
 
@@ -30,7 +29,6 @@ const SLOTS = ["problem", "result", "constraint", "maker", "deadline", "attempts
 export function DiscoveryStep({ mission, partner }: { mission: Mission; partner: Partner }) {
   const { updateDiscovery, updateDecision, setNextStepAt, upsertNeed, confirmNeed, addPartnerContact } =
     useStore();
-  const { loading, result } = useInfeldHints(partner, mission);
   const [contactName, setContactName] = useState("");
   const [contactRole, setContactRole] = useState("");
   const [contactBusy, setContactBusy] = useState(false);
@@ -200,9 +198,6 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
   return (
     <div>
       <h2 className="text-lg font-semibold">Rozmowa</h2>
-      <p className="mt-3 text-[15px] leading-6 text-foreground">
-        {loading ? "Układam zdanie…" : result?.voice || "Infeld nie oddał zdania na ten krok."}
-      </p>
       <p className={`mt-3 text-sm ${missing.length ? "text-amber-700" : "text-emerald-700"}`}>
         {missing.length ? `Brakuje do oferty: ${missing.join(", ")}.` : "Możesz iść do oferty."}
       </p>

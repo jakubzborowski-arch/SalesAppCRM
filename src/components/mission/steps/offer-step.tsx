@@ -15,7 +15,7 @@ export function OfferStep({ mission }: { mission: Mission }) {
     <div>
       <h2 className="text-lg font-semibold">Oferta A/B/C</h2>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        Wybierz A, B albo C. Opis wariantu i zakazy bierzesz z Infelda, nie z lokalnej biblioteki.
+        Wybierz A, B albo C. Rekomendacja wynika z potwierdzonych faktów.
       </p>
 
       {blocked ? (
@@ -51,7 +51,6 @@ export function OfferStep({ mission }: { mission: Mission }) {
                   </span>
                 ) : null}
               </div>
-              <p className="mt-2 text-xs leading-5 text-muted">Treść i warunki — panel Infeld.</p>
             </button>
           );
         })}

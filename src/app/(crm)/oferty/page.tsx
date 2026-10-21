@@ -31,7 +31,7 @@ export default function OffersPage() {
       <div className="px-8 pb-10">
         <h1 className="text-3xl font-semibold tracking-tight">Oferty</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Warianty A/B/C z misji. Treść oferty i zakazy są w Infeldzie. Wysyłka tylko po Twoim zatwierdzeniu.
+          Warianty A/B/C z misji. Wysyłka tylko po Twoim zatwierdzeniu.
         </p>
 
         <h2 className="mt-8 text-sm font-semibold uppercase tracking-[0.12em] text-navy">
@@ -43,7 +43,6 @@ export default function OffersPage() {
               <p className="font-semibold">
                 {offer.variant}. {offer.name}
               </p>
-              <p className="mt-2 text-sm leading-5 text-muted">Opis i dopasowanie — baza Infelda.</p>
             </div>
           ))}
         </div>

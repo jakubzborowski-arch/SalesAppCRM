@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listInvites as fetchInvites } from "@/lib/db";
+import { FORBIDDEN_PROMISES } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { TeamInvite } from "@/lib/types";
@@ -346,9 +347,11 @@ export default function SettingsPage() {
 
         <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
           <h2 className="font-semibold">Czego nie obiecywać</h2>
-          <p className="mt-2 text-sm text-muted">
-            Lista zakazów jest w Infeldzie (playbook / guardrails). CRM jej nie dubluje.
-          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
+            {FORBIDDEN_PROMISES.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </section>
 
         {cloud ? null : (
