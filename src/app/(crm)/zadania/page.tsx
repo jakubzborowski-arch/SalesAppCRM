@@ -19,6 +19,10 @@ export default function TasksPage() {
   const [saving, setSaving] = useState(false);
 
   const activeMissions = state.missions.filter((m) => m.status === "active");
+  // „Wrócić później” i pauza też mają termin powrotu — ma być widoczny w zadaniach.
+  const followUpMissions = state.missions.filter(
+    (m) => m.status === "active" || m.status === "nurture" || m.status === "paused",
+  );
 
   const rows = useMemo(() => {
     const fromTable = state.tasks.map((task) => {
@@ -34,11 +38,14 @@ export default function TasksPage() {
       };
     });
 
+    // Następny krok z misji, którego baza jeszcze nie ma jako zadania (np. zmieniony przed chwilą).
+    const stepKey = (missionId: string, title: string, dueAt?: string) =>
+      `${missionId}|${title.trim()}|${(dueAt ?? "").slice(0, 10)}`;
     const covered = new Set(
-      state.tasks.filter((t) => t.source === "next_step").map((t) => t.missionId),
+      state.tasks.filter((t) => t.source === "next_step").map((t) => stepKey(t.missionId, t.title, t.dueAt)),
     );
-    const fallback = activeMissions
-      .filter((m) => m.nextStepLabel.trim() && !covered.has(m.id))
+    const fallback = followUpMissions
+      .filter((m) => m.nextStepLabel.trim() && !covered.has(stepKey(m.id, m.nextStepLabel, m.nextStepAt)))
       .map((m) => ({
         id: `next:${m.id}`,
         title: m.nextStepLabel,
@@ -53,7 +60,7 @@ export default function TasksPage() {
     if (filter === "open") return all.filter((row) => !row.doneAt);
     if (filter === "done") return all.filter((row) => row.doneAt);
     return all;
-  }, [state.tasks, state.missions, activeMissions, filter, partnerById]);
+  }, [state.tasks, state.missions, followUpMissions, filter, partnerById]);
 
   return (
     <div>

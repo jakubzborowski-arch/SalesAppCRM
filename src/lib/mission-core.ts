@@ -154,25 +154,33 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
     };
   }
 
-  const tasks: TaskItem[] = (tasksRes.data ?? []).map((row) => ({
+  const tasks: TaskItem[] = (tasksRes.data ?? []).map(taskFromRow);
+
+  return { byMission, tasks };
+}
+
+export type CoreSyncResult = { status: "synced" | "skipped"; nextStepTask: TaskItem | null };
+
+function taskFromRow(row: Record<string, unknown>): TaskItem {
+  return {
     id: row.id as string,
     missionId: row.mission_id as string,
     title: row.title as string,
     dueAt: (row.due_at as string) ?? "",
     doneAt: (row.done_at as string) ?? undefined,
     source: row.source as TaskItem["source"],
-  }));
-
-  return { byMission, tasks };
+  };
 }
 
 export async function syncMissionCore(
   mission: Mission,
   workspaceId: string,
   userId: string,
-): Promise<"synced" | "skipped"> {
+): Promise<CoreSyncResult> {
   const sb = getSupabase();
-  if (!sb) return "skipped";
+  if (!sb) return { status: "skipped", nextStepTask: null };
+  const ownerId = uuidOrNull(mission.ownerUserId) ?? userId;
+  const now = new Date().toISOString();
   const d = mission.decision;
   const makerId = uuidOrNull(d.decisionMakerId);
   let decisionMakerId: string | null = null;
@@ -195,39 +203,58 @@ export async function syncMissionCore(
     next_step: d.nextStep || null,
   });
   if (decisionError) {
-    if (optionalTable(decisionError)) return "skipped";
+    if (optionalTable(decisionError)) return { status: "skipped", nextStepTask: null };
     throw decisionError;
   }
 
   const { data: existingNeeds, error: listNeedsError } = await sb
     .from("needs")
-    .select("id")
+    .select("id, confirmed_at, confirmed_by")
     .eq("mission_id", mission.id);
   if (listNeedsError) throw listNeedsError;
+  // Kto i kiedy potwierdził fakt — zostaje przy kolejnych zapisach, nie przeskakuje na „teraz”.
+  const confirmedBefore = new Map(
+    (existingNeeds ?? [])
+      .filter((n) => n.confirmed_at)
+      .map((n) => [n.id as string, { at: n.confirmed_at as string, by: (n.confirmed_by as string | null) ?? null }]),
+  );
   const keep = new Set(mission.needs.map((n) => persistNeedId(n.id)));
   const stale = (existingNeeds ?? []).map((n) => n.id as string).filter((id) => !keep.has(id));
   if (stale.length) await sb.from("needs").delete().in("id", stale);
   if (mission.needs.length) {
     const { error } = await sb.from("needs").upsert(
-      mission.needs.map((need) => ({
-        id: persistNeedId(need.id),
-        mission_id: mission.id,
-        category: need.category,
-        title: need.title || null,
-        description: need.description || null,
-        priority: need.priority,
-        expected_result: need.expectedResult || null,
-        constraints: need.constraints || null,
-        quote: need.quote || null,
-        status: need.confirmed ? "fact" : need.status,
-        confirmed_by: need.confirmed ? userId : null,
-        confirmed_at: need.confirmed ? new Date().toISOString() : null,
-        source: "manual",
-      })),
+      mission.needs.map((need) => {
+        const id = persistNeedId(need.id);
+        const before = confirmedBefore.get(id);
+        return {
+          id,
+          mission_id: mission.id,
+          category: need.category,
+          title: need.title || null,
+          description: need.description || null,
+          priority: need.priority,
+          expected_result: need.expectedResult || null,
+          constraints: need.constraints || null,
+          quote: need.quote || null,
+          status: need.confirmed ? "fact" : need.status,
+          confirmed_by: need.confirmed ? (before ? before.by : userId) : null,
+          confirmed_at: need.confirmed ? (before?.at ?? now) : null,
+          source: "manual",
+        };
+      }),
     );
     if (error) throw error;
   }
 
+  const { data: existingChecklist } = await sb
+    .from("mission_checklist_items")
+    .select("stage, item_key, done_at")
+    .eq("mission_id", mission.id);
+  const doneBefore = new Map(
+    (existingChecklist ?? [])
+      .filter((row) => row.done_at)
+      .map((row) => [`${row.stage}:${row.item_key}`, row.done_at as string]),
+  );
   const checklistRows = Object.entries(mission.checklist).map(([fullKey, isDone]) => {
     const [stage, ...rest] = fullKey.split(":");
     const itemKey = rest.join(":");
@@ -237,7 +264,7 @@ export async function syncMissionCore(
       item_key: itemKey,
       label: CHECKLIST_LABELS[fullKey] ?? itemKey,
       is_done: isDone,
-      done_at: isDone ? new Date().toISOString() : null,
+      done_at: isDone ? (doneBefore.get(fullKey) ?? now) : null,
     };
   });
   if (checklistRows.length) {
@@ -265,6 +292,14 @@ export async function syncMissionCore(
       .eq("segment", "venue")
       .eq("variant", mission.selectedVariant)
       .maybeSingle();
+    const { data: existingOffer } = await sb
+      .from("offers")
+      .select("variant, approved_at, approved_by")
+      .eq("mission_id", mission.id)
+      .maybeSingle();
+    // Zatwierdzenie tego samego wariantu zachowuje pierwotną datę i osobę.
+    const keepApproval =
+      mission.offerApproved && existingOffer?.approved_at && existingOffer.variant === mission.selectedVariant;
     const status = mission.offerSentAt ? "sent" : mission.offerApproved ? "approved" : "draft";
     const { error } = await sb.from("offers").upsert(
       {
@@ -276,8 +311,12 @@ export async function syncMissionCore(
           nextStep: mission.decision.nextStep,
         },
         recommended_by: "human",
-        approved_by: mission.offerApproved ? userId : null,
-        approved_at: mission.offerApproved ? new Date().toISOString() : null,
+        approved_by: mission.offerApproved
+          ? keepApproval
+            ? ((existingOffer?.approved_by as string | null) ?? null)
+            : userId
+          : null,
+        approved_at: mission.offerApproved ? (keepApproval ? (existingOffer?.approved_at as string) : now) : null,
         sent_at: mission.offerSentAt || null,
         status,
       },
@@ -286,31 +325,7 @@ export async function syncMissionCore(
     if (error) throw error;
   }
 
-  if (mission.nextStepLabel.trim()) {
-    const { data: rows } = await sb
-      .from("tasks")
-      .select("id, done_at")
-      .eq("mission_id", mission.id)
-      .eq("source", "next_step")
-      .limit(1);
-    const existing = rows?.[0];
-    const payload = {
-      workspace_id: workspaceId,
-      mission_id: mission.id,
-      owner_user_id: userId,
-      title: mission.nextStepLabel.trim(),
-      due_at: dateOrNull(mission.nextStepAt),
-      source: "next_step",
-      done_at: existing?.done_at ?? null,
-    };
-    if (existing?.id) {
-      const { error } = await sb.from("tasks").update(payload).eq("id", existing.id);
-      if (error) throw error;
-    } else {
-      const { error } = await sb.from("tasks").insert(payload);
-      if (error) throw error;
-    }
-  }
+  const nextStepTask = await syncNextStepTask(mission, workspaceId, ownerId);
 
   const c = mission.contract;
   const hasContract =
@@ -377,7 +392,80 @@ export async function syncMissionCore(
     if (error) throw error;
   }
 
-  return "synced";
+  return { status: "synced", nextStepTask };
+}
+
+/**
+ * Zadanie „następny krok” misji. Gdy poprzedni krok jest już odhaczony, a w misji
+ * pojawia się nowy, dopisujemy nowe zadanie (historia kroków zostaje).
+ * Przegrana albo brak dopasowania zamyka otwarte kroki.
+ */
+async function syncNextStepTask(
+  mission: Mission,
+  workspaceId: string,
+  ownerId: string,
+): Promise<TaskItem | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const closing = mission.status === "lost" || mission.status === "no_fit";
+
+  const { data: rows, error: listError } = await sb
+    .from("tasks")
+    .select("*")
+    .eq("mission_id", mission.id)
+    .eq("source", "next_step")
+    .order("done_at", { ascending: false, nullsFirst: true });
+  if (listError) throw listError;
+  const open = (rows ?? []).filter((row) => !row.done_at);
+
+  if (closing) {
+    if (open.length) {
+      const { error } = await sb
+        .from("tasks")
+        .update({ done_at: new Date().toISOString() })
+        .in(
+          "id",
+          open.map((row) => row.id as string),
+        );
+      if (error) throw error;
+    }
+    return null;
+  }
+
+  const title = mission.nextStepLabel.trim();
+  if (!title) return null;
+  const dueAt = dateOrNull(mission.nextStepAt);
+  const current = open[0];
+
+  if (current) {
+    if (current.title === title && (current.due_at ?? null) === dueAt) return taskFromRow(current);
+    const { data, error } = await sb
+      .from("tasks")
+      .update({ title, due_at: dueAt })
+      .eq("id", current.id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return taskFromRow(data);
+  }
+
+  const alreadyDone = (rows ?? []).some((row) => row.title === title && (row.due_at ?? null) === dueAt);
+  if (alreadyDone) return null;
+
+  const { data, error } = await sb
+    .from("tasks")
+    .insert({
+      workspace_id: workspaceId,
+      mission_id: mission.id,
+      owner_user_id: ownerId,
+      title,
+      due_at: dueAt,
+      source: "next_step",
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return taskFromRow(data);
 }
 
 export async function insertTask(

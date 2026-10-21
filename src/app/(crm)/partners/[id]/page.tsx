@@ -2,6 +2,7 @@
 
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ActivityLog } from "@/components/mission/activity-log";
 import { MissionDossier } from "@/components/partners/mission-dossier";
 import { PriorityChecks } from "@/components/partners/priority-checks";
 import { CONTACT_CHANNELS } from "@/lib/playbook";
@@ -26,10 +27,22 @@ export default function PartnerDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const { partnerById, missionByPartner, startMission, updatePartner, setConsent, state, deletePartner } =
-    useStore();
+  const {
+    partnerById,
+    missionByPartner,
+    latestMissionByPartner,
+    missionsOfPartner,
+    startMission,
+    updatePartner,
+    setConsent,
+    state,
+    deletePartner,
+  } = useStore();
   const partner = partnerById(id);
   const mission = missionByPartner(id);
+  const latest = latestMissionByPartner(id);
+  const missions = missionsOfPartner(id);
+  const [logOpen, setLogOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -82,20 +95,26 @@ export default function PartnerDetailPage({
           <button
             type="button"
             onClick={() => {
-              if (mission) {
+              if (mission || latest) {
                 router.push(`/partners/${partner.id}/mission`);
                 return;
               }
               const created = startMission(partner.id);
               if (created) router.push(`/partners/${partner.id}/mission`);
             }}
-            disabled={partner.dnc && !mission}
+            disabled={partner.dnc && !mission && !latest}
             className="rounded-full bg-lutra px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-chip-strong disabled:text-white"
           >
-            {mission ? "Otwórz misję" : "Zajmuję się partnerem"}
+            {mission ? "Otwórz misję" : latest ? "Ostatnia misja" : "Zajmuję się partnerem"}
           </button>
           {confirmDelete ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {missions.length ? (
+                <span className="text-xs text-rose-700">
+                  Usunie też {missions.length === 1 ? "misję" : `${missions.length} misje`}, dziennik kontaktów i
+                  dane umowy.
+                </span>
+              ) : null}
               <button
                 type="button"
                 disabled={deleting}
@@ -276,7 +295,20 @@ export default function PartnerDetailPage({
           </section>
         </div>
 
-        <MissionDossier partner={partner} mission={mission} />
+        {missions.length ? (
+          <div className="mt-6">
+            <ActivityLog
+              partner={partner}
+              missions={missions}
+              activeMission={mission}
+              formOpen={logOpen}
+              onFormOpenChange={setLogOpen}
+              title="Historia kontaktów"
+            />
+          </div>
+        ) : null}
+
+        <MissionDossier partner={partner} mission={mission ?? latest} />
       </div>
     </div>
   );

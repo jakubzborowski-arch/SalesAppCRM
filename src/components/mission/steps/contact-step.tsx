@@ -101,6 +101,10 @@ export function ContactStep({ mission, partner }: { mission: Mission; partner: P
         value={mission.conversationNote}
         onChange={(e) => setRecording(mission.id, { conversationNote: e.target.value })}
       />
+      <p className="mt-2 text-xs text-muted">
+        To jedna wspólna notatka misji. Każdą próbę kontaktu (nie odebrał, mail wysłany, oddzwonić) zapisz
+        osobno w Dzienniku kontaktów pod spodem.
+      </p>
     </div>
   );
 }

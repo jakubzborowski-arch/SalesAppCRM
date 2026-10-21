@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { InfeldSuggestResult } from "@/lib/infeld-client";
 import { readableInfeldCards } from "@/lib/infeld-suggest";
-import { isSkillDemoPartner } from "@/lib/skill-smoke-test";
+import { isSkillDemoPartner, skillSmokeEnabled } from "@/lib/skill-smoke-test";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
 
@@ -14,7 +14,7 @@ export function SkillSmokeBar({ partner, mission }: { partner: Partner; mission:
   const [done, setDone] = useState(false);
   const [infeld, setInfeld] = useState<InfeldSuggestResult | null>(null);
 
-  if (!isSkillDemoPartner(partner.name)) return null;
+  if (!skillSmokeEnabled() || !isSkillDemoPartner(partner.name)) return null;
 
   return (
     <div className="mb-4 rounded-2xl border border-lutra/30 bg-lutra-soft px-4 py-3">

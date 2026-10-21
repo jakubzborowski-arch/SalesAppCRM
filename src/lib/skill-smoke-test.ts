@@ -24,6 +24,11 @@ export function isSkillDemoPartner(name: string) {
   return name.trim().toLowerCase() === "test";
 }
 
+/** Smoke test dopisuje przykładowe dane (kontakt, zgodę, transkrypt). Tylko gdy włączony flagą. */
+export function skillSmokeEnabled() {
+  return process.env.NEXT_PUBLIC_SKILL_SMOKE === "1";
+}
+
 export function skillSmokeNeeds(): Need[] {
   return [
     {

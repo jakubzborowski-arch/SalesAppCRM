@@ -5,14 +5,22 @@ import { emptyMission } from "./seed";
 import { dateOrNull, uuidOrNull } from "./sql-coerce";
 import { getSupabase, isMissingCrmTable } from "./supabase";
 import type {
+  Activity,
+  ActivityDirection,
+  ActivityOutcome,
   CallRecord,
   Channel,
   ConsentStatus,
   Mission,
+  MissionEvent,
+  NewActivityInput,
   NewPartnerInput,
   Partner,
   PartnerContact,
   StageId,
+  TaskItem,
+  TeamInvite,
+  TeamMember,
 } from "./types";
 
 export type WorkspaceContext = {
@@ -38,6 +46,7 @@ type MissionDetails = {
   objections?: Mission["objections"];
   contract?: Mission["contract"];
   activation?: Mission["activation"];
+  closeNote?: string;
 };
 
 function uiDetailsOf(mission: Mission): MissionDetails {
@@ -49,6 +58,7 @@ function uiDetailsOf(mission: Mission): MissionDetails {
     disclosureShown: mission.disclosureShown,
     discovery: mission.discovery,
     recommendedVariant: mission.recommendedVariant,
+    closeNote: mission.closeNote,
   };
 }
 
@@ -75,6 +85,7 @@ function missionFromRow(
   row: {
     id: string;
     partner_id: string;
+    owner_user_id?: string | null;
     status: Mission["status"];
     current_stage: StageId;
     next_step_label: string | null;
@@ -82,8 +93,12 @@ function missionFromRow(
     outcome: Mission["outcome"];
     loss_reason: string | null;
     details: MissionDetails | null;
+    started_at?: string | null;
+    closed_at?: string | null;
   },
   calls: CallRecord[],
+  activities: Activity[],
+  events: MissionEvent[],
 ): Mission {
   const base = emptyMission(row.partner_id, row.id);
   const d = row.details ?? {};
@@ -92,6 +107,12 @@ function missionFromRow(
     ...d,
     id: row.id,
     partnerId: row.partner_id,
+    ownerUserId: row.owner_user_id ?? undefined,
+    startedAt: row.started_at ?? undefined,
+    closedAt: row.closed_at ?? undefined,
+    closeNote: d.closeNote ?? "",
+    activities,
+    events,
     status: row.status,
     currentStage: row.current_stage,
     nextStepLabel: row.next_step_label ?? base.nextStepLabel,
@@ -233,8 +254,14 @@ export async function loadCrm(workspaceId: string): Promise<{
 
   const missionIds = (missionRows ?? []).map((m) => m.id as string);
   const callsByMission = new Map<string, CallRecord[]>();
+  const activitiesByMission = new Map<string, Activity[]>();
+  const eventsByMission = new Map<string, MissionEvent[]>();
   if (missionIds.length) {
-    const { data: convos } = await sb.from("conversations").select("*").in("mission_id", missionIds);
+    const { data: convos } = await sb
+      .from("conversations")
+      .select("*")
+      .in("mission_id", missionIds)
+      .order("started_at", { ascending: false });
     const convoIds = (convos ?? []).map((c) => c.id as string);
     const { data: recs } = convoIds.length
       ? await sb.from("recordings").select("*").in("conversation_id", convoIds)
@@ -267,11 +294,38 @@ export async function loadCrm(workspaceId: string): Promise<{
       const list = callsByMission.get(convo.mission_id as string) ?? [];
       list.push(call);
       callsByMission.set(convo.mission_id as string, list);
+
+      const activity = activityFromRow(convo, {
+        hasRecording: Boolean(rec),
+        hasTranscript: Boolean(tr?.status === "ready" && String(tr.full_text ?? "").trim()),
+      });
+      const acts = activitiesByMission.get(activity.missionId) ?? [];
+      acts.push(activity);
+      activitiesByMission.set(activity.missionId, acts);
+    }
+
+    const { data: eventRows, error: eventsError } = await sb
+      .from("mission_events")
+      .select("*")
+      .in("mission_id", missionIds)
+      .order("created_at", { ascending: true });
+    if (!eventsError) {
+      for (const row of eventRows ?? []) {
+        const event = eventFromRow(row);
+        const list = eventsByMission.get(event.missionId) ?? [];
+        list.push(event);
+        eventsByMission.set(event.missionId, list);
+      }
     }
   }
 
   const missions = (missionRows ?? []).map((row) =>
-    missionFromRow(row, callsByMission.get(row.id as string) ?? []),
+    missionFromRow(
+      row,
+      callsByMission.get(row.id as string) ?? [],
+      activitiesByMission.get(row.id as string) ?? [],
+      eventsByMission.get(row.id as string) ?? [],
+    ),
   );
 
   const { byMission, tasks } = await loadMissionCore(missionIds);
@@ -581,77 +635,244 @@ export async function deletePartner(partnerId: string) {
   if (error) throw error;
 }
 
+/**
+ * Czy tabele misji (v3) są w bazie. Po pierwszym udanym zapisie wiemy, że tak,
+ * i od razu zapisujemy szczupłe `details` (bez przepisywania pełnego JSON-a tam i z powrotem).
+ */
+let coreTablesAvailable: boolean | null = null;
+
 export async function persistMission(
   mission: Mission,
   workspaceId: string,
   userId: string,
-) {
+): Promise<{ nextStepTask: TaskItem | null }> {
   const sb = getSupabase();
-  if (!sb) return;
+  if (!sb) return { nextStepTask: null };
+  const slim = coreTablesAvailable === true;
   const { error } = await sb.from("missions").upsert({
     id: mission.id,
     workspace_id: workspaceId,
     partner_id: mission.partnerId,
-    owner_user_id: userId,
+    // Właściciel zostaje ten sam, nawet gdy misję zapisuje ktoś inny z zespołu.
+    owner_user_id: uuidOrNull(mission.ownerUserId) ?? userId,
     status: mission.status,
     current_stage: mission.currentStage,
     next_step_label: mission.nextStepLabel,
     next_step_at: dateOrNull(mission.nextStepAt),
     outcome: mission.outcome,
     loss_reason: mission.lossReason || null,
-    details: detailsOf(mission),
-    closed_at: mission.status === "won" || mission.status === "lost" ? new Date().toISOString() : null,
+    details: slim ? uiDetailsOf(mission) : detailsOf(mission),
+    closed_at: mission.status === "active" ? null : (mission.closedAt ?? null),
   });
   if (error) throw error;
-  await syncConversationMeta(mission);
-  const coreStatus = await syncMissionCore(mission, workspaceId, userId);
-  if (coreStatus === "synced") {
-    const { error: slimError } = await sb
-      .from("missions")
-      .update({ details: uiDetailsOf(mission) })
-      .eq("id", mission.id);
-    if (slimError) throw slimError;
+  const core = await syncMissionCore(mission, workspaceId, userId);
+  if (core.status === "synced") {
+    if (!slim) {
+      const { error: slimError } = await sb
+        .from("missions")
+        .update({ details: uiDetailsOf(mission) })
+        .eq("id", mission.id);
+      if (slimError) throw slimError;
+    }
+    coreTablesAvailable = true;
+  } else {
+    coreTablesAvailable = false;
   }
+  return { nextStepTask: core.nextStepTask };
 }
 
-async function syncConversationMeta(mission: Mission) {
+function isMissingColumn(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    /column .* does not exist|could not find the .* column/i.test(error.message ?? "")
+  );
+}
+
+function isMissingFunction(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return error.code === "PGRST202" || error.code === "42883" || /could not find the function/i.test(error.message ?? "");
+}
+
+export const V4_MISSING =
+  "Brakuje migracji v4 w bazie. Otwórz SQL Editor w Supabase, wklej supabase/v4-team-timeline.sql i kliknij Run.";
+
+/** `true` gdy w bazie są kolumny dziennika kontaktów z migracji v4. `null` gdy nie wiadomo. */
+export async function detectSchemaV4(): Promise<boolean | null> {
   const sb = getSupabase();
-  if (!sb) return;
-  const hasContact =
-    Boolean(mission.selectedChannel) ||
-    mission.recordingConsent !== "pending" ||
-    Boolean(mission.conversationNote.trim()) ||
-    Boolean(mission.disclosureShown);
-  if (!hasContact) return;
+  if (!sb) return null;
+  const { error } = await sb.from("conversations").select("direction, outcome").limit(1);
+  if (!error) return true;
+  if (isMissingColumn(error) || isMissingCrmTable(error)) return false;
+  return null;
+}
 
-  const { data: existing, error } = await sb
-    .from("conversations")
-    .select("id, disclosure_shown_at")
-    .eq("mission_id", mission.id)
-    .order("started_at", { ascending: false })
-    .limit(1);
-  if (error) throw error;
+const OUTCOMES: ActivityOutcome[] = [
+  "connected",
+  "no_answer",
+  "callback",
+  "refused",
+  "sent",
+  "replied",
+  "meeting_booked",
+  "other",
+];
 
-  const payload = {
-    channel: mission.selectedChannel ?? "phone",
-    recording_consent: mission.recordingConsent,
-    disclosure_shown_at: mission.disclosureShown
-      ? ((existing?.[0]?.disclosure_shown_at as string | null) ?? new Date().toISOString())
-      : null,
-    summary_human: mission.conversationNote.trim() || null,
+function activityFromRow(
+  row: Record<string, unknown>,
+  flags: { hasRecording: boolean; hasTranscript: boolean },
+): Activity {
+  const outcome = OUTCOMES.includes(row.outcome as ActivityOutcome) ? (row.outcome as ActivityOutcome) : null;
+  const channel = String(row.channel ?? "phone");
+  return {
+    id: String(row.id),
+    missionId: String(row.mission_id),
+    channel: (["phone", "email", "linkedin", "in_person"].includes(channel) ? channel : "other") as Activity["channel"],
+    direction: (row.direction === "inbound" ? "inbound" : "outbound") as ActivityDirection,
+    outcome,
+    subject: String(row.subject ?? ""),
+    summary: String(row.summary_human ?? ""),
+    contactId: (row.contact_id as string | null) ?? null,
+    occurredAt: String(row.started_at ?? new Date().toISOString()),
+    durationMin: typeof row.duration_min === "number" ? row.duration_min : null,
+    createdBy: (row.created_by as string | null) ?? null,
+    hasRecording: flags.hasRecording,
+    hasTranscript: flags.hasTranscript,
   };
+}
 
-  if (existing?.[0]?.id) {
-    const { error: updateError } = await sb.from("conversations").update(payload).eq("id", existing[0].id);
-    if (updateError) throw updateError;
-    return;
+function eventFromRow(row: Record<string, unknown>): MissionEvent {
+  const kind = row.kind === "stage" || row.kind === "status" ? row.kind : "created";
+  return {
+    id: String(row.id),
+    missionId: String(row.mission_id),
+    kind,
+    fromValue: (row.from_value as string | null) ?? null,
+    toValue: (row.to_value as string | null) ?? null,
+    note: (row.note as string | null) ?? null,
+    actorId: (row.actor_id as string | null) ?? null,
+    at: String(row.created_at ?? new Date().toISOString()),
+  };
+}
+
+export async function insertActivity(input: NewActivityInput): Promise<Activity> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const occurred = new Date(input.occurredAt);
+  const { data, error } = await sb
+    .from("conversations")
+    .insert({
+      mission_id: input.missionId,
+      channel: input.channel,
+      direction: input.direction,
+      outcome: input.outcome,
+      subject: input.subject.trim() || null,
+      summary_human: input.summary.trim() || null,
+      contact_id: uuidOrNull(input.contactId),
+      started_at: Number.isNaN(occurred.getTime()) ? new Date().toISOString() : occurred.toISOString(),
+      duration_min: input.durationMin,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    if (isMissingColumn(error) || (error.message ?? "").includes("schema cache")) throw new Error(V4_MISSING);
+    throw error;
   }
+  return activityFromRow(data, { hasRecording: false, hasTranscript: false });
+}
 
-  const { error: insertError } = await sb.from("conversations").insert({
-    mission_id: mission.id,
-    ...payload,
-  });
-  if (insertError) throw insertError;
+export async function deleteActivity(activityId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.from("conversations").delete().eq("id", activityId);
+  if (error) throw error;
+}
+
+export async function loadMissionEvents(missionId: string): Promise<MissionEvent[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from("mission_events")
+    .select("*")
+    .eq("mission_id", missionId)
+    .order("created_at", { ascending: true });
+  if (error) return [];
+  return (data ?? []).map(eventFromRow);
+}
+
+function rpcError(error: { code?: string; message?: string }, fallback: string) {
+  if (isMissingFunction(error)) return new Error(V4_MISSING);
+  return new Error(error.message || fallback);
+}
+
+/** Członkowie workspace. `null`, gdy w bazie nie ma jeszcze migracji v4. */
+export async function loadTeam(): Promise<TeamMember[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc("workspace_members");
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw rpcError(error, "Nie udało się wczytać zespołu.");
+  }
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id),
+    fullName: String(row.full_name ?? "").trim() || String(row.email ?? "Handlowiec"),
+    role: row.role === "admin" ? "admin" : "seller",
+    email: String(row.email ?? ""),
+    isMe: Boolean(row.is_me),
+  }));
+}
+
+export async function listInvites(): Promise<TeamInvite[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb.rpc("list_workspace_invites");
+  if (error) throw rpcError(error, "Nie udało się wczytać zaproszeń.");
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id),
+    email: (row.email as string | null) ?? null,
+    createdAt: String(row.created_at ?? ""),
+    expiresAt: String(row.expires_at ?? ""),
+    createdByName: (row.created_by_name as string | null) ?? null,
+  }));
+}
+
+export async function createInvite(email: string): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.rpc("create_workspace_invite", { p_email: email.trim() || null });
+  if (error) throw rpcError(error, "Nie udało się utworzyć zaproszenia.");
+  return String(data);
+}
+
+export async function acceptInviteToken(token: string): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.rpc("accept_workspace_invite", { p_token: token.trim() });
+  if (error) throw rpcError(error, "Nie udało się dołączyć do zespołu.");
+  return String(data);
+}
+
+export async function revokeInvite(inviteId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("revoke_workspace_invite", { p_invite: inviteId });
+  if (error) throw rpcError(error, "Nie udało się cofnąć zaproszenia.");
+}
+
+export async function removeMember(memberId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("remove_workspace_member", { p_user: memberId });
+  if (error) throw rpcError(error, "Nie udało się usunąć osoby z zespołu.");
+}
+
+export async function renameWorkspace(name: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("rename_workspace", { p_name: name });
+  if (error) throw rpcError(error, "Nie udało się zmienić nazwy.");
 }
 
 export async function saveManualTranscript(params: {
@@ -716,43 +937,17 @@ export async function saveRecording(params: {
   if (!sb) throw new Error("Brak klienta Supabase.");
   const ext = params.blob.type.includes("mp4") ? "mp4" : "webm";
 
-  const { data: convos, error: listError } = await sb
-    .from("conversations")
-    .select("id")
-    .eq("mission_id", params.missionId)
-    .order("started_at", { ascending: false });
-  if (listError) throw listError;
-
-  const convoIds = (convos ?? []).map((row) => row.id as string);
-  const { data: recs } = convoIds.length
-    ? await sb.from("recordings").select("conversation_id").in("conversation_id", convoIds)
-    : { data: [] };
-  const used = new Set((recs ?? []).map((row) => row.conversation_id as string));
-  let conversationId = convoIds.find((id) => !used.has(id));
-
-  if (!conversationId) {
-    conversationId = crypto.randomUUID();
-    const { error: convoError } = await sb.from("conversations").insert({
-      id: conversationId,
-      mission_id: params.missionId,
-      channel: params.channel,
-      recording_consent: "granted",
-      disclosure_shown_at: new Date().toISOString(),
-      summary_human: params.note?.trim() || null,
-    });
-    if (convoError) throw convoError;
-  } else {
-    const { error: updateError } = await sb
-      .from("conversations")
-      .update({
-        channel: params.channel,
-        recording_consent: "granted",
-        disclosure_shown_at: new Date().toISOString(),
-        summary_human: params.note?.trim() || null,
-      })
-      .eq("id", conversationId);
-    if (updateError) throw updateError;
-  }
+  // Każde nagranie to osobny wpis w dzienniku. Nie doklejamy go do wcześniejszego kontaktu.
+  const conversationId = crypto.randomUUID();
+  const { error: convoError } = await sb.from("conversations").insert({
+    id: conversationId,
+    mission_id: params.missionId,
+    channel: params.channel,
+    recording_consent: "granted",
+    disclosure_shown_at: new Date().toISOString(),
+    summary_human: params.note?.trim() || null,
+  });
+  if (convoError) throw convoError;
 
   const storagePath = `${params.userId}/${conversationId}.${ext}`;
 

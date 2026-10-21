@@ -1,4 +1,14 @@
-import type { Channel, NeedCategory, OfferVariant, StageId } from "./types";
+import {
+  STAGES,
+  type ActivityDirection,
+  type ActivityOutcome,
+  type Channel,
+  type CloseStatus,
+  type MissionStatus,
+  type NeedCategory,
+  type OfferVariant,
+  type StageId,
+} from "./types";
 
 /** Checklista i etykiety UI — nie treść sprzedażowa. Wiedza idzie z Infelda. */
 
@@ -111,4 +121,112 @@ export function suggestVariant(categories: NeedCategory[]): OfferVariant {
   if (categories.some((c) => c === "margin" || c === "attendance" || c === "acquisition")) return "B";
   if (categories.some((c) => c === "risk" || c === "operations" || c === "budget")) return "C";
   return "A";
+}
+
+export function stageLabel(id: string | null | undefined) {
+  return STAGES.find((stage) => stage.id === id)?.label ?? (id === "care" ? "Opieka" : id ?? "—");
+}
+
+export const MISSION_STATUS_LABEL: Record<MissionStatus, string> = {
+  active: "W toku",
+  won: "Wygrana",
+  lost: "Przegrana",
+  nurture: "Wrócić później",
+  no_fit: "Brak dopasowania",
+  paused: "Pauza",
+};
+
+/** Zamknięcie misji: status + powód z listy (żeby dało się policzyć powody przegranych). */
+export const CLOSE_OPTIONS: Array<{ status: CloseStatus; label: string; hint: string }> = [
+  { status: "lost", label: "Przegrana", hint: "Partner odmówił albo rozmowa się urwała." },
+  { status: "nurture", label: "Wrócić później", hint: "Nie teraz, ale jest termin powrotu." },
+  { status: "no_fit", label: "Brak dopasowania", hint: "Lokal nie pasuje do pilota." },
+  { status: "paused", label: "Pauza", hint: "Wstrzymane po naszej stronie." },
+];
+
+export const CLOSE_REASONS = [
+  "Zniżka / marża się nie opłaca",
+  "Ma inne aplikacje lub programy",
+  "Nie widzi wartości dla gości",
+  "Brak czasu po stronie lokalu",
+  "Decydent odmówił",
+  "Brak kontaktu — nie odbiera",
+  "Za wcześnie — za mało użytkowników",
+  "Lokal nie pasuje do pilota",
+  "Zamknięty lub zmiana właściciela",
+  "Wstrzymane po naszej stronie",
+  "Inny powód",
+] as const;
+
+export const ACTIVITY_CHANNELS: Array<{ id: Channel; label: string }> = [
+  { id: "phone", label: "Telefon" },
+  { id: "email", label: "E-mail" },
+  { id: "linkedin", label: "LinkedIn" },
+  { id: "in_person", label: "Spotkanie" },
+];
+
+export const ACTIVITY_DIRECTIONS: Array<{ id: ActivityDirection; label: string }> = [
+  { id: "outbound", label: "Od nas" },
+  { id: "inbound", label: "Od partnera" },
+];
+
+/** Wyniki kontaktu per kanał. Ta sama wartość w bazie, inna etykieta dla telefonu i maila. */
+export const ACTIVITY_OUTCOMES: Record<Channel, Array<{ id: ActivityOutcome; label: string }>> = {
+  phone: [
+    { id: "connected", label: "Rozmowa odbyta" },
+    { id: "no_answer", label: "Nie odebrał" },
+    { id: "callback", label: "Oddzwonić / prosi o termin" },
+    { id: "meeting_booked", label: "Umówione discovery / spotkanie" },
+    { id: "refused", label: "Odmowa" },
+    { id: "other", label: "Inne" },
+  ],
+  email: [
+    { id: "sent", label: "Mail wysłany" },
+    { id: "replied", label: "Partner odpisał" },
+    { id: "meeting_booked", label: "Umówione spotkanie" },
+    { id: "callback", label: "Prosi o kontakt później" },
+    { id: "refused", label: "Odmowa" },
+    { id: "other", label: "Inne" },
+  ],
+  linkedin: [
+    { id: "sent", label: "Wiadomość wysłana" },
+    { id: "replied", label: "Partner odpisał" },
+    { id: "meeting_booked", label: "Umówione spotkanie" },
+    { id: "callback", label: "Prosi o kontakt później" },
+    { id: "refused", label: "Odmowa" },
+    { id: "other", label: "Inne" },
+  ],
+  in_person: [
+    { id: "connected", label: "Spotkanie odbyte" },
+    { id: "meeting_booked", label: "Umówione kolejne spotkanie" },
+    { id: "callback", label: "Prosi o kontakt później" },
+    { id: "refused", label: "Odmowa" },
+    { id: "other", label: "Inne" },
+  ],
+};
+
+export function defaultOutcome(channel: Channel, direction: ActivityDirection): ActivityOutcome {
+  if (channel === "email" || channel === "linkedin") return direction === "inbound" ? "replied" : "sent";
+  return "connected";
+}
+
+export function activityChannelLabel(channel: string) {
+  return ACTIVITY_CHANNELS.find((item) => item.id === channel)?.label ?? "Inny kanał";
+}
+
+export function activityOutcomeLabel(channel: string, outcome: ActivityOutcome | null) {
+  if (!outcome) return "Notatka z kontaktu";
+  const list = ACTIVITY_OUTCOMES[channel as Channel] ?? ACTIVITY_OUTCOMES.phone;
+  return (
+    list.find((item) => item.id === outcome)?.label ??
+    Object.values(ACTIVITY_OUTCOMES)
+      .flat()
+      .find((item) => item.id === outcome)?.label ??
+    outcome
+  );
+}
+
+/** Wynik, po którym warto od razu zaplanować kolejny krok. */
+export function outcomeNeedsFollowUp(outcome: ActivityOutcome) {
+  return outcome === "no_answer" || outcome === "callback" || outcome === "sent" || outcome === "meeting_booked";
 }

@@ -2,21 +2,13 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   CONTACT_CHANNELS,
+  MISSION_STATUS_LABEL as MISSION_STATUS,
   NEED_CATEGORIES,
   OBJECTION_KEYS,
   OFFER_VARIANTS,
   RESEARCH_ITEMS,
 } from "@/lib/playbook";
 import { STAGES, type Mission, type Partner } from "@/lib/types";
-
-const MISSION_STATUS: Record<Mission["status"], string> = {
-  active: "W toku",
-  won: "Wygrana",
-  lost: "Przegrana",
-  nurture: "Wracamy później",
-  no_fit: "Brak dopasowania",
-  paused: "Pauza",
-};
 
 const NEED_STATUS: Record<Mission["needs"][number]["status"], string> = {
   fact: "fakt",
@@ -144,7 +136,11 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
             />
             <Row label="Oferta zatwierdzona" value={mission.offerApproved ? "tak" : "nie"} />
             <Row label="Wynik" value={mission.outcome ? (MISSION_STATUS[mission.outcome] ?? mission.outcome) : "—"} />
-            <Row label="Powód przegranej" value={text(mission.lossReason)} />
+            <Row label="Powód zamknięcia" value={text(mission.lossReason)} />
+            {mission.closeNote ? <Row label="Notatka do zamknięcia" value={mission.closeNote} /> : null}
+            {mission.closedAt ? (
+              <Row label="Zamknięta" value={new Date(mission.closedAt).toLocaleDateString("pl-PL")} />
+            ) : null}
           </Block>
 
           <Block title="Obiekcje">

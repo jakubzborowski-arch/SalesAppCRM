@@ -29,6 +29,78 @@ export type Channel = "phone" | "email" | "linkedin" | "in_person";
 export type ConsentStatus = "granted" | "denied" | "unknown" | "withdrawn";
 export type OfferVariant = "A" | "B" | "C";
 export type Outcome = "won" | "lost" | "nurture" | "no_fit";
+/** Statusy, którymi handlowiec zamyka misję ręcznie (wygrana idzie przez aktywację). */
+export type CloseStatus = "lost" | "nurture" | "no_fit" | "paused";
+
+export type ActivityDirection = "outbound" | "inbound";
+export type ActivityOutcome =
+  | "connected"
+  | "no_answer"
+  | "callback"
+  | "refused"
+  | "sent"
+  | "replied"
+  | "meeting_booked"
+  | "other";
+
+/** Jeden kontakt z partnerem: telefon, mail, wiadomość albo spotkanie. Wiersz w `conversations`. */
+export type Activity = {
+  id: string;
+  missionId: string;
+  channel: Channel | "other";
+  direction: ActivityDirection;
+  outcome: ActivityOutcome | null;
+  subject: string;
+  summary: string;
+  contactId: string | null;
+  occurredAt: string;
+  durationMin: number | null;
+  createdBy: string | null;
+  hasRecording: boolean;
+  hasTranscript: boolean;
+};
+
+export type NewActivityInput = {
+  missionId: string;
+  channel: Channel;
+  direction: ActivityDirection;
+  outcome: ActivityOutcome;
+  subject: string;
+  summary: string;
+  contactId: string;
+  occurredAt: string;
+  durationMin: number | null;
+  nextStep?: string;
+  nextStepAt?: string;
+};
+
+/** Zmiana etapu albo statusu misji, zapisana przez trigger w bazie (`mission_events`). */
+export type MissionEvent = {
+  id: string;
+  missionId: string;
+  kind: "created" | "stage" | "status";
+  fromValue: string | null;
+  toValue: string | null;
+  note: string | null;
+  actorId: string | null;
+  at: string;
+};
+
+export type TeamMember = {
+  id: string;
+  fullName: string;
+  role: "admin" | "seller";
+  email: string;
+  isMe: boolean;
+};
+
+export type TeamInvite = {
+  id: string;
+  email: string | null;
+  createdAt: string;
+  expiresAt: string;
+  createdByName: string | null;
+};
 
 export type PartnerContact = {
   id: string;
@@ -159,6 +231,15 @@ export type CallRecord = {
 export type Mission = {
   id: string;
   partnerId: string;
+  /** Właściciel misji. Nie zmienia się, gdy misję edytuje ktoś inny z zespołu. */
+  ownerUserId?: string;
+  startedAt?: string;
+  /** Kiedy misję zamknięto (wygrana, przegrana, pauza…). Puste dla aktywnej. */
+  closedAt?: string;
+  /** Notatka do zamknięcia misji. Powód z listy siedzi w `lossReason`. */
+  closeNote: string;
+  activities: Activity[];
+  events: MissionEvent[];
   status: MissionStatus;
   currentStage: StageId;
   completedStages: StageId[];
@@ -185,11 +266,12 @@ export type Mission = {
 };
 
 export type AppState = {
-  user: { name: string; initials: string; role: string };
+  user: { name: string; initials: string; role: string; id?: string; isAdmin?: boolean };
   workspace: { name: string; id: string };
   partners: Partner[];
   missions: Mission[];
   tasks: TaskItem[];
+  team: TeamMember[];
 };
 
 export type NewPartnerInput = {

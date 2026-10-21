@@ -105,6 +105,9 @@ export function emptyMission(partnerId: string, id = crypto.randomUUID()): Missi
   return {
     id,
     partnerId,
+    closeNote: "",
+    activities: [],
+    events: [],
     status: "active",
     currentStage: "research",
     completedStages: [],
@@ -193,4 +196,5 @@ export const seedState: AppState = {
       source: "next_step",
     },
   ],
+  team: [],
 };

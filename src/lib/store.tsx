@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -13,21 +14,31 @@ import { activationBlockers, canEnterStage, contractBlockers, nextStage, offerBl
 import { categoryLabel, suggestVariant } from "./playbook";
 import { emptyMission, seedState } from "./seed";
 import {
+  acceptInviteToken,
+  createInvite as createInviteRow,
+  deleteActivity,
   ensureWorkspace,
+  insertActivity,
   insertPartner,
   isMissingPartnersTable,
+  listInvites as listInviteRows,
   loadCrm,
+  loadMissionEvents,
+  loadTeam,
   persistMission,
   persistPartner,
   deletePartner as deletePartnerRow,
   insertPartnerContact,
+  removeMember as removeMemberRow,
+  renameWorkspace as renameWorkspaceRow,
+  revokeInvite as revokeInviteRow,
   saveManualTranscript,
   saveRecording,
   updateTranscriptText,
 } from "./db";
 import { fetchInfeldSuggest, type InfeldSuggestResult } from "./infeld-client";
 import { buildSmokeInfeldQuery } from "./infeld-suggest";
-import { SKILL_SMOKE_TRANSCRIPT, skillSmokeFullMission } from "./skill-smoke-test";
+import { SKILL_SMOKE_TRANSCRIPT, skillSmokeEnabled, skillSmokeFullMission } from "./skill-smoke-test";
 import {
   generatePartnerCode,
   insertTask,
@@ -36,20 +47,39 @@ import {
 } from "./mission-core";
 import { getSupabase, isMissingCrmTable, isSupabaseConfigured } from "./supabase";
 import type {
+  Activity,
   AppState,
   Channel,
+  CloseStatus,
   Mission,
   Need,
+  NewActivityInput,
   NewPartnerInput,
   OfferVariant,
   Partner,
   StageId,
   TaskItem,
+  TeamInvite,
 } from "./types";
 
 const STORAGE_KEY = "lutra-crm-v1";
+const INVITE_KEY = "lutra-invite";
+/** Po powrocie do karty odświeżamy dane zespołu najwyżej raz na tyle ms. */
+const REFRESH_MIN_MS = 30_000;
 
 export type DbStatus = "loading" | "need-login" | "need-sql" | "ok" | "error";
+
+export type Notice = { kind: "ok" | "error"; text: string };
+
+type Result = { ok: boolean; error?: string };
+type GateResult = { ok: boolean; reason?: string };
+
+export type CloseMissionInput = {
+  status: CloseStatus;
+  reason: string;
+  note: string;
+  returnAt: string;
+};
 
 type Store = {
   ready: boolean;
@@ -57,6 +87,10 @@ type Store = {
   dbError: string | null;
   saveState: "idle" | "saving" | "saved" | "error";
   authEmail: string | null;
+  /** `true` gdy w bazie jest migracja v4 (zespół, dziennik). `null` gdy nie wiadomo. */
+  schemaV4: boolean | null;
+  notice: Notice | null;
+  dismissNotice: () => void;
   state: AppState;
   signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signUp: (
@@ -66,6 +100,7 @@ type Store = {
   ) => Promise<{ ok: boolean; error?: string }>;
   signOut: () => Promise<void>;
   retryCloud: () => Promise<void>;
+  refresh: () => Promise<void>;
   reset: () => void;
   addPartner: (input: NewPartnerInput) => Promise<{ ok: boolean; id?: string; error?: string }>;
   deletePartner: (partnerId: string) => Promise<{ ok: boolean; error?: string }>;
@@ -90,11 +125,20 @@ type Store = {
     partnerId: string,
   ) => Promise<{ ok: boolean; error?: string; infeld?: InfeldSuggestResult }>;
   partnerById: (id: string) => Partner | undefined;
+  /** Aktywna misja partnera (status „W toku”). */
   missionByPartner: (partnerId: string) => Mission | undefined;
+  /** Najnowsza misja partnera w dowolnym statusie. */
+  latestMissionByPartner: (partnerId: string) => Mission | undefined;
+  missionsOfPartner: (partnerId: string) => Mission[];
+  memberName: (userId: string | null | undefined) => string;
   urgentMission: () => { partner: Partner; mission: Mission } | undefined;
   startMission: (partnerId: string) => string | null;
-  goToStage: (missionId: string, stage: StageId) => { ok: boolean; reason?: string };
-  advance: (missionId: string) => { ok: boolean; reason?: string };
+  goToStage: (missionId: string, stage: StageId) => GateResult;
+  advance: (missionId: string) => GateResult;
+  closeMission: (missionId: string, input: CloseMissionInput) => GateResult;
+  reopenMission: (missionId: string) => GateResult;
+  logActivity: (input: NewActivityInput) => Promise<Result>;
+  removeActivity: (missionId: string, activityId: string) => Promise<Result>;
   toggleChecklist: (missionId: string, key: string) => void;
   updatePartner: (partnerId: string, patch: Partial<Partner>) => void;
   addPartnerContact: (
@@ -119,8 +163,8 @@ type Store = {
   updateDecision: (missionId: string, patch: Partial<Mission["decision"]>) => void;
   setNextStepAt: (missionId: string, at: string) => void;
   selectVariant: (missionId: string, variant: OfferVariant) => void;
-  approveOffer: (missionId: string) => { ok: boolean; reason?: string };
-  markOfferSent: (missionId: string) => { ok: boolean; reason?: string };
+  approveOffer: (missionId: string) => GateResult;
+  markOfferSent: (missionId: string) => GateResult;
   toggleObjection: (missionId: string, key: string, field: "checked" | "argumentWorked") => void;
   updateContract: (missionId: string, patch: Partial<Mission["contract"]>) => void;
   uploadContract: (missionId: string, file: File) => Promise<{ ok: boolean; error?: string }>;
@@ -128,10 +172,83 @@ type Store = {
   assignPartnerCode: (missionId: string) => string | null;
   addTask: (input: { missionId: string; title: string; dueAt: string }) => Promise<{ ok: boolean; error?: string }>;
   completeTask: (taskId: string, done: boolean) => void;
-  completeActivation: (missionId: string) => { ok: boolean; reason?: string };
+  completeActivation: (missionId: string) => GateResult;
+  acceptInvite: (tokenOrLink: string) => Promise<Result>;
+  createInvite: (email: string) => Promise<{ ok: boolean; token?: string; error?: string }>;
+  listInvites: () => Promise<{ ok: boolean; invites?: TeamInvite[]; error?: string }>;
+  revokeInvite: (inviteId: string) => Promise<Result>;
+  removeMember: (memberId: string) => Promise<Result>;
+  renameWorkspace: (name: string) => Promise<Result>;
 };
 
 const StoreContext = createContext<Store | null>(null);
+
+const emptyState: AppState = {
+  user: { name: "", initials: "", role: "Handlowiec" },
+  workspace: { name: "Lutra", id: "" },
+  partners: [],
+  missions: [],
+  tasks: [],
+  team: [],
+};
+
+/** Wyciąga kod zaproszenia z linku (`…/login?invite=KOD`) albo z samego kodu. */
+export function parseInviteToken(raw: string) {
+  const text = raw.trim();
+  const fromLink = text.match(/[?&]invite=([0-9a-f]{32,128})/i)?.[1];
+  if (fromLink) return fromLink.toLowerCase();
+  const bare = text.match(/^[0-9a-f]{32,128}$/i)?.[0];
+  return bare ? bare.toLowerCase() : "";
+}
+
+/** Zapamiętuje kod zaproszenia na czas logowania (tylko ta karta przeglądarki). */
+export function rememberInvite(token: string) {
+  try {
+    window.sessionStorage.setItem(INVITE_KEY, token);
+  } catch {
+    /* prywatne okno bez sessionStorage — zaproszenie da się wkleić w Ustawieniach */
+  }
+}
+
+export function takePendingInvite() {
+  try {
+    const token = window.sessionStorage.getItem(INVITE_KEY);
+    if (token) window.sessionStorage.removeItem(INVITE_KEY);
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+function tomorrow() {
+  return new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function byNewest(a: Activity, b: Activity) {
+  return b.occurredAt.localeCompare(a.occurredAt);
+}
+
+/** Wstawia zadania z bazy w miejsce lokalnych kopii. Jedno otwarte „następny krok” na misję. */
+function mergeTasks(current: TaskItem[], incoming: TaskItem[]) {
+  let next = [...current];
+  for (const task of incoming) {
+    if (task.source === "next_step") {
+      next = next.filter(
+        (item) =>
+          item.id === task.id ||
+          !(item.missionId === task.missionId && item.source === "next_step" && !item.doneAt),
+      );
+    }
+    const index = next.findIndex((item) => item.id === task.id);
+    if (index >= 0) next[index] = task;
+    else next = [task, ...next];
+  }
+  return next;
+}
 
 function syncDecisionFromDiscovery(mission: Mission): Mission {
   const d = mission.discovery;
@@ -163,6 +280,7 @@ function readLocal(): AppState {
     return {
       ...seedState,
       ...parsed,
+      team: [],
       partners: (parsed.partners ?? []).map((p) => ({
         ...p,
         website: p.website ?? "",
@@ -177,6 +295,9 @@ function readLocal(): AppState {
         return {
           ...base,
           ...m,
+          activities: m.activities ?? [],
+          events: m.events ?? [],
+          closeNote: m.closeNote ?? "",
           contract: { ...base.contract, ...(m.contract ?? {}) },
           activation: { ...base.activation, ...(m.activation ?? {}) },
         };
@@ -187,11 +308,24 @@ function readLocal(): AppState {
   }
 }
 
+function clearLocalCopy() {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* brak dostępu do localStorage */
+  }
+}
+
 function initialsFrom(name: string, email: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   if (parts[0]) return parts[0].slice(0, 2).toUpperCase();
   return email.slice(0, 2).toUpperCase();
+}
+
+function errorText(err: unknown, fallback: string) {
+  const message = (err as { message?: string } | null)?.message;
+  return message?.trim() ? message : fallback;
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -201,85 +335,223 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [dbError, setDbError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [schemaV4, setSchemaV4] = useState<boolean | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const userIdRef = useRef<string | null>(null);
   const workspaceIdRef = useRef<string | null>(null);
-  const persistOk = useRef(false);
+  const dbStatusRef = useRef<DbStatus>("loading");
+  /** Użytkownik, dla którego dane są wczytane (żeby nie wczytywać dwa razy na start i przy odświeżeniu tokenu). */
+  const hydratedFor = useRef<string | null>(null);
+  const lastLoadAt = useRef(0);
+  /** Najnowszy stan dla zapisu w tle. */
+  const latest = useRef<AppState>(seedState);
+  /** Ostatnio zapisane obiekty. Inny obiekt w stanie = zmiana do zapisania. */
+  const savedMissions = useRef(new Map<string, Mission>());
+  const savedPartners = useRef(new Map<string, Partner>());
+  const flushChain = useRef<Promise<void>>(Promise.resolve());
 
-  const persistMissions = async (missions: Mission[]) => {
+  useEffect(() => {
+    latest.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    dbStatusRef.current = dbStatus;
+  }, [dbStatus]);
+
+  const markSaved = useCallback((data: Pick<AppState, "missions" | "partners">) => {
+    savedMissions.current = new Map(data.missions.map((m) => [m.id, m]));
+    savedPartners.current = new Map(data.partners.map((p) => [p.id, p]));
+  }, []);
+
+  /** Zapisuje tylko misje i partnerów zmienionych od ostatniego zapisu. Nie nadpisuje cudzej pracy. */
+  const flush = useCallback(async () => {
     const workspaceId = workspaceIdRef.current;
     const userId = userIdRef.current;
-    if (!workspaceId || !userId) return;
+    if (!workspaceId || !userId || dbStatusRef.current !== "ok") return;
+    const snapshot = latest.current;
+    const partners = snapshot.partners.filter((p) => savedPartners.current.get(p.id) !== p);
+    const missions = snapshot.missions.filter((m) => savedMissions.current.get(m.id) !== m);
+    if (!partners.length && !missions.length) return;
+
     setSaveState("saving");
-    try {
-      const related = new Set(missions.map((m) => m.partnerId));
-      for (const partner of state.partners) {
-        if (!related.has(partner.id)) continue;
+    let firstError: { code?: string; message?: string } | null = null;
+    for (const partner of partners) {
+      try {
+        await persistPartner(partner);
+        savedPartners.current.set(partner.id, partner);
+      } catch (err) {
+        firstError ??= err as { code?: string; message?: string };
+      }
+    }
+    const tasks: TaskItem[] = [];
+    const eventsFor: string[] = [];
+    for (const mission of missions) {
+      const before = savedMissions.current.get(mission.id);
+      try {
+        const { nextStepTask } = await persistMission(mission, workspaceId, userId);
+        savedMissions.current.set(mission.id, mission);
+        if (nextStepTask) tasks.push(nextStepTask);
+        if (!before || before.currentStage !== mission.currentStage || before.status !== mission.status) {
+          eventsFor.push(mission.id);
+        }
+      } catch (err) {
+        firstError ??= err as { code?: string; message?: string };
+      }
+    }
+
+    const events = await Promise.all(
+      eventsFor.map(async (missionId) => ({ missionId, events: await loadMissionEvents(missionId) })),
+    );
+    if (tasks.length || events.some((item) => item.events.length)) {
+      setState((prev) => ({
+        ...prev,
+        tasks: tasks.length ? mergeTasks(prev.tasks, tasks) : prev.tasks,
+        missions: prev.missions.map((m) => {
+          const found = events.find((item) => item.missionId === m.id);
+          if (!found?.events.length) return m;
+          const next = { ...m, events: found.events };
+          // Historia przyszła z bazy — to nie jest zmiana do zapisania.
+          if (savedMissions.current.get(m.id) === m) savedMissions.current.set(m.id, next);
+          return next;
+        }),
+      }));
+    }
+
+    if (firstError) {
+      if (isMissingPartnersTable(firstError)) setDbStatus("need-sql");
+      else setDbError(firstError.message ?? "Nie udało się zapisać zmian.");
+      setSaveState("error");
+      return;
+    }
+    setDbError(null);
+    setSaveState("saved");
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    flushChain.current = flushChain.current.then(flush, flush);
+    return flushChain.current;
+  }, [flush]);
+
+  const hydrateUser = useCallback(
+    async (userId: string, email: string, fullName?: string, force = false) => {
+      if (!force && hydratedFor.current === userId) return;
+      hydratedFor.current = userId;
+      userIdRef.current = userId;
+      setAuthEmail(email);
+
+      const pendingInvite = takePendingInvite();
+      if (pendingInvite) {
         try {
-          await persistPartner(partner);
-        } catch {
-          /* kontakt dociągniemy przy następnym zapisie — misji nie blokujemy */
+          await acceptInviteToken(pendingInvite);
+          setNotice({ kind: "ok", text: "Dołączyłeś do zespołu. Widzisz teraz wspólnych partnerów i misje." });
+        } catch (err) {
+          setNotice({ kind: "error", text: errorText(err, "Nie udało się dołączyć do zespołu.") });
         }
       }
-      for (const mission of missions) {
-        await persistMission(mission, workspaceId, userId);
-      }
-      persistOk.current = true;
-      setDbStatus("ok");
-      setDbError(null);
-      setSaveState("saved");
-    } catch (err) {
-      const error = err as { code?: string; message?: string };
-      if (isMissingPartnersTable(error)) setDbStatus("need-sql");
-      else setDbError(error.message ?? "Nie udało się zapisać misji.");
-      setSaveState("error");
-    }
-  };
 
-  const hydrateUser = async (userId: string, email: string, fullName?: string) => {
-    userIdRef.current = userId;
-    setAuthEmail(email);
-    try {
-      const ctx = await ensureWorkspace();
-      workspaceIdRef.current = ctx.workspaceId;
-      const { partners, missions, tasks } = await loadCrm(ctx.workspaceId);
-      setState({
-        user: {
-          name: fullName || ctx.fullName,
-          initials: initialsFrom(fullName || ctx.fullName, email),
-          role: "Handlowiec",
-        },
-        workspace: { name: ctx.workspaceName, id: ctx.workspaceId },
-        partners,
-        missions,
-        tasks,
-      });
-      persistOk.current = true;
-      setDbStatus("ok");
-      setDbError(null);
-    } catch (err) {
-      const error = err as { code?: string; message?: string };
-      if (isMissingPartnersTable(error)) {
+      try {
+        const ctx = await ensureWorkspace();
+        workspaceIdRef.current = ctx.workspaceId;
+        const [{ partners, missions, tasks }, team] = await Promise.all([
+          loadCrm(ctx.workspaceId),
+          loadTeam().catch(() => undefined),
+        ]);
+        const me = team?.find((member) => member.isMe);
+        const name = fullName || me?.fullName || ctx.fullName;
+        markSaved({ partners, missions });
+        lastLoadAt.current = Date.now();
+        setSchemaV4(team === undefined ? null : team !== null);
         setState({
-          ...readLocal(),
           user: {
-            name: fullName || email,
-            initials: initialsFrom(fullName || email, email),
-            role: "Handlowiec",
+            id: userId,
+            name,
+            initials: initialsFrom(name, email),
+            role: me?.role === "admin" ? "Administrator" : "Handlowiec",
+            isAdmin: me?.role === "admin",
           },
+          workspace: { name: ctx.workspaceName, id: ctx.workspaceId },
+          partners,
+          missions,
+          tasks,
+          team: team ?? [],
         });
-        setDbStatus("need-sql");
-      } else {
-        setDbStatus("error");
-        setDbError(error.message ?? "Nie udało się wczytać workspace.");
+        // Dane są w Supabase. Stara kopia w przeglądarce (z kontaktami) nie jest potrzebna.
+        clearLocalCopy();
+        setDbStatus("ok");
+        setDbError(null);
+      } catch (err) {
+        hydratedFor.current = null;
+        const error = err as { code?: string; message?: string };
+        if (isMissingPartnersTable(error)) {
+          setState({
+            ...readLocal(),
+            user: {
+              id: userId,
+              name: fullName || email,
+              initials: initialsFrom(fullName || email, email),
+              role: "Handlowiec",
+            },
+          });
+          setDbStatus("need-sql");
+        } else {
+          setDbStatus("error");
+          setDbError(error.message ?? "Nie udało się wczytać workspace.");
+        }
       }
+      setReady(true);
+    },
+    [markSaved],
+  );
+
+  /** Zapisuje lokalne zmiany i wczytuje świeże dane workspace (np. zmiany kolegi z zespołu). */
+  const refreshData = useCallback(async () => {
+    const workspaceId = workspaceIdRef.current;
+    if (!workspaceId || dbStatusRef.current !== "ok") return;
+    await scheduleFlush();
+    try {
+      const [{ partners, missions, tasks }, team] = await Promise.all([
+        loadCrm(workspaceId),
+        loadTeam().catch(() => undefined),
+      ]);
+      lastLoadAt.current = Date.now();
+      setState((prev) => {
+        // Jeśli w trakcie wczytywania ktoś coś zmienił lokalnie, zostawiamy jego wersję.
+        const keepMission = new Map(
+          prev.missions.filter((m) => savedMissions.current.get(m.id) !== m).map((m) => [m.id, m]),
+        );
+        const keepPartner = new Map(
+          prev.partners.filter((p) => savedPartners.current.get(p.id) !== p).map((p) => [p.id, p]),
+        );
+        const loadedMissionIds = new Set(missions.map((m) => m.id));
+        const loadedPartnerIds = new Set(partners.map((p) => p.id));
+        // Niezapisane jeszcze nowości (np. misja założona przed chwilą) zostają w widoku.
+        const nextMissions = [
+          ...[...keepMission.values()].filter((m) => !loadedMissionIds.has(m.id)),
+          ...missions.map((m) => keepMission.get(m.id) ?? m),
+        ];
+        const nextPartners = [
+          ...partners.map((p) => keepPartner.get(p.id) ?? p),
+          ...[...keepPartner.values()].filter((p) => !loadedPartnerIds.has(p.id)),
+        ];
+        for (const m of missions) if (!keepMission.has(m.id)) savedMissions.current.set(m.id, m);
+        for (const p of partners) if (!keepPartner.has(p.id)) savedPartners.current.set(p.id, p);
+        return {
+          ...prev,
+          partners: nextPartners,
+          missions: nextMissions,
+          tasks,
+          team: team ?? prev.team,
+        };
+      });
+    } catch {
+      /* odświeżenie w tle — błąd pokaże się przy następnym zapisie */
     }
-    setReady(true);
-  };
+  }, [scheduleFlush]);
 
   useEffect(() => {
     const sb = getSupabase();
     if (!isSupabaseConfigured() || !sb) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- tryb demo bez Supabase: stan z przeglądarki
       setState(readLocal());
       setDbStatus("ok");
       setReady(true);
@@ -307,33 +579,64 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
       if (!session?.user) {
         userIdRef.current = null;
-        persistOk.current = false;
+        workspaceIdRef.current = null;
+        hydratedFor.current = null;
+        markSaved({ partners: [], missions: [] });
         setAuthEmail(null);
+        setState(emptyState);
         setDbStatus("need-login");
         return;
       }
-      void hydrateUser(
-        session.user.id,
-        session.user.email ?? "",
-        typeof session.user.user_metadata?.full_name === "string"
-          ? session.user.user_metadata.full_name
-          : undefined,
-      );
+      const user = session.user;
+      // Poza blokadą Supabase Auth: zapytania do bazy wewnątrz callbacku potrafią się zakleszczyć.
+      window.setTimeout(() => {
+        void hydrateUser(
+          user.id,
+          user.email ?? "",
+          typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : undefined,
+        );
+      }, 0);
     });
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [hydrateUser, markSaved]);
 
   useEffect(() => {
-    if (ready) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Kopia w przeglądarce tylko w trybie demo. Z Supabase dane osobowe nie lądują w localStorage.
+    if (!ready || isSupabaseConfigured()) return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      /* pełny albo zablokowany localStorage */
+    }
   }, [ready, state]);
 
   useEffect(() => {
     if (!ready || dbStatus !== "ok" || !userIdRef.current || !workspaceIdRef.current) return;
     const handle = window.setTimeout(() => {
-      void persistMissions(state.missions);
+      void scheduleFlush();
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [ready, state.missions, dbStatus]);
+  }, [ready, state.missions, state.partners, dbStatus, scheduleFlush]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadAt.current < REFRESH_MIN_MS) return;
+      void refreshData();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refreshData]);
+
+  useEffect(() => {
+    // Ostrzeżenie przed zamknięciem karty, gdy zmiany jeszcze się zapisują.
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (saveState !== "saving") return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [saveState]);
 
   const patchMission = (missionId: string, fn: (m: Mission) => Mission) => {
     setState((prev) => {
@@ -349,10 +652,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  /** Zmiana tylko w widoku (np. wpis dziennika już zapisany w bazie) — bez ponownego zapisu misji. */
+  const patchMissionQuiet = (missionId: string, fn: (m: Mission) => Mission) => {
+    setState((prev) => ({
+      ...prev,
+      missions: prev.missions.map((m) => {
+        if (m.id !== missionId) return m;
+        const next = fn(m);
+        if (savedMissions.current.get(m.id) === m) savedMissions.current.set(m.id, next);
+        return next;
+      }),
+    }));
+  };
+
   const store = useMemo<Store>(() => {
     const partnerById = (id: string) => state.partners.find((p) => p.id === id);
     const missionByPartner = (partnerId: string) =>
       state.missions.find((m) => m.partnerId === partnerId && m.status === "active");
+    const missionsOfPartner = (partnerId: string) =>
+      state.missions
+        .filter((m) => m.partnerId === partnerId)
+        .sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
+    const latestMissionByPartner = (partnerId: string) =>
+      missionByPartner(partnerId) ?? missionsOfPartner(partnerId)[0];
+    const memberName = (userId: string | null | undefined) => {
+      if (!userId) return "";
+      const member = state.team.find((item) => item.id === userId);
+      if (member) return member.fullName;
+      return userId === state.user.id ? state.user.name : "ktoś z zespołu";
+    };
+
+    const runRpc = async (fn: () => Promise<unknown>, fallback: string): Promise<Result> => {
+      try {
+        await fn();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorText(err, fallback) };
+      }
+    };
 
     return {
       ready,
@@ -360,6 +697,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dbError,
       saveState,
       authEmail,
+      schemaV4,
+      notice,
+      dismissNotice: () => setNotice(null),
       state,
       signIn: async (email, password) => {
         const sb = getSupabase();
@@ -387,11 +727,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return { ok: true };
       },
       signOut: async () => {
+        await scheduleFlush();
         await getSupabase()?.auth.signOut();
         userIdRef.current = null;
         workspaceIdRef.current = null;
-        persistOk.current = false;
+        hydratedFor.current = null;
+        markSaved({ partners: [], missions: [] });
         setAuthEmail(null);
+        setState(emptyState);
         setDbStatus("need-login");
       },
       retryCloud: async () => {
@@ -409,10 +752,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           typeof user.user_metadata?.full_name === "string"
             ? user.user_metadata.full_name
             : undefined,
+          true,
         );
       },
+      refresh: refreshData,
       reset: () => {
-        window.localStorage.removeItem(STORAGE_KEY);
+        clearLocalCopy();
         setState((prev) => ({ ...prev, partners: [], missions: [], tasks: [] }));
       },
       addPartner: async (input) => {
@@ -421,6 +766,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!workspaceId || !userId) return { ok: false, error: "Brak workspace. Odpal SQL v2." };
         try {
           const partner = await insertPartner(workspaceId, userId, input);
+          savedPartners.current.set(partner.id, partner);
           setState((prev) => ({ ...prev, partners: [...prev.partners, partner] }));
           return { ok: true, id: partner.id };
         } catch (err) {
@@ -459,7 +805,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         for (let i = 0; i < inputs.length; i++) {
           const input = inputs[i];
           try {
-            created.push(await insertPartner(workspaceId, userId, input));
+            const partner = await insertPartner(workspaceId, userId, input);
+            savedPartners.current.set(partner.id, partner);
+            created.push(partner);
           } catch (err) {
             const error = err as { message?: string };
             failed.push({
@@ -496,7 +844,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             note: mission.conversationNote,
             transcriptText,
           });
-          patchMission(missionId, (m) => ({
+          patchMissionQuiet(missionId, (m) => ({
             ...m,
             calls: [call, ...(m.calls ?? []).filter((item) => item.id !== call.id)],
           }));
@@ -507,6 +855,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       applySkillSmokeTest: async (missionId, partnerId) => {
+        if (!skillSmokeEnabled()) return { ok: false, error: "Smoke test jest wyłączony na tym środowisku." };
         const mission = state.missions.find((m) => m.id === missionId);
         const partner = partnerById(partnerId);
         if (!mission || !partner) return { ok: false, error: "Brak partnera albo misji." };
@@ -567,11 +916,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 )
               : [...partner.consents, { channel: "phone" as const, purpose: "contact" as const, status: "granted" as const }],
           };
-          setState((prev) => {
-            const partners = prev.partners.map((p) => (p.id === partnerId ? partnerWithConsent : p));
-            void persistPartner(partnerWithConsent);
-            return { ...prev, partners };
-          });
+          setState((prev) => ({
+            ...prev,
+            partners: prev.partners.map((p) => (p.id === partnerId ? partnerWithConsent : p)),
+          }));
           const infeld = await fetchInfeldSuggest(
             partnerWithConsent,
             nextMission,
@@ -586,17 +934,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveTranscript: async (conversationId, text) => {
         try {
           await updateTranscriptText(conversationId, text);
-          setState((prev) => ({
-            ...prev,
-            missions: prev.missions.map((m) => ({
+          const owner = state.missions.find((m) => (m.calls ?? []).some((call) => call.id === conversationId));
+          if (owner) {
+            patchMissionQuiet(owner.id, (m) => ({
               ...m,
               calls: (m.calls ?? []).map((call) =>
                 call.id === conversationId
                   ? { ...call, transcriptText: text, transcriptStatus: "ready" as const }
                   : call,
               ),
-            })),
-          }));
+            }));
+          }
           return { ok: true };
         } catch (err) {
           const error = err as { message?: string };
@@ -605,6 +953,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       partnerById,
       missionByPartner,
+      latestMissionByPartner,
+      missionsOfPartner,
+      memberName,
       urgentMission: () => {
         const mission = [...state.missions]
           .filter((m) => m.status === "active")
@@ -620,7 +971,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (partner.dnc) return null;
         const existing = missionByPartner(partnerId);
         if (existing) return existing.id;
-        const mission = emptyMission(partnerId, crypto.randomUUID());
+        const mission: Mission = {
+          ...emptyMission(partnerId, crypto.randomUUID()),
+          ownerUserId: userIdRef.current ?? undefined,
+          startedAt: new Date().toISOString(),
+        };
         const followUp: TaskItem = {
           id: crypto.randomUUID(),
           missionId: mission.id,
@@ -628,20 +983,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           dueAt: mission.nextStepAt,
           source: "next_step",
         };
+        // Zapis idzie w tle (nowy obiekt misji = zmiana do zapisania).
         setState((prev) => ({
           ...prev,
           missions: [mission, ...prev.missions],
           tasks: [followUp, ...prev.tasks],
         }));
-        const workspaceId = workspaceIdRef.current;
-        const userId = userIdRef.current;
-        if (workspaceId && userId) void persistMission(mission, workspaceId, userId);
         return mission.id;
       },
       goToStage: (missionId, stage) => {
         const mission = state.missions.find((m) => m.id === missionId);
         const partner = mission ? partnerById(mission.partnerId) : undefined;
         if (!mission || !partner) return { ok: false, reason: "Brak misji." };
+        if (mission.status !== "active") return { ok: false, reason: "Misja jest zamknięta. Najpierw ją wznów." };
         const gate = canEnterStage(stage, mission, partner);
         if (!gate.ok) return gate;
         patchMission(missionId, (m) => ({ ...m, currentStage: stage }));
@@ -651,12 +1005,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const mission = state.missions.find((m) => m.id === missionId);
         const partner = mission ? partnerById(mission.partnerId) : undefined;
         if (!mission || !partner) return { ok: false, reason: "Brak misji." };
+        if (mission.status !== "active") return { ok: false, reason: "Misja jest zamknięta. Najpierw ją wznów." };
         const nxt = nextStage(mission.currentStage);
         if (!nxt) {
           patchMission(missionId, (m) => ({
             ...m,
             status: "won",
             outcome: "won",
+            closedAt: m.closedAt ?? new Date().toISOString(),
             nextStepLabel: "Opieka: check-in 30 dni",
           }));
           return { ok: true };
@@ -684,6 +1040,141 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return { ok: true };
       },
+      closeMission: (missionId, input) => {
+        const mission = state.missions.find((m) => m.id === missionId);
+        if (!mission) return { ok: false, reason: "Brak misji." };
+        if (mission.status !== "active") return { ok: false, reason: "Misja jest już zamknięta." };
+        const reason = input.reason.trim();
+        const note = input.note.trim();
+        const returnAt = input.returnAt.trim();
+        if ((input.status === "lost" || input.status === "no_fit" || input.status === "nurture") && !reason) {
+          return { ok: false, reason: "Wybierz powód z listy." };
+        }
+        if (reason === "Inny powód" && !note) {
+          return { ok: false, reason: "Przy „Inny powód” dopisz krótko, co się stało." };
+        }
+        if (input.status === "nurture" && !returnAt) {
+          return { ok: false, reason: "Ustaw datę, kiedy wracamy do partnera." };
+        }
+        if (returnAt && returnAt < todayIso()) {
+          return { ok: false, reason: "Data powrotu nie może być w przeszłości." };
+        }
+        const comesBack = input.status === "nurture" || (input.status === "paused" && Boolean(returnAt));
+        const now = new Date().toISOString();
+        setState((prev) => ({
+          ...prev,
+          missions: prev.missions.map((m) =>
+            m.id === missionId
+              ? {
+                  ...m,
+                  status: input.status,
+                  outcome: input.status === "paused" ? null : input.status,
+                  lossReason: reason,
+                  closeNote: note,
+                  closedAt: now,
+                  nextStepLabel: comesBack ? `Wróć do partnera${reason ? ` (${reason})` : ""}` : "",
+                  nextStepAt: comesBack ? returnAt : "",
+                }
+              : m,
+          ),
+          // Otwarty „następny krok” misji: zamknięty (przegrana) albo przestawiony na termin powrotu.
+          tasks: prev.tasks.map((task) => {
+            if (task.missionId !== missionId || task.source !== "next_step" || task.doneAt) return task;
+            if (input.status === "lost" || input.status === "no_fit") return { ...task, doneAt: now };
+            if (comesBack) {
+              return { ...task, title: `Wróć do partnera${reason ? ` (${reason})` : ""}`, dueAt: returnAt };
+            }
+            return task;
+          }),
+        }));
+        return { ok: true };
+      },
+      reopenMission: (missionId) => {
+        const mission = state.missions.find((m) => m.id === missionId);
+        if (!mission) return { ok: false, reason: "Brak misji." };
+        if (mission.status === "active") return { ok: true };
+        const other = missionByPartner(mission.partnerId);
+        if (other && other.id !== missionId) {
+          return { ok: false, reason: "Ten partner ma już inną misję w toku." };
+        }
+        const partner = partnerById(mission.partnerId);
+        if (partner?.dnc) return { ok: false, reason: "Status „nie kontaktować” blokuje wznowienie." };
+        const keepDate = mission.nextStepAt && mission.nextStepAt >= todayIso() ? mission.nextStepAt : tomorrow();
+        patchMission(missionId, (m) => ({
+          ...m,
+          status: "active",
+          outcome: null,
+          lossReason: "",
+          closeNote: "",
+          closedAt: undefined,
+          nextStepLabel: m.nextStepLabel.trim() || "Wznów kontakt z partnerem",
+          nextStepAt: keepDate,
+        }));
+        return { ok: true };
+      },
+      logActivity: async (input) => {
+        const mission = state.missions.find((m) => m.id === input.missionId);
+        if (!mission) return { ok: false, error: "Brak misji." };
+        if (input.durationMin !== null && (input.durationMin < 0 || input.durationMin > 600)) {
+          return { ok: false, error: "Czas rozmowy: od 0 do 600 minut." };
+        }
+        try {
+          const activity: Activity = isSupabaseConfigured()
+            ? await insertActivity(input)
+            : {
+                id: crypto.randomUUID(),
+                missionId: input.missionId,
+                channel: input.channel,
+                direction: input.direction,
+                outcome: input.outcome,
+                subject: input.subject.trim(),
+                summary: input.summary.trim(),
+                contactId: input.contactId || null,
+                occurredAt: new Date(input.occurredAt).toISOString(),
+                durationMin: input.durationMin,
+                createdBy: userIdRef.current,
+                hasRecording: false,
+                hasTranscript: false,
+              };
+          const withActivity = (m: Mission) => ({
+            ...m,
+            activities: [activity, ...m.activities.filter((item) => item.id !== activity.id)].sort(byNewest),
+          });
+          const nextStep = input.nextStep?.trim() ?? "";
+          if (nextStep) {
+            // Nowy następny krok to zmiana misji — idzie do zapisu jak każda edycja.
+            patchMission(input.missionId, (m) => ({
+              ...withActivity(m),
+              nextStepLabel: nextStep,
+              nextStepAt: input.nextStepAt?.trim() || m.nextStepAt,
+              decision: { ...m.decision, nextStep },
+            }));
+          } else {
+            patchMissionQuiet(input.missionId, withActivity);
+          }
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: errorText(err, "Nie udało się zapisać kontaktu.") };
+        }
+      },
+      removeActivity: async (missionId, activityId) => {
+        const mission = state.missions.find((m) => m.id === missionId);
+        const activity = mission?.activities.find((item) => item.id === activityId);
+        if (!mission || !activity) return { ok: false, error: "Nie ma takiego wpisu." };
+        if (activity.hasRecording || activity.hasTranscript) {
+          return { ok: false, error: "Wpis ma nagranie albo transkrypt — nie usuwam go z dziennika." };
+        }
+        try {
+          if (isSupabaseConfigured()) await deleteActivity(activityId);
+          patchMissionQuiet(missionId, (m) => ({
+            ...m,
+            activities: m.activities.filter((item) => item.id !== activityId),
+          }));
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: errorText(err, "Nie udało się usunąć wpisu.") };
+        }
+      },
       toggleChecklist: (missionId, key) => {
         patchMission(missionId, (m) => ({
           ...m,
@@ -691,12 +1182,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       },
       updatePartner: (partnerId, patch) => {
-        setState((prev) => {
-          const partners = prev.partners.map((p) => (p.id === partnerId ? { ...p, ...patch } : p));
-          const next = partners.find((p) => p.id === partnerId);
-          if (next) void persistPartner(next);
-          return { ...prev, partners };
-        });
+        setState((prev) => ({
+          ...prev,
+          partners: prev.partners.map((p) => (p.id === partnerId ? { ...p, ...patch } : p)),
+        }));
       },
       addPartnerContact: async (partnerId, input) => {
         if (!input.name.trim()) return { ok: false, error: "Podaj imię i nazwisko." };
@@ -715,8 +1204,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       setConsent: (partnerId, channel, status) => {
-        setState((prev) => {
-          const partners = prev.partners.map((p) => {
+        setState((prev) => ({
+          ...prev,
+          partners: prev.partners.map((p) => {
             if (p.id !== partnerId) return p;
             const exists = p.consents.some((c) => c.channel === channel && c.purpose === "contact");
             const consents = exists
@@ -725,11 +1215,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 )
               : [...p.consents, { channel, purpose: "contact" as const, status }];
             return { ...p, consents };
-          });
-          const next = partners.find((p) => p.id === partnerId);
-          if (next) void persistPartner(next);
-          return { ...prev, partners };
-        });
+          }),
+        }));
       },
       setChannel: (missionId, channel) => {
         patchMission(missionId, (m) => ({ ...m, selectedChannel: channel }));
@@ -945,6 +1432,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   ...m,
                   status: "won" as const,
                   outcome: "won" as const,
+                  closedAt: now,
                   completedStages: [...new Set([...m.completedStages, m.currentStage, "activation"])] as StageId[],
                   nextStepLabel: care,
                   activation: { ...m.activation, activatedAt: now },
@@ -959,8 +1447,69 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return { ok: true };
       },
+      acceptInvite: async (tokenOrLink) => {
+        const token = parseInviteToken(tokenOrLink);
+        if (!token) return { ok: false, error: "To nie wygląda na link ani kod zaproszenia." };
+        const sb = getSupabase();
+        const { data } = sb ? await sb.auth.getSession() : { data: { session: null } };
+        const user = data.session?.user;
+        if (!user) return { ok: false, error: "Najpierw się zaloguj." };
+        try {
+          await scheduleFlush();
+          await acceptInviteToken(token);
+        } catch (err) {
+          return { ok: false, error: errorText(err, "Nie udało się dołączyć do zespołu.") };
+        }
+        await hydrateUser(
+          user.id,
+          user.email ?? "",
+          typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : undefined,
+          true,
+        );
+        setNotice({ kind: "ok", text: "Dołączyłeś do zespołu. Widzisz teraz wspólnych partnerów i misje." });
+        return { ok: true };
+      },
+      createInvite: async (email) => {
+        try {
+          const token = await createInviteRow(email);
+          return { ok: true, token };
+        } catch (err) {
+          return { ok: false, error: errorText(err, "Nie udało się utworzyć zaproszenia.") };
+        }
+      },
+      listInvites: async () => {
+        try {
+          return { ok: true, invites: await listInviteRows() };
+        } catch (err) {
+          return { ok: false, error: errorText(err, "Nie udało się wczytać zaproszeń.") };
+        }
+      },
+      revokeInvite: (inviteId) => runRpc(() => revokeInviteRow(inviteId), "Nie udało się cofnąć zaproszenia."),
+      removeMember: async (memberId) => {
+        const result = await runRpc(() => removeMemberRow(memberId), "Nie udało się usunąć osoby.");
+        if (result.ok) setState((prev) => ({ ...prev, team: prev.team.filter((m) => m.id !== memberId) }));
+        return result;
+      },
+      renameWorkspace: async (name) => {
+        const result = await runRpc(() => renameWorkspaceRow(name), "Nie udało się zmienić nazwy.");
+        if (result.ok) setState((prev) => ({ ...prev, workspace: { ...prev.workspace, name: name.trim() } }));
+        return result;
+      },
     };
-  }, [ready, state, dbStatus, dbError, saveState, authEmail]);
+  }, [
+    ready,
+    state,
+    dbStatus,
+    dbError,
+    saveState,
+    authEmail,
+    schemaV4,
+    notice,
+    hydrateUser,
+    markSaved,
+    refreshData,
+    scheduleFlush,
+  ]);
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
 }

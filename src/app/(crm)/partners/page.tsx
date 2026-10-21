@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { inputClass } from "@/components/ui";
 import { PARTNER_PRIORITIES } from "@/lib/partner-priority";
+import { MISSION_STATUS_LABEL } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 import { STAGES } from "@/lib/types";
 
@@ -21,7 +22,7 @@ function fold(value: string) {
 }
 
 export default function PartnersPage() {
-  const { state, missionByPartner, deletePartner } = useStore();
+  const { state, missionByPartner, latestMissionByPartner, deletePartner } = useStore();
   const [query, setQuery] = useState("");
   const [priority, setPriority] = useState("all");
   const [category, setCategory] = useState("all");
@@ -162,6 +163,7 @@ export default function PartnersPage() {
           {filtered.map((partner) => {
             const mission = missionByPartner(partner.id);
             const stage = STAGES.find((s) => s.id === mission?.currentStage);
+            const closed = mission ? undefined : latestMissionByPartner(partner.id);
             return (
               <div
                 key={partner.id}
@@ -183,6 +185,10 @@ export default function PartnersPage() {
                   ) : mission ? (
                     <span className="rounded-full bg-lutra-soft px-3 py-1 text-xs font-medium text-lutra">
                       {stage?.label}
+                    </span>
+                  ) : closed ? (
+                    <span className="rounded-full bg-surface px-3 py-1 text-xs font-medium text-muted">
+                      {MISSION_STATUS_LABEL[closed.status]}
                     </span>
                   ) : (
                     <span className="rounded-full bg-surface px-3 py-1 text-xs font-medium text-muted">

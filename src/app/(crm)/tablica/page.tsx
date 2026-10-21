@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { daysSince, relativeDay } from "@/lib/dates";
+import { MISSION_STATUS_LABEL, activityChannelLabel, activityOutcomeLabel } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 import { STAGES, type Mission, type MissionStatus, type Partner } from "@/lib/types";
 
@@ -20,8 +22,13 @@ type Card = {
   title: string;
   meta: string;
   note?: string;
+  last?: string;
+  stale?: string;
   warn?: string;
 };
+
+/** Ile dni bez kontaktu uznajemy za „stygnie”. */
+const STALE_DAYS = 7;
 
 function partnerMeta(partner: Partner) {
   return [partner.city, partner.category].filter(Boolean).join(" · ") || "Lokal";
@@ -29,12 +36,23 @@ function partnerMeta(partner: Partner) {
 
 function missionCard(partner: Partner, mission: Mission): Card {
   const next = [mission.nextStepLabel, mission.nextStepAt].filter(Boolean).join(" · ");
+  const closed = mission.status !== "active";
+  const last = mission.activities[0];
+  const quiet = daysSince(last?.occurredAt ?? mission.startedAt);
+  const reason = [MISSION_STATUS_LABEL[mission.status], mission.lossReason].filter(Boolean).join(": ");
   return {
     key: mission.id,
     href: `/partners/${partner.id}/mission`,
     title: partner.name,
     meta: partnerMeta(partner),
-    note: next || undefined,
+    note: (closed ? reason : next) || undefined,
+    last: last
+      ? `Ostatni kontakt ${relativeDay(last.occurredAt)}: ${activityChannelLabel(last.channel).toLowerCase()}, ${activityOutcomeLabel(last.channel, last.outcome).toLowerCase()}`
+      : "Brak zapisanych kontaktów",
+    stale:
+      !closed && quiet !== null && quiet >= STALE_DAYS
+        ? `Bez kontaktu od ${quiet} dni`
+        : undefined,
     warn: partner.dnc ? "Nie kontaktować" : undefined,
   };
 }
@@ -151,6 +169,10 @@ export default function BoardPage() {
                       <p className="font-semibold text-foreground">{card.title}</p>
                       <p className="mt-1 text-xs text-muted">{card.meta}</p>
                       {card.note ? <p className="mt-2 text-xs leading-5 text-foreground">{card.note}</p> : null}
+                      {card.last ? <p className="mt-1 text-[11px] leading-4 text-muted">{card.last}</p> : null}
+                      {card.stale ? (
+                        <p className="mt-1 text-[11px] font-medium text-amber-700">{card.stale}</p>
+                      ) : null}
                       {card.warn ? (
                         <p className="mt-2 text-[11px] font-medium text-rose-600">{card.warn}</p>
                       ) : null}
