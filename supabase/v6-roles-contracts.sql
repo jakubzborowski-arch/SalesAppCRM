@@ -6,6 +6,30 @@
 -- Partnera edytuje jego właściciel, właściciel którejś z jego misji albo administrator.
 
 -- ---------------------------------------------------------------------------
+-- 0. Kolumny, na których opierają się uprawnienia. Baza mogła mieć te tabele już wcześniej
+--    (z innej aplikacji) bez nich — „create table if not exists” z v2 ich wtedy nie dodał.
+
+alter table public.partners add column if not exists owner_user_id uuid references public.profiles (id) on delete set null;
+alter table public.missions add column if not exists owner_user_id uuid references public.profiles (id) on delete set null;
+alter table public.tasks add column if not exists owner_user_id uuid references public.profiles (id) on delete set null;
+alter table public.profiles add column if not exists is_active boolean not null default true;
+
+-- Opiekun partnera bez wpisu: ten, kto założył na nim pierwszą misję (inaczej pole zostaje puste,
+-- a pusty opiekun = każdy z zespołu może edytować).
+update public.partners pa
+set owner_user_id = first_owner.owner_user_id
+from (
+  select distinct on (m.partner_id) m.partner_id, m.owner_user_id
+  from public.missions m
+  join public.profiles p on p.id = m.owner_user_id
+  where m.owner_user_id is not null
+  order by m.partner_id, m.started_at
+) first_owner
+where pa.id = first_owner.partner_id
+  and pa.owner_user_id is null
+  and exists (select 1 from public.profiles p where p.id = first_owner.owner_user_id and p.workspace_id = pa.workspace_id);
+
+-- ---------------------------------------------------------------------------
 -- 1. Funkcje pomocnicze (security definer — bez pętli RLS)
 
 create or replace function public.can_edit_mission(p_mission uuid)
