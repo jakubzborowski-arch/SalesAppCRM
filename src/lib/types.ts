@@ -130,6 +130,16 @@ export type Consent = {
   status: ConsentStatus;
 };
 
+/** Dane rejestrowe firmy partnera — do umowy i faktur. NIP i REGON jako same cyfry. */
+export type CompanyData = {
+  legalName: string;
+  nip: string;
+  regon: string;
+  legalAddress: string;
+  mailingAddress: string;
+  billingEmail: string;
+};
+
 export type Partner = {
   id: string;
   name: string;
@@ -148,6 +158,7 @@ export type Partner = {
   dnc: boolean;
   hours?: string;
   notes?: string;
+  company: CompanyData;
   contacts: PartnerContact[];
   consents: Consent[];
 };
@@ -301,6 +312,8 @@ export type NewPartnerInput = {
   source: string;
   hours: string;
   notes: string;
+  legalName?: string;
+  nip?: string;
   contactName: string;
   contactRole: string;
   contactPhone: string;

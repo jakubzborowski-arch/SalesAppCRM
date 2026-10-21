@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { offerName } from "@/lib/playbook";
+import { cleanCompany, companyMissing, contractFromCompany, normalizeNip } from "@/lib/company";
 import { contractBlockers, isValidNip } from "@/lib/gates";
 import { contractPdfUrl } from "@/lib/mission-core";
 import { useStore } from "@/lib/store";
@@ -10,24 +11,24 @@ import { LocalDraft } from "@/components/mission/local-draft";
 import { CheckRow, Field, inputClass } from "@/components/ui";
 
 export function ContractStep({ mission, partner }: { mission: Mission; partner?: Partner }) {
-  const { updateContract, uploadContract } = useStore();
+  const { updateContract, uploadContract, updatePartner } = useStore();
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [signed, setSigned] = useState<{ path: string; url: string | null } | null>(null);
   const c = mission.contract;
   const missing = contractBlockers(mission);
   const selectedOfferName = offerName(mission.selectedVariant);
   const pdfName = c.documentPath?.split("/").pop();
   const localOnly = Boolean(c.documentPath?.startsWith("local/"));
 
+  // Link do PDF tylko dla aktualnego pliku — stary link nie zostaje po zmianie pliku.
+  const pdfUrl = signed && signed.path === c.documentPath && !localOnly ? signed.url : null;
   useEffect(() => {
-    if (!c.documentPath || localOnly) {
-      setPdfUrl(null);
-      return;
-    }
+    const path = c.documentPath;
+    if (!path || localOnly) return;
     let cancelled = false;
-    void contractPdfUrl(c.documentPath).then((url) => {
-      if (!cancelled) setPdfUrl(url);
+    void contractPdfUrl(path).then((url) => {
+      if (!cancelled) setSigned({ path, url });
     });
     return () => {
       cancelled = true;
@@ -36,9 +37,30 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner?:
 
   const fillFromPartner = () => {
     if (!partner) return;
-    updateContract(mission.id, {
-      companyName: c.companyName.trim() || partner.name,
-      address: c.address.trim() || partner.address,
+    updateContract(mission.id, contractFromCompany(c, partner));
+  };
+  const company = partner?.company;
+  const companyKnown = Boolean(company && companyMissing(company).length < 3);
+  const contractEmpty = !c.companyName.trim() || !c.nip.trim() || !c.address.trim();
+  // Dane wpisane w umowie, których nie ma jeszcze na karcie partnera.
+  const canSaveToPartner = Boolean(
+    partner &&
+      company &&
+      c.status !== "signed" &&
+      ((c.companyName.trim() && c.companyName.trim() !== company.legalName) ||
+        (isValidNip(c.nip) && normalizeNip(c.nip) !== company.nip) ||
+        (c.address.trim() && c.address.trim() !== company.legalAddress)) &&
+      (!company.legalName || !company.nip || !company.legalAddress),
+  );
+  const saveToPartner = () => {
+    if (!partner || !company) return;
+    updatePartner(partner.id, {
+      company: cleanCompany({
+        ...company,
+        legalName: company.legalName || c.companyName,
+        nip: company.nip || (isValidNip(c.nip) ? c.nip : ""),
+        legalAddress: company.legalAddress || c.address,
+      }),
     });
   };
 
@@ -59,9 +81,14 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner?:
             ? `Warunki z discovery: ${mission.decision.constraintSummary || "uzupełnij ograniczenia na mapie potrzeb"}.`
             : "Najpierw zatwierdź wariant A/B/C."}
         </p>
-        {partner ? (
+        {partner && contractEmpty ? (
           <button type="button" onClick={fillFromPartner} className="mt-2 text-xs font-semibold text-lutra">
-            Wpisz nazwę i adres z karty partnera
+            {companyKnown ? "Wpisz dane firmy z karty partnera" : "Wpisz nazwę i adres z karty partnera"}
+          </button>
+        ) : null}
+        {canSaveToPartner ? (
+          <button type="button" onClick={saveToPartner} className="ml-4 mt-2 text-xs font-semibold text-lutra">
+            Zapisz te dane w karcie partnera
           </button>
         ) : null}
       </div>
@@ -96,11 +123,11 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner?:
         </Field>
       </div>
       {c.nip.trim() && !isValidNip(c.nip) ? (
-        <p className="mt-1 text-xs text-amber-700">NIP musi mieć 10 cyfr.</p>
+        <p className="mt-1 text-xs text-amber-700">Niepoprawny NIP — sprawdź cyfry (10 cyfr z cyfrą kontrolną).</p>
       ) : null}
 
       <div className="mt-4">
-        <Field label="Adres korespondencyjny">
+        <Field label="Adres siedziby">
           <input
             className={inputClass}
             value={c.address}

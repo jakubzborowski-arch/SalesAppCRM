@@ -6,6 +6,7 @@ import { STAGES } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import { Field, inputClass } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { isIsoDate } from "@/lib/dates";
 
 type Filter = "open" | "done" | "all";
 
@@ -51,16 +52,29 @@ export default function TasksPage() {
         title: m.nextStepLabel,
         dueAt: m.nextStepAt,
         doneAt: undefined as string | undefined,
-        source: "next_step" as const,
+        source: "next_step" as "next_step" | "deadline",
         mission: m,
         partner: partnerById(m.partnerId),
       }));
 
-    const all = [...fromTable, ...fallback].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+    // Termin decyzji partnera — przypomnienie wyliczane z misji, nie zadanie w bazie.
+    const deadlines = activeMissions
+      .filter((m) => isIsoDate(m.decision.decisionDeadline))
+      .map((m) => ({
+        id: `deadline:${m.id}`,
+        title: "Termin decyzji partnera",
+        dueAt: m.decision.decisionDeadline,
+        doneAt: undefined as string | undefined,
+        source: "deadline" as const,
+        mission: m,
+        partner: partnerById(m.partnerId),
+      }));
+
+    const all = [...fromTable, ...fallback, ...deadlines].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     if (filter === "open") return all.filter((row) => !row.doneAt);
     if (filter === "done") return all.filter((row) => row.doneAt);
     return all;
-  }, [state.tasks, state.missions, followUpMissions, filter, partnerById]);
+  }, [state.tasks, state.missions, followUpMissions, activeMissions, filter, partnerById]);
 
   return (
     <div>
@@ -170,7 +184,7 @@ export default function TasksPage() {
                   type="checkbox"
                   className="mt-1"
                   checked={Boolean(row.doneAt)}
-                  disabled={row.id.startsWith("next:")}
+                  disabled={row.id.startsWith("next:") || row.id.startsWith("deadline:")}
                   onChange={(e) => completeTask(row.id, e.target.checked)}
                 />
                 <span>
@@ -179,7 +193,7 @@ export default function TasksPage() {
                   </span>
                   <span className="mt-1 block text-sm text-muted">
                     {row.title} · {row.dueAt || "bez daty"} ·{" "}
-                    {row.source === "human" ? "ręczne" : "następny krok"}
+                    {row.source === "human" ? "ręczne" : row.source === "deadline" ? "termin decyzji" : "następny krok"}
                     {row.mission
                       ? ` · ${STAGES.find((s) => s.id === row.mission?.currentStage)?.label}`
                       : ""}

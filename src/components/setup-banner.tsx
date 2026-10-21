@@ -99,12 +99,13 @@ function InviteBanner() {
 }
 
 export function SetupBanner() {
-  const { dbStatus, dbError, retryCloud, schemaV4 } = useStore();
-  const [copied, setCopied] = useState<"all" | "v4" | null>(null);
+  const { dbStatus, dbError, retryCloud, schemaV4, schemaV5 } = useStore();
+  const [copied, setCopied] = useState<"all" | "v4" | "v5" | null>(null);
   const needsV4 = dbStatus === "ok" && schemaV4 === false;
+  const needsV5 = dbStatus === "ok" && !needsV4 && schemaV5 === false;
 
-  const copy = async (part: "all" | "v4") => {
-    const res = await fetch(part === "v4" ? "/api/setup-sql?part=v4" : "/api/setup-sql");
+  const copy = async (part: "all" | "v4" | "v5") => {
+    const res = await fetch(part === "all" ? "/api/setup-sql" : `/api/setup-sql?part=${part}`);
     const sql = await res.text();
     await navigator.clipboard.writeText(sql);
     setCopied(part);
@@ -117,10 +118,12 @@ export function SetupBanner() {
         <NoticeBanner />
         <InviteBanner />
         <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
-          <p className="font-semibold">Baza czeka na migrację v4: zespół, dziennik kontaktów, historia etapów.</p>
+          <p className="font-semibold">
+            Baza czeka na migrację v4 i v5: zespół, dziennik kontaktów, historia etapów, dane firmy.
+          </p>
           <p className="mt-1 text-amber-900/80">
-            CRM działa jak dotąd, ale bez wspólnego workspace i dziennika. Skopiuj SQL v4, wklej w SQL Editorze,
-            Run, potem Sprawdź ponownie.
+            CRM działa jak dotąd, ale bez wspólnego workspace, dziennika i danych firmy. Skopiuj SQL, wklej w SQL
+            Editorze, Run, potem Sprawdź ponownie.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <a
@@ -136,7 +139,47 @@ export function SetupBanner() {
               onClick={() => void copy("v4")}
               className="rounded-full bg-lutra px-4 py-2 text-xs font-semibold text-white"
             >
-              {copied === "v4" ? "Skopiowano" : "Kopiuj SQL v4"}
+              {copied === "v4" ? "Skopiowano" : "Kopiuj SQL v4+v5"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void retryCloud()}
+              className="rounded-full border border-amber-300 px-4 py-2 text-xs font-semibold"
+            >
+              Sprawdź ponownie
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (needsV5) {
+    return (
+      <>
+        <NoticeBanner />
+        <InviteBanner />
+        <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+          <p className="font-semibold">Baza czeka na migrację v5: dane firmy partnera (nazwa, NIP, REGON, adresy).</p>
+          <p className="mt-1 text-amber-900/80">
+            Bez niej karta partnera nie zapisze danych firmy. Skopiuj SQL v5, wklej w SQL Editorze, Run, potem
+            Sprawdź ponownie.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a
+              href={SQL_EDITOR_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-lutra"
+            >
+              Otwórz SQL Editor
+            </a>
+            <button
+              type="button"
+              onClick={() => void copy("v5")}
+              className="rounded-full bg-lutra px-4 py-2 text-xs font-semibold text-white"
+            >
+              {copied === "v5" ? "Skopiowano" : "Kopiuj SQL v5"}
             </button>
             <button
               type="button"
@@ -167,11 +210,11 @@ export function SetupBanner() {
       <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
         <p className="font-semibold">
           {dbStatus === "need-sql"
-            ? "Brakuje tabel CRM. Odpal skrypt v2+v3+v4 w SQL Editorze."
+            ? "Brakuje tabel CRM. Odpal skrypt v2–v5 w SQL Editorze."
             : `Błąd bazy: ${dbError}`}
         </p>
         <p className="mt-1 text-amber-900/80">
-          To nowy skrypt (nie bootstrap crm_state). Wklej v2, v3 i v4 razem, Run, potem Sprawdź ponownie.
+          To nowy skrypt (nie bootstrap crm_state). Wklej v2, v3, v4 i v5 razem, Run, potem Sprawdź ponownie.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <a
@@ -187,7 +230,7 @@ export function SetupBanner() {
             onClick={() => void copy("all")}
             className="rounded-full bg-lutra px-4 py-2 text-xs font-semibold text-white"
           >
-            {copied === "all" ? "Skopiowano" : "Kopiuj SQL v2+v3+v4"}
+            {copied === "all" ? "Skopiowano" : "Kopiuj SQL v2–v5"}
           </button>
           <button
             type="button"

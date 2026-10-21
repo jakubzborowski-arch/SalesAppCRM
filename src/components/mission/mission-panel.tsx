@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { categoryLabel, CONTACT_CHANNELS } from "@/lib/playbook";
+import { daysUntil, formatPlDate, isIsoDate, relativeDeadline } from "@/lib/dates";
 import { missionDesk } from "@/lib/mission-desk";
 import { STAGES } from "@/lib/types";
 import { useStore } from "@/lib/store";
@@ -21,6 +22,8 @@ export function MissionPanel({ partner, mission }: { partner: Partner; mission: 
   const channelLabel = CONTACT_CHANNELS.find((c) => c.id === mission.selectedChannel)?.label;
   const place = [partner.category, partner.city].filter(Boolean).join(" · ") || "lokal";
   const [quote, setQuote] = useState("");
+  const deadline = mission.decision.decisionDeadline || mission.discovery.decisionDeadline;
+  const deadlineLate = (daysUntil(deadline) ?? 0) < 0 && mission.status === "active";
 
   const saveLabel =
     saveState === "saving"
@@ -67,6 +70,16 @@ export function MissionPanel({ partner, mission }: { partner: Partner; mission: 
               {desk.facts.length
                 ? desk.facts.map((n) => n.title || n.description).join(" · ")
                 : "Brak potwierdzonego faktu — bez tego nie ma oferty"}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-foreground">Termin decyzji</dt>
+            <dd className={deadlineLate ? "font-semibold text-rose-600" : ""}>
+              {isIsoDate(deadline)
+                ? `${formatPlDate(deadline)} · ${deadlineLate ? `minął ${relativeDeadline(deadline)}` : relativeDeadline(deadline)}`
+                : deadline.trim()
+                  ? `„${deadline.trim()}” — ustaw datę w kroku Rozmowa`
+                  : "Nie ustalony"}
             </dd>
           </div>
           <div>

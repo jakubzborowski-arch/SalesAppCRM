@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   BriefcaseBusiness,
   Columns3,
   FileText,
@@ -19,6 +20,7 @@ const NAV = [
   { href: "/tablica", label: "Tablica", icon: Columns3 },
   { href: "/zadania", label: "Zadania", icon: BriefcaseBusiness },
   { href: "/oferty", label: "Oferty", icon: FileText },
+  { href: "/raporty", label: "Raporty", icon: BarChart3 },
   { href: "/ustawienia", label: "Ustawienia", icon: Settings },
 ];
 

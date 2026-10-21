@@ -1,3 +1,4 @@
+import { emptyCompany } from "./company";
 import { OBJECTION_KEYS } from "./playbook";
 import type { AppState, Mission, Partner } from "./types";
 
@@ -23,6 +24,7 @@ export const nova: Partner = {
   instagram: "",
   facebook: "",
   socialOther: "",
+  company: emptyCompany(),
   priority: "",
   priorityReason: "",
   source: "publiczny research / mapa",
@@ -50,6 +52,7 @@ const zielone: Partner = {
   instagram: "",
   facebook: "",
   socialOther: "",
+  company: emptyCompany(),
   priority: "",
   priorityReason: "",
   source: "polecenie",
@@ -83,6 +86,7 @@ const etna: Partner = {
   instagram: "",
   facebook: "",
   socialOther: "",
+  company: emptyCompany(),
   priority: "",
   priorityReason: "",
   source: "event branżowy",

@@ -1,3 +1,4 @@
+import { isValidNip, normalizeNip } from "./company";
 import { loadMissionCore, syncMissionCore } from "./mission-core";
 import { nextPriorityForDb, normalizePartnerPriority, priorityForDb } from "./partner-priority";
 import { OBJECTION_KEYS } from "./playbook";
@@ -153,6 +154,12 @@ function mapPartner(
     dnc_status: string;
     hours: string | null;
     notes: string | null;
+    legal_name?: string | null;
+    nip?: string | null;
+    regon?: string | null;
+    legal_address?: string | null;
+    mailing_address?: string | null;
+    billing_email?: string | null;
   },
   contacts: PartnerContact[],
   consents: Partner["consents"],
@@ -175,6 +182,14 @@ function mapPartner(
     dnc: row.dnc_status === "do_not_contact",
     hours: row.hours ?? undefined,
     notes: row.notes ?? undefined,
+    company: {
+      legalName: row.legal_name ?? "",
+      nip: row.nip ?? "",
+      regon: row.regon ?? "",
+      legalAddress: row.legal_address ?? "",
+      mailingAddress: row.mailing_address ?? "",
+      billingEmail: row.billing_email ?? "",
+    },
     contacts,
     consents,
   };
@@ -390,6 +405,8 @@ export async function insertPartner(
     input.instagram.trim() && `Instagram: ${input.instagram.trim()}`,
     input.facebook.trim() && `Facebook: ${input.facebook.trim()}`,
     input.socialOther.trim() && `Inne social: ${input.socialOther.trim()}`,
+    input.legalName?.trim() && `Firma: ${input.legalName.trim()}`,
+    input.nip?.trim() && `NIP: ${input.nip.trim()}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -415,6 +432,12 @@ export async function insertPartner(
     dnc_status: "ok",
   };
   if (!payload.priority) delete payload.priority;
+  if (input.legalName?.trim()) payload.legal_name = input.legalName.trim();
+  if (input.nip && isValidNip(input.nip)) payload.nip = normalizeNip(input.nip);
+  else if (input.nip?.trim()) {
+    // Błędny NIP z importu nie blokuje zapisu partnera — ląduje w notatce do sprawdzenia.
+    payload.notes = [payload.notes, `NIP do sprawdzenia: ${input.nip.trim()}`].filter(Boolean).join("\n");
+  }
 
   let partner: Parameters<typeof mapPartner>[0] | null = null;
   let lastError: { message?: string; code?: string } | null = null;
@@ -448,7 +471,7 @@ export async function insertPartner(
     if (missing && missing in payload) {
       delete payload[missing];
       if (
-        ["subcategory", "website", "instagram", "facebook", "social_other", "priority", "priority_reason"].includes(
+        ["subcategory", "website", "instagram", "facebook", "social_other", "priority", "priority_reason", "legal_name", "nip"].includes(
           missing,
         ) &&
         extraNote
@@ -575,34 +598,79 @@ async function upsertPartnerContactRow(partnerId: string, contact: PartnerContac
   }
 }
 
-export async function persistPartner(partner: Partner) {
+function partnerColumns(partner: Partner): Record<string, unknown> {
+  const c = partner.company;
+  return {
+    name: partner.name,
+    city: partner.city,
+    address: partner.address,
+    category: partner.category,
+    subcategory: partner.subcategory || null,
+    website: partner.website || null,
+    instagram: partner.instagram || null,
+    facebook: partner.facebook || null,
+    social_other: partner.socialOther || null,
+    priority: priorityForDb(partner.priority) || partner.priority || null,
+    priority_reason: partner.priorityReason || null,
+    source: partner.source,
+    hours: partner.hours ?? null,
+    notes: partner.notes ?? null,
+    dnc_status: partner.dnc ? "do_not_contact" : "ok",
+    legal_name: c.legalName || null,
+    nip: normalizeNip(c.nip) || null,
+    regon: c.regon.replace(/\D/g, "") || null,
+    legal_address: c.legalAddress || null,
+    mailing_address: c.mailingAddress || null,
+    billing_email: c.billingEmail || null,
+  };
+}
+
+const COMPANY_COLUMNS = ["legal_name", "nip", "regon", "legal_address", "mailing_address", "billing_email"];
+
+/** Zabrakło kolumn danych firmy — trzeba uruchomić migrację v5. */
+export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrację v5 (Ustawienia albo pasek u góry).";
+
+/**
+ * Zapisuje partnera. Z `before` (wersja ostatnio zapisana) wysyła tylko pola, które się zmieniły —
+ * dwie osoby edytujące różne pola karty nie nadpisują sobie nawzajem pracy.
+ */
+export async function persistPartner(partner: Partner, before?: Partner) {
   const sb = getSupabase();
   if (!sb) return;
   for (const contact of partner.contacts) {
+    const old = before?.contacts.find((c) => c.id === contact.id);
+    if (old && JSON.stringify(old) === JSON.stringify(contact)) continue;
     await upsertPartnerContactRow(partner.id, contact);
   }
-  await sb
-    .from("partners")
-    .update({
-      name: partner.name,
-      city: partner.city,
-      address: partner.address,
-      category: partner.category,
-      subcategory: partner.subcategory || null,
-      website: partner.website || null,
-      instagram: partner.instagram || null,
-      facebook: partner.facebook || null,
-      social_other: partner.socialOther || null,
-      priority: priorityForDb(partner.priority) || partner.priority || null,
-      priority_reason: partner.priorityReason || null,
-      source: partner.source,
-      hours: partner.hours ?? null,
-      notes: partner.notes ?? null,
-      dnc_status: partner.dnc ? "do_not_contact" : "ok",
-    })
-    .eq("id", partner.id);
+
+  const next = partnerColumns(partner);
+  const prev = before ? partnerColumns(before) : null;
+  const changed = Object.fromEntries(
+    Object.entries(next).filter(([key, value]) => {
+      if (!prev) return !(COMPANY_COLUMNS.includes(key) && value === null);
+      return JSON.stringify(prev[key]) !== JSON.stringify(value);
+    }),
+  );
+  if (Object.keys(changed).length) {
+    let { error } = await sb.from("partners").update(changed).eq("id", partner.id);
+    if (error && "priority" in changed && /partner_priority/i.test(error.message ?? "")) {
+      // Starsza baza ma inny zestaw priorytetów — reszta zmian i tak ma się zapisać.
+      delete changed.priority;
+      ({ error } = Object.keys(changed).length
+        ? await sb.from("partners").update(changed).eq("id", partner.id)
+        : { error: null });
+    }
+    if (error) {
+      if (isMissingColumn(error) && Object.keys(changed).some((key) => COMPANY_COLUMNS.includes(key))) {
+        throw Object.assign(new Error(V5_MISSING), { code: "V5_MISSING" });
+      }
+      throw error;
+    }
+  }
 
   for (const consent of partner.consents) {
+    const old = before?.consents.find((c) => c.channel === consent.channel && c.purpose === consent.purpose);
+    if (old && old.status === consent.status) continue;
     const { data: existing } = await sb
       .from("consents")
       .select("id")
@@ -611,22 +679,34 @@ export async function persistPartner(partner: Partner) {
       .eq("purpose", consent.purpose)
       .maybeSingle();
     if (existing?.id) {
-      await sb
+      const { error } = await sb
         .from("consents")
         .update({
           status: consent.status,
           granted_at: consent.status === "granted" ? new Date().toISOString() : null,
         })
         .eq("id", existing.id);
+      if (error) throw error;
     } else {
-      await sb.from("consents").insert({
+      const { error } = await sb.from("consents").insert({
         partner_id: partner.id,
         channel: consent.channel,
         purpose: consent.purpose,
         status: consent.status,
       });
+      if (error) throw error;
     }
   }
+}
+
+/** Czy baza ma kolumny danych firmy (migracja v5). */
+export async function detectSchemaV5(): Promise<boolean | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { error } = await sb.from("partners").select("legal_name, nip, regon, legal_address").limit(1);
+  if (!error) return true;
+  if (isMissingColumn(error) || isMissingCrmTable(error)) return false;
+  return null;
 }
 
 /** Pliki umów i nagrań misji partnera. Kasujemy je razem z partnerem, żeby nie zostały sieroty. */

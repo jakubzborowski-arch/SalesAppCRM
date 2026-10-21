@@ -3,6 +3,7 @@
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActivityLog } from "@/components/mission/activity-log";
+import { CompanyCard } from "@/components/partners/company-card";
 import { MissionDossier } from "@/components/partners/mission-dossier";
 import { PriorityChecks } from "@/components/partners/priority-checks";
 import { CONTACT_CHANNELS } from "@/lib/playbook";
@@ -242,6 +243,8 @@ export default function PartnerDetailPage({
               <p className="mt-4 text-xs text-amber-700">Brak oznaczonego decydenta.</p>
             )}
           </section>
+
+          <CompanyCard key={partner.id} partner={partner} />
 
           <section className="rounded-2xl border border-line bg-white p-5 shadow-[0_8px_30px_rgba(9,12,155,0.05)] lg:col-span-12">
             <div className="flex flex-wrap items-center justify-between gap-3">

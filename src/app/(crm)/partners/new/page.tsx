@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { PriorityChecks } from "@/components/partners/priority-checks";
 import { Field, inputClass } from "@/components/ui";
+import { isValidNip } from "@/lib/company";
 import { useStore } from "@/lib/store";
 import type { ConsentStatus } from "@/lib/types";
 
@@ -29,6 +30,8 @@ export default function NewPartnerPage() {
     source: "ręczne dodanie",
     hours: "",
     notes: "",
+    legalName: "",
+    nip: "",
     contactName: "",
     contactRole: "właściciel / menedżer",
     contactPhone: "",
@@ -45,6 +48,10 @@ export default function NewPartnerPage() {
     event.preventDefault();
     if (!form.name.trim()) {
       setError("Wystarczy nazwa lokalu — resztę uzupełnisz na karcie i w researchu.");
+      return;
+    }
+    if (form.nip.trim() && !isValidNip(form.nip)) {
+      setError("NIP jest niepoprawny — popraw albo zostaw puste i uzupełnij na karcie partnera.");
       return;
     }
     setPending(true);
@@ -224,7 +231,7 @@ export default function NewPartnerPage() {
           <summary className="cursor-pointer list-none font-semibold outline-none">
             Więcej szczegółów
             <span className="ml-2 text-xs font-normal text-muted">
-              www, godziny, priorytet, notatka — research, nie warunek zapisu
+              www, godziny, dane firmy, notatka — research, nie warunek zapisu
             </span>
           </summary>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -243,6 +250,26 @@ export default function NewPartnerPage() {
                 value={form.subcategory}
                 onChange={(e) => set("subcategory", e.target.value)}
               />
+            </Field>
+            <Field label="Nazwa firmy (z rejestru)" optional>
+              <input
+                className={inputClass}
+                placeholder="np. Nova Kawiarnie sp. z o.o."
+                value={form.legalName}
+                onChange={(e) => set("legalName", e.target.value)}
+              />
+            </Field>
+            <Field label="NIP" optional>
+              <input
+                className={inputClass}
+                inputMode="numeric"
+                placeholder="123-456-78-90"
+                value={form.nip}
+                onChange={(e) => set("nip", e.target.value)}
+              />
+              {form.nip.trim() && !isValidNip(form.nip) ? (
+                <span className="mt-1 block text-xs text-amber-700">Sprawdź cyfry NIP.</span>
+              ) : null}
             </Field>
             <Field label="Godziny" optional>
               <input

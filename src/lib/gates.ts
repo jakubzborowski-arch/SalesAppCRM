@@ -1,8 +1,8 @@
+import { isIsoDate } from "./dates";
+import { isValidNip } from "./company";
 import { STAGES, type Mission, type Partner, type StageId } from "./types";
 
-export function isValidNip(nip: string) {
-  return nip.replace(/\D/g, "").length === 10;
-}
+export { isValidNip };
 
 export function hasContactConsent(partner: Partner) {
   return partner.consents.some(
@@ -28,7 +28,9 @@ export function offerBlockers(mission: Mission) {
   if (!d.expectedResult.trim()) missing.push("oczekiwany rezultat");
   if (!constraintText(mission)) missing.push("ograniczenie");
   if (!d.decisionMakerId) missing.push("decydent");
-  if (!d.decisionDeadline.trim()) missing.push("termin decyzji");
+  if (!isIsoDate(d.decisionDeadline)) {
+    missing.push(d.decisionDeadline.trim() ? "termin decyzji jako data" : "termin decyzji");
+  }
   if (!d.previousAttempts.trim()) missing.push("wcześniejsze próby");
   if (!d.nextStep.trim()) missing.push("następny krok");
   const confirmedNeed = mission.needs.some((n) => n.status === "fact" && n.confirmed);
@@ -41,9 +43,10 @@ export function contractBlockers(mission: Mission) {
   const missing: string[] = [];
   if (!mission.offerApproved || !mission.selectedVariant) missing.push("zatwierdzony wariant oferty");
   if (!c.companyName.trim()) missing.push("nazwa firmy");
-  if (!isValidNip(c.nip)) missing.push("NIP (10 cyfr)");
+  if (!isValidNip(c.nip)) missing.push("poprawny NIP");
   if (!c.startAt.trim()) missing.push("data rozpoczęcia");
   if (!c.endAt.trim()) missing.push("data zakończenia");
+  else if (c.startAt.trim() && c.endAt < c.startAt) missing.push("koniec umowy po starcie");
   if (!c.documentPath) missing.push("PDF umowy");
   if (!c.signedByHuman) missing.push("podpis handlowca");
   return missing;

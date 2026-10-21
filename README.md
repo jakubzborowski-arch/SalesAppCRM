@@ -16,11 +16,19 @@ Otwórz [http://localhost:3001](http://localhost:3001) (albo 3000). Zaloguj się
 1. Authentication → Providers: wyłącz **Confirm email**.
 2. SQL Editor: wklej `supabase/v2-v3-all.sql` i Run.
 3. SQL Editor: wklej `supabase/v4-team-timeline.sql` i Run (zespół, dziennik kontaktów, historia etapów).
-4. `.env.local` z URL i anon key.
-5. W CRM: **Dodaj partnera**, potem **Zajmuję się partnerem**.
+4. SQL Editor: wklej `supabase/v5-company-data.sql` i Run (dane firmy partnera: nazwa, NIP, REGON, adresy).
+5. `.env.local` z URL i anon key.
+6. W CRM: **Dodaj partnera**, potem **Zajmuję się partnerem**.
 
-Obie migracje można odpalać ponownie. Jeśli baza ma już v2+v3, wystarczy v4 — CRM pokaże baner z przyciskiem „Kopiuj SQL v4”.
+Migracje można odpalać ponownie. Brakującą migrację CRM pokazuje na pasku u góry z przyciskiem „Kopiuj SQL”.
 Po każdym ponownym odpaleniu `v2-v3-all.sql` odpal też `v4-team-timeline.sql` (v2-v3 przywraca starsze polityki dostępu).
+
+## Dane firmy, terminy, raporty
+
+- Karta partnera → **Dane firmy**: nazwa z rejestru, NIP (sprawdzana cyfra kontrolna), REGON, adres siedziby i do korespondencji, e-mail do faktur. Krok Umowa wpisuje je jednym kliknięciem; dane wpisane w umowie można zapisać z powrotem na kartę.
+- Termin decyzji partnera to data (szybkie wybory: koniec tygodnia, za tydzień…). Stare wpisy tekstowe („Czwartek”) CRM pokazuje do zamiany. Termin widać na tablicy, w zadaniach i w panelu misji; minięty jest na czerwono.
+- **Raporty**: lejek etapów (ile misji doszło do etapu i ile przeszło dalej), wygrane/przegrane, skuteczność, powody przegranych z etapem, kontakty per kanał, lista „do zrobienia teraz”. Filtr okresu i handlowca.
+- Karta partnera zapisuje tylko zmienione pola — dwie osoby edytujące różne pola nie nadpisują sobie pracy.
 
 ## Zespół
 

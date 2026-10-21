@@ -12,6 +12,7 @@ import {
 } from "react";
 import { activationBlockers, canEnterStage, contractBlockers, nextStage, offerBlockers } from "./gates";
 import { categoryLabel, suggestVariant } from "./playbook";
+import { emptyCompany } from "./company";
 import { emptyMission, seedState } from "./seed";
 import {
   MissionConflictError,
@@ -32,6 +33,7 @@ import {
   peekInvite,
   persistMission,
   persistPartner,
+  detectSchemaV5,
   deletePartner as deletePartnerRow,
   insertPartnerContact,
   removeMember as removeMemberRow,
@@ -102,6 +104,8 @@ type Store = {
   authEmail: string | null;
   /** `true` gdy w bazie jest migracja v4 (zespół, dziennik). `null` gdy nie wiadomo. */
   schemaV4: boolean | null;
+  /** Czy baza ma pola danych firmy (migracja v5). */
+  schemaV5: boolean | null;
   notice: Notice | null;
   dismissNotice: () => void;
   state: AppState;
@@ -314,6 +318,7 @@ function readLocal(): AppState {
         socialOther: p.socialOther ?? "",
         priority: p.priority ?? "",
         priorityReason: p.priorityReason ?? "",
+        company: { ...emptyCompany(), ...(p.company ?? {}) },
       })),
       missions: (parsed.missions ?? []).map((m) => {
         const base = emptyMission(m.partnerId, m.id);
@@ -361,6 +366,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [schemaV4, setSchemaV4] = useState<boolean | null>(null);
+  const [schemaV5, setSchemaV5] = useState<boolean | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [invite, setInvite] = useState<InviteState | null>(null);
   const userIdRef = useRef<string | null>(null);
@@ -414,7 +420,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let firstError: { code?: string; message?: string } | null = null;
     for (const partner of partners) {
       try {
-        await persistPartner(partner);
+        await persistPartner(partner, savedPartners.current.get(partner.id));
         savedPartners.current.set(partner.id, partner);
         bump(`p:${partner.id}`);
       } catch (err) {
@@ -561,6 +567,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         replaceMissionVersions(versions);
         lastLoadAt.current = Date.now();
         setSchemaV4(team === undefined ? null : team !== null);
+        void detectSchemaV5().then(setSchemaV5);
         setState(next);
         // Dane są w Supabase. Stara kopia w przeglądarce (z kontaktami) nie jest potrzebna.
         clearLocalCopy();
@@ -810,6 +817,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveState,
       authEmail,
       schemaV4,
+      schemaV5,
       notice,
       dismissNotice: () => setNotice(null),
       state,
@@ -1630,6 +1638,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     saveState,
     authEmail,
     schemaV4,
+    schemaV5,
     notice,
     invite,
     inspectInvite,

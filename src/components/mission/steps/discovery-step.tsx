@@ -5,7 +5,9 @@ import { requestFactFill } from "@/components/mission/local-draft";
 import { TagInput, Field, inputClass } from "@/components/ui";
 import { offerBlockers } from "@/lib/gates";
 import { getSupabase } from "@/lib/supabase";
+import { parseDeadline } from "@/lib/dates";
 import { useStore } from "@/lib/store";
+import { DeadlineField } from "@/components/mission/deadline-field";
 import type { Mission, NeedCategory, Partner } from "@/lib/types";
 
 const SUGGESTED_TAGS = ["Środa 16–19", "Min. 4 osoby", "Bez alkoholu", "Limit dzienny"];
@@ -88,7 +90,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
         ...(fields.problem ? { description: fields.problem } : {}),
         ...(fields.constraints.length ? { constraints: fields.constraints } : {}),
         ...(makerId ? { decisionMakerId: makerId } : {}),
-        ...(fields.deadline ? { decisionDeadline: fields.deadline } : {}),
+        ...(parseDeadline(fields.deadline) ? { decisionDeadline: parseDeadline(fields.deadline)! } : {}),
         ...(fields.attempts ? { previousAttempts: fields.attempts } : {}),
       });
       updateDecision(mission.id, {
@@ -152,7 +154,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
       description: KLUB_PROBLEM,
       constraints: [...KLUB_CONSTRAINTS],
       decisionMakerId: makerId,
-      decisionDeadline: "Czwartek",
+      decisionDeadline: parseDeadline("czwartek") ?? "",
       previousAttempts: "Ladies night nie weszło.",
     });
     updateDecision(mission.id, {
@@ -339,14 +341,13 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
         if (slot === "deadline") {
           return (
             <div key={slot} className="mt-4">
-              <Field label="Termin decyzji">
-                <input
-                  className={inputClass}
-                  placeholder="Do końca tygodnia"
-                  value={discovery.decisionDeadline}
-                  onChange={(event) => updateDiscovery(mission.id, { decisionDeadline: event.target.value })}
-                />
-              </Field>
+              <DeadlineField
+                value={discovery.decisionDeadline || mission.decision.decisionDeadline}
+                onChange={(iso) => {
+                  updateDiscovery(mission.id, { decisionDeadline: iso });
+                  updateDecision(mission.id, { decisionDeadline: iso });
+                }}
+              />
             </div>
           );
         }
