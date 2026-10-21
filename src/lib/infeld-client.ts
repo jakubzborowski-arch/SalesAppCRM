@@ -1,5 +1,12 @@
 import type { KnowledgeHint } from "./infeld-suggest";
+import { getSupabase } from "./supabase";
 import type { Mission, Partner } from "./types";
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const sb = getSupabase();
+  const session = sb ? (await sb.auth.getSession()).data.session : null;
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+}
 
 export type InfeldSuggestResult = {
   ok: boolean;
@@ -22,7 +29,7 @@ export async function fetchInfeldSuggest(
   try {
     const res = await fetch("/api/infeld/suggest", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({ partner, mission, query }),
     });
     const data = (await res.json()) as InfeldSuggestResult;

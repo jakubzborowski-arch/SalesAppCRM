@@ -98,7 +98,7 @@ function missionSearchContext(mission: Mission) {
 export function infeldSuggestKey(partner: Partner, mission: Mission) {
   const ctx = missionSearchContext(mission);
   return [
-    "v3",
+    "v4",
     mission.currentStage,
     mission.selectedChannel ?? "",
     partner.segment,
@@ -570,7 +570,8 @@ export function composeKlubVoice(
       return `Z potwierdzonych faktów (${factLine}) pasuje wariant ${variant}. Nie obiecuj liczby osób, piątku ani wstępu na event z biletem.`;
     }
     case "negotiation": {
-      const speech = objectionSpeech(body);
+      const cards = focusHintCards(hints, factLine).map((hint) => hint.body).join("\n");
+      const speech = objectionSpeech(cards);
       return speech
         ? `Na obiekcję ${name}: ${speech} Liczby gości nie obiecuj.`
         : `Dopytaj, które okno chcą dociążyć poza szczytem. Soboty pełnej nie ruszaj i nie zgaduj, ilu ludzi przyjdzie.`;
@@ -582,6 +583,32 @@ export function composeKlubVoice(
     default:
       return "";
   }
+}
+
+function objectionScore(block: string, fact: string) {
+  const dead = /pust|środ|dj|martw|sobot|weekend|poza szczy/i.test(fact);
+  let score = 0;
+  if (dead && /pełno|martwy/.test(block)) score += 5;
+  if (/dj/i.test(fact) && /dj/i.test(block) && /pełno|martwy|nie ruszamy/i.test(block)) score += 2;
+  if (/właściciel|booker/i.test(fact) && /właściciel|booker/i.test(block)) score += 5;
+  if (/ochron|czas/i.test(fact) && /ochron|czas/i.test(block)) score += 5;
+  if (/osób|liczb/i.test(fact) && /liczb|osób/i.test(block)) score += 5;
+  return score;
+}
+
+/** Krótki wycinek kart pod lokalny model: fakt wybiera jedną obiekcję, reszta zostaje w sekcji. */
+export function focusHintCards(hints: KnowledgeHint[], fact: string) {
+  return hints.map((hint) => {
+    if (!/obiekcj/i.test(hint.title)) {
+      return { ...hint, body: hint.body.split("\n").slice(0, 6).join("\n") };
+    }
+    const blocks = hint.body.split(/\n\n+/).map((block) => block.trim()).filter(Boolean);
+    const best = blocks.reduce((top, block) => {
+      const score = objectionScore(block, fact);
+      return score > top.score ? { block, score } : top;
+    }, { block: blocks[0] ?? "", score: 0 });
+    return { ...hint, body: best.block };
+  });
 }
 
 export function readableInfeldCards(hints: KnowledgeHint[]) {

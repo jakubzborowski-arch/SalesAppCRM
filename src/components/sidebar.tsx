@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BriefcaseBusiness,
+  Columns3,
   FileText,
   LayoutDashboard,
   Settings,
@@ -15,6 +16,7 @@ import { useStore } from "@/lib/store";
 const NAV = [
   { href: "/pulpit", label: "Pulpit", icon: LayoutDashboard },
   { href: "/partners", label: "Partnerzy", icon: Users },
+  { href: "/tablica", label: "Tablica", icon: Columns3 },
   { href: "/zadania", label: "Zadania", icon: BriefcaseBusiness },
   { href: "/oferty", label: "Oferty", icon: FileText },
   { href: "/ustawienia", label: "Ustawienia", icon: Settings },

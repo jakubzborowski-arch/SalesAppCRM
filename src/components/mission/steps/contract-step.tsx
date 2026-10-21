@@ -6,6 +6,7 @@ import { contractBlockers, isValidNip } from "@/lib/gates";
 import { contractPdfUrl } from "@/lib/mission-core";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
+import { LocalDraft } from "@/components/mission/local-draft";
 import { CheckRow, Field, inputClass } from "@/components/ui";
 
 export function ContractStep({ mission, partner }: { mission: Mission; partner?: Partner }) {
@@ -64,6 +65,7 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner?:
           </button>
         ) : null}
       </div>
+      {partner ? <LocalDraft partner={partner} mission={mission} mode="umowa" /> : null}
 
       {missing.length ? (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

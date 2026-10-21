@@ -1,0 +1,167 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { cn } from "@/lib/cn";
+import { useStore } from "@/lib/store";
+import { STAGES, type Mission, type MissionStatus, type Partner } from "@/lib/types";
+
+const CLOSED: Array<{ id: MissionStatus; label: string }> = [
+  { id: "won", label: "Wygrane" },
+  { id: "lost", label: "Przegrane" },
+  { id: "nurture", label: "Wrócić później" },
+  { id: "no_fit", label: "Brak dopasowania" },
+  { id: "paused", label: "Pauza" },
+];
+
+type Card = {
+  key: string;
+  href: string;
+  title: string;
+  meta: string;
+  note?: string;
+  warn?: string;
+};
+
+function partnerMeta(partner: Partner) {
+  return [partner.city, partner.category].filter(Boolean).join(" · ") || "Lokal";
+}
+
+function missionCard(partner: Partner, mission: Mission): Card {
+  const next = [mission.nextStepLabel, mission.nextStepAt].filter(Boolean).join(" · ");
+  return {
+    key: mission.id,
+    href: `/partners/${partner.id}/mission`,
+    title: partner.name,
+    meta: partnerMeta(partner),
+    note: next || undefined,
+    warn: partner.dnc ? "Nie kontaktować" : undefined,
+  };
+}
+
+export default function BoardPage() {
+  const { state } = useStore();
+  const [view, setView] = useState<"open" | "closed">("open");
+
+  const columns = useMemo(() => {
+    const partnerOf = (id: string) => state.partners.find((p) => p.id === id);
+    if (view === "closed") {
+      return CLOSED.map((col) => ({
+        id: col.id,
+        label: col.label,
+        cards: state.missions
+          .filter((m) => m.status === col.id)
+          .flatMap((mission) => {
+            const partner = partnerOf(mission.partnerId);
+            return partner ? [missionCard(partner, mission)] : [];
+          }),
+      }));
+    }
+
+    const withMission = new Set(state.missions.map((m) => m.partnerId));
+    const idle: Card[] = state.partners
+      .filter((p) => !withMission.has(p.id))
+      .map((partner) => ({
+        key: partner.id,
+        href: `/partners/${partner.id}`,
+        title: partner.name,
+        meta: partnerMeta(partner),
+        warn: partner.dnc ? "Nie kontaktować" : undefined,
+      }));
+
+    return [
+      { id: "none", label: "Bez misji", cards: idle },
+      ...STAGES.map((stage) => ({
+        id: stage.id,
+        label: stage.label,
+        cards: state.missions
+          .filter((m) => m.status === "active" && m.currentStage === stage.id)
+          .flatMap((mission) => {
+            const partner = partnerOf(mission.partnerId);
+            return partner ? [missionCard(partner, mission)] : [];
+          }),
+      })),
+    ];
+  }, [state.missions, state.partners, view]);
+
+  const openCount = state.missions.filter((m) => m.status === "active").length;
+  const closedCount = state.missions.filter((m) => m.status !== "active").length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-end gap-3 px-8 py-6 text-sm text-muted">
+        <span>CRM / Tablica</span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-xs font-semibold text-navy">
+          {state.user.initials}
+        </span>
+      </div>
+      <div className="px-8 pb-10">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">Workspace</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Tablica misji</h1>
+        <p className="mt-2 max-w-2xl text-sm text-muted">
+          Wspólny widok tego workspace. Handlowiec A i B widzą te same karty — nie tylko „swoje”.
+          Karta nie zmienia etapu: bramki zostają w misji.
+        </p>
+
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setView("open")}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-medium",
+              view === "open" ? "bg-lutra text-white" : "bg-white text-muted",
+            )}
+          >
+            W toku · {openCount}
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("closed")}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-medium",
+              view === "closed" ? "bg-lutra text-white" : "bg-white text-muted",
+            )}
+          >
+            Zamknięte · {closedCount}
+          </button>
+        </div>
+
+        <div className="mt-5 flex gap-3 overflow-x-auto pb-4">
+          {columns.map((column) => (
+            <section
+              key={column.id}
+              className="flex w-[240px] shrink-0 flex-col rounded-[24px] border border-line bg-white"
+            >
+              <header className="flex items-center justify-between px-4 py-3">
+                <h2 className="text-sm font-semibold text-foreground">{column.label}</h2>
+                <span className="rounded-full bg-chip px-2 py-0.5 text-[11px] font-medium text-navy">
+                  {column.cards.length}
+                </span>
+              </header>
+              <div className="flex min-h-[120px] flex-col gap-2 px-3 pb-3">
+                {column.cards.length === 0 ? (
+                  <p className="px-1 py-4 text-xs text-muted">Pusto</p>
+                ) : (
+                  column.cards.map((card) => (
+                    <Link
+                      key={card.key}
+                      href={card.href}
+                      className="rounded-2xl border border-chip-mid bg-surface px-3 py-3 hover:border-blue"
+                    >
+                      <p className="font-semibold text-foreground">{card.title}</p>
+                      <p className="mt-1 text-xs text-muted">{card.meta}</p>
+                      {card.note ? <p className="mt-2 text-xs leading-5 text-foreground">{card.note}</p> : null}
+                      {card.warn ? (
+                        <p className="mt-2 text-[11px] font-medium text-rose-600">{card.warn}</p>
+                      ) : null}
+                    </Link>
+                  ))
+                )}
+              </div>
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -33,6 +33,9 @@ export default function PulpitPage() {
         <p className="mt-2 max-w-xl text-sm text-muted">
           CRM nie rozprasza listą 40 leadów. Prowadź bieżący krok, domknij bramki, dopiero potem bierz kolejnego partnera.
         </p>
+        <Link href="/tablica" className="mt-3 inline-flex text-sm font-medium text-lutra">
+          Tablica zespołu — wszystkie misje w workspace
+        </Link>
 
         <div className="mt-6 grid max-w-3xl grid-cols-3 gap-3">
           <div className="rounded-2xl border border-line bg-white px-4 py-4">

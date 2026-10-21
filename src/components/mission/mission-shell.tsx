@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CopilotPanel } from "@/components/mission/copilot-panel";
+import { DraftBubble } from "@/components/mission/draft-bubble";
 import { MissionStepper } from "@/components/mission/stepper";
 import { ActivationStep } from "@/components/mission/steps/activation-step";
 import { ContactStep } from "@/components/mission/steps/contact-step";
@@ -161,6 +162,7 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
           <CopilotPanel partner={partner} mission={mission} />
         )}
       </div>
+      <DraftBubble partner={partner} mission={mission} stage={stage} />
     </div>
   );
 }
