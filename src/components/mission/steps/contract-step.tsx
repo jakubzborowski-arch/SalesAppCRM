@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { offerName } from "@/lib/playbook";
-import { cleanCompany, companyMissing, contractFromCompany, normalizeNip } from "@/lib/company";
+import { cleanCompany, companyMissing, contractFromCompany } from "@/lib/company";
 import { contractBlockers, isValidNip } from "@/lib/gates";
 import { contractPdfUrl } from "@/lib/mission-core";
 import { useStore } from "@/lib/store";
@@ -11,7 +11,7 @@ import { LocalDraft } from "@/components/mission/local-draft";
 import { CheckRow, Field, inputClass } from "@/components/ui";
 
 export function ContractStep({ mission, partner }: { mission: Mission; partner?: Partner }) {
-  const { updateContract, uploadContract, updatePartner } = useStore();
+  const { updateContract, uploadContract, updatePartner, schemaV5 } = useStore();
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [signed, setSigned] = useState<{ path: string; url: string | null } | null>(null);
@@ -42,15 +42,14 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner?:
   const company = partner?.company;
   const companyKnown = Boolean(company && companyMissing(company).length < 3);
   const contractEmpty = !c.companyName.trim() || !c.nip.trim() || !c.address.trim();
-  // Dane wpisane w umowie, których nie ma jeszcze na karcie partnera.
+  // Dane wpisane w umowie, których brakuje na karcie partnera (to samo pole: w umowie jest, na karcie pusto).
   const canSaveToPartner = Boolean(
     partner &&
       company &&
-      c.status !== "signed" &&
-      ((c.companyName.trim() && c.companyName.trim() !== company.legalName) ||
-        (isValidNip(c.nip) && normalizeNip(c.nip) !== company.nip) ||
-        (c.address.trim() && c.address.trim() !== company.legalAddress)) &&
-      (!company.legalName || !company.nip || !company.legalAddress),
+      schemaV5 !== false &&
+      ((c.companyName.trim() && !company.legalName) ||
+        (isValidNip(c.nip) && !company.nip) ||
+        (c.address.trim() && !company.legalAddress)),
   );
   const saveToPartner = () => {
     if (!partner || !company) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { addDaysIso, formatPlDate, isIsoDate, parseDeadline, relativeDeadline } from "@/lib/dates";
+import { addDaysIso, formatPlDate, hasExplicitDate, isIsoDate, parseDeadline, relativeDeadline } from "@/lib/dates";
 import { Field, inputClass } from "@/components/ui";
 
 const QUICK: { label: string; text: string }[] = [
@@ -13,7 +13,8 @@ const QUICK: { label: string; text: string }[] = [
 /** Termin decyzji partnera jako data. Stare wpisy tekstowe („Czwartek”) pokazuje do zamiany. */
 export function DeadlineField({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
   const legacy = value.trim() && !isIsoDate(value) ? value.trim() : "";
-  const suggestion = legacy ? parseDeadline(legacy) : null;
+  // Zwrot typu „czwartek” liczony od dziś dałby zły dzień, jeśli wpisano go tydzień temu.
+  const suggestion = legacy && hasExplicitDate(legacy) ? parseDeadline(legacy) : null;
   const relative = relativeDeadline(value);
   const past = isIsoDate(value) && relative.endsWith("temu");
 

@@ -237,7 +237,7 @@ export default function ReportsPage() {
             ) : null}
           </Section>
 
-          <Section title="Kontakty" hint="Wpisy w dzienniku. Skuteczne = rozmowa, odpowiedź albo umówione spotkanie.">
+          <Section title="Kontakty" hint="Wpisy w dzienniku (przy filtrze handlowca: zapisane przez niego). Skuteczne = rozmowa, odpowiedź albo spotkanie.">
             {contacts.total ? (
               <table className="w-full text-sm">
                 <thead>

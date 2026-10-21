@@ -628,15 +628,19 @@ function partnerColumns(partner: Partner): Record<string, unknown> {
 const COMPANY_COLUMNS = ["legal_name", "nip", "regon", "legal_address", "mailing_address", "billing_email"];
 
 /** Zabrakło kolumn danych firmy — trzeba uruchomić migrację v5. */
-export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrację v5 (Ustawienia albo pasek u góry).";
+export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrację v5 z paska u góry strony.";
 
 /**
  * Zapisuje partnera. Z `before` (wersja ostatnio zapisana) wysyła tylko pola, które się zmieniły —
  * dwie osoby edytujące różne pola karty nie nadpisują sobie nawzajem pracy.
  */
-export async function persistPartner(partner: Partner, before?: Partner) {
+export async function persistPartner(
+  partner: Partner,
+  before?: Partner,
+): Promise<{ dropped: ("company" | "priority")[] }> {
+  const dropped: ("company" | "priority")[] = [];
   const sb = getSupabase();
-  if (!sb) return;
+  if (!sb) throw new Error("Brak klienta Supabase.");
   for (const contact of partner.contacts) {
     const old = before?.contacts.find((c) => c.id === contact.id);
     if (old && JSON.stringify(old) === JSON.stringify(contact)) continue;
@@ -652,20 +656,24 @@ export async function persistPartner(partner: Partner, before?: Partner) {
     }),
   );
   if (Object.keys(changed).length) {
-    let { error } = await sb.from("partners").update(changed).eq("id", partner.id);
-    if (error && "priority" in changed && /partner_priority/i.test(error.message ?? "")) {
-      // Starsza baza ma inny zestaw priorytetów — reszta zmian i tak ma się zapisać.
-      delete changed.priority;
-      ({ error } = Object.keys(changed).length
-        ? await sb.from("partners").update(changed).eq("id", partner.id)
-        : { error: null });
+    const send = async () =>
+      Object.keys(changed).length
+        ? (await sb.from("partners").update(changed).eq("id", partner.id)).error
+        : null;
+    let error = await send();
+    for (let attempt = 0; error && attempt < 2; attempt++) {
+      if ("priority" in changed && /partner_priority/i.test(error.message ?? "")) {
+        // Starsza baza ma inny zestaw priorytetów — reszta zmian i tak ma się zapisać.
+        delete changed.priority;
+        dropped.push("priority");
+      } else if (isMissingColumn(error) && Object.keys(changed).some((key) => COMPANY_COLUMNS.includes(key))) {
+        // Bez migracji v5 dane firmy nie mają gdzie się zapisać — reszta karty tak.
+        for (const key of COMPANY_COLUMNS) delete changed[key];
+        dropped.push("company");
+      } else break;
+      error = await send();
     }
-    if (error) {
-      if (isMissingColumn(error) && Object.keys(changed).some((key) => COMPANY_COLUMNS.includes(key))) {
-        throw Object.assign(new Error(V5_MISSING), { code: "V5_MISSING" });
-      }
-      throw error;
-    }
+    if (error) throw error;
   }
 
   for (const consent of partner.consents) {
@@ -697,6 +705,7 @@ export async function persistPartner(partner: Partner, before?: Partner) {
       if (error) throw error;
     }
   }
+  return { dropped };
 }
 
 /** Czy baza ma kolumny danych firmy (migracja v5). */

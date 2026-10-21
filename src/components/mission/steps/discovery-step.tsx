@@ -26,6 +26,13 @@ function nextThursday() {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+/** Termin z rozmowy liczony od dnia nagrania; nierozpoznany zostaje tekstem do zamiany na datę. */
+function deadlineFrom(text: string, mission: Mission) {
+  const said = (mission.calls ?? []).find((call) => call.transcriptStatus === "ready")?.createdAt;
+  const reference = said && !Number.isNaN(new Date(said).getTime()) ? new Date(said) : new Date();
+  return parseDeadline(text, reference) ?? text.trim();
+}
+
 const SLOTS = ["problem", "result", "constraint", "maker", "deadline", "attempts", "next", "fact"] as const;
 
 export function DiscoveryStep({ mission, partner }: { mission: Mission; partner: Partner }) {
@@ -90,7 +97,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
         ...(fields.problem ? { description: fields.problem } : {}),
         ...(fields.constraints.length ? { constraints: fields.constraints } : {}),
         ...(makerId ? { decisionMakerId: makerId } : {}),
-        ...(parseDeadline(fields.deadline) ? { decisionDeadline: parseDeadline(fields.deadline)! } : {}),
+        ...(fields.deadline.trim() ? { decisionDeadline: deadlineFrom(fields.deadline, mission) } : {}),
         ...(fields.attempts ? { previousAttempts: fields.attempts } : {}),
       });
       updateDecision(mission.id, {

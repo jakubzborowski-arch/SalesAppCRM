@@ -24,15 +24,26 @@ function shown(key: keyof CompanyData, value: string) {
 export function CompanyCard({ partner }: { partner: Partner }) {
   const { updatePartner, schemaV5, dbStatus } = useStore();
   const [draft, setDraft] = useState<CompanyData | null>(null);
+  // Stan z chwili otwarcia formularza: zapisujemy tylko pola, które ktoś tu zmienił.
+  const [opened, setOpened] = useState<CompanyData | null>(null);
   const company = partner.company;
   const missing = companyMissing(company);
   const errors = draft ? companyErrors(draft) : {};
   const blocked = dbStatus === "ok" && schemaV5 === false;
 
   const save = () => {
-    if (!draft || Object.keys(errors).length) return;
-    updatePartner(partner.id, { company: cleanCompany(draft) });
+    if (!draft || !opened || Object.keys(errors).length) return;
+    const next = cleanCompany(draft);
+    const start = cleanCompany(opened);
+    const changed = (Object.keys(next) as (keyof CompanyData)[]).filter((key) => next[key] !== start[key]);
+    if (changed.length) {
+      // Pola, których nie ruszano, zostają w wersji z bazy (np. REGON wpisany w międzyczasie przez kolegę).
+      const merged = { ...partner.company };
+      for (const key of changed) merged[key] = next[key];
+      updatePartner(partner.id, { company: merged });
+    }
     setDraft(null);
+    setOpened(null);
   };
 
   return (
@@ -50,7 +61,11 @@ export function CompanyCard({ partner }: { partner: Partner }) {
           <button
             type="button"
             disabled={blocked}
-            onClick={() => setDraft({ ...company, nip: company.nip ? formatNip(company.nip) : "" })}
+            onClick={() => {
+              const start = { ...company, nip: company.nip ? formatNip(company.nip) : "" };
+              setDraft(start);
+              setOpened(start);
+            }}
             className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-lutra disabled:opacity-50"
           >
             {missing.length === 3 ? "Uzupełnij" : "Edytuj"}
@@ -93,7 +108,10 @@ export function CompanyCard({ partner }: { partner: Partner }) {
             </button>
             <button
               type="button"
-              onClick={() => setDraft(null)}
+              onClick={() => {
+                setDraft(null);
+                setOpened(null);
+              }}
               className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-muted"
             >
               Anuluj

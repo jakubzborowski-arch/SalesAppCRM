@@ -34,6 +34,7 @@ import {
   persistMission,
   persistPartner,
   detectSchemaV5,
+  V5_MISSING,
   deletePartner as deletePartnerRow,
   insertPartnerContact,
   removeMember as removeMemberRow,
@@ -420,8 +421,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let firstError: { code?: string; message?: string } | null = null;
     for (const partner of partners) {
       try {
-        await persistPartner(partner, savedPartners.current.get(partner.id));
+        const { dropped } = await persistPartner(partner, savedPartners.current.get(partner.id));
         savedPartners.current.set(partner.id, partner);
+        if (dropped.includes("company")) {
+          setSchemaV5(false);
+          setNotice({ kind: "error", text: `${partner.name}: ${V5_MISSING}` });
+        }
+        if (dropped.includes("priority")) {
+          setNotice({ kind: "error", text: `${partner.name}: baza nie przyjęła tego priorytetu. Reszta zmian zapisana.` });
+        }
         bump(`p:${partner.id}`);
       } catch (err) {
         firstError ??= err as { code?: string; message?: string };

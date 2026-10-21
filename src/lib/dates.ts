@@ -61,13 +61,13 @@ export function relativeDeadline(iso: string | null | undefined, today = new Dat
 }
 
 const WEEKDAYS: [RegExp, number][] = [
-  [/^(w\s+)?niedziel/, 0],
-  [/^(w\s+)?poniedzia/, 1],
-  [/^(we?\s+)?wtor/, 2],
-  [/^(w\s+)?środ|^(w\s+)?srod/, 3],
-  [/^(w\s+)?czwart/, 4],
-  [/^(w\s+)?piąt|^(w\s+)?piat/, 5],
-  [/^(w\s+)?sobot/, 6],
+  [/^niedziel/, 0],
+  [/^poniedzia/, 1],
+  [/^wtor/, 2],
+  [/^środ|^srod/, 3],
+  [/^czwart/, 4],
+  [/^piąt|^piat/, 5],
+  [/^sobot/, 6],
 ];
 
 function addDays(date: Date, days: number) {
@@ -102,6 +102,10 @@ export function parseDeadline(text: string | null | undefined, today = new Date(
     return toIsoDate(candidate);
   }
 
+  // Data wpisana w środku zdania („czwartek 12.11”) wygrywa ze zwrotem.
+  const embedded = t.match(/(?:^|\D)(\d{1,2}[./]\d{1,2}(?:[./]\d{4})?)(?:\D|$)/);
+  if (embedded) return parseDeadline(embedded[1], today);
+
   if (/^(dziś|dzis|dzisiaj)$/.test(t)) return toIsoDate(base);
   if (/^jutr/.test(t)) return toIsoDate(addDays(base, 1));
   if (/^pojutrz/.test(t)) return toIsoDate(addDays(base, 2));
@@ -128,16 +132,26 @@ export function parseDeadline(text: string | null | undefined, today = new Date(
     return toIsoDate(addDays(base, diff));
   }
 
-  const nextWeek = /(przyszł|przyszl|następn|nastepn)/.test(t);
+  const nextWeek = /^(w\s+|we\s+)?(przyszł|przyszl|następn|nastepn)/.test(t);
   const day = t.replace(/^(w|we)\s+/, "").replace(/^(przyszł\S*|przyszl\S*|następn\S*|nastepn\S*)\s+/, "");
+  // Sam dzień tygodnia — „czwartek jak szef wróci” to już nie jest pewny termin.
+  if (/\s/.test(day)) return null;
   for (const [pattern, weekday] of WEEKDAYS) {
     if (pattern.test(day)) {
-      let diff = (weekday - base.getDay() + 7) % 7 || 7;
-      if (nextWeek && diff < 7) diff += 7;
-      return toIsoDate(addDays(base, diff));
+      if (nextWeek) {
+        // „Przyszły wtorek” = wtorek w następnym tygodniu (od poniedziałku).
+        const toMonday = ((8 - base.getDay()) % 7) || 7;
+        return toIsoDate(addDays(base, toMonday + (weekday === 0 ? 6 : weekday - 1)));
+      }
+      return toIsoDate(addDays(base, (weekday - base.getDay() + 7) % 7 || 7));
     }
   }
   return null;
+}
+
+/** Czy tekst podaje konkretny dzień (a nie zwrot zależny od dnia, w którym go zapisano). */
+export function hasExplicitDate(text: string) {
+  return /\d{1,2}[./-]\d{1,2}/.test(text) || isIsoDate(text.trim());
 }
 
 /** Data za `days` dni od dziś jako „RRRR-MM-DD”. */
