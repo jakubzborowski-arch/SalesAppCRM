@@ -1,3 +1,4 @@
+import { selectIn } from "./fetch-all";
 import { dateOrNull, persistNeedId, uuidOrNull } from "./sql-coerce";
 import { ACTIVATION_ITEMS, CONTRACT_ITEMS, RESEARCH_ITEMS } from "./playbook";
 import { getSupabase, isMissingCrmTable } from "./supabase";
@@ -42,15 +43,16 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
 
   const [needsRes, decisionRes, checklistRes, objectionsRes, offersRes, contractsRes, activationsRes, tasksRes] =
     await Promise.all([
-      sb.from("needs").select("*").in("mission_id", missionIds),
-      sb.from("decision_context").select("*").in("mission_id", missionIds),
-      sb.from("mission_checklist_items").select("*").in("mission_id", missionIds),
-      sb.from("mission_objections").select("*").in("mission_id", missionIds),
-      sb.from("offers").select("*").in("mission_id", missionIds),
-      sb.from("contracts").select("*").in("mission_id", missionIds),
-      sb.from("activations").select("*").in("mission_id", missionIds),
-      sb.from("tasks").select("*").in("mission_id", missionIds).order("due_at", { ascending: true }),
+      selectIn(sb, "needs", "mission_id", missionIds),
+      selectIn(sb, "decision_context", "mission_id", missionIds, "mission_id"),
+      selectIn(sb, "mission_checklist_items", "mission_id", missionIds),
+      selectIn(sb, "mission_objections", "mission_id", missionIds),
+      selectIn(sb, "offers", "mission_id", missionIds),
+      selectIn(sb, "contracts", "mission_id", missionIds),
+      selectIn(sb, "activations", "mission_id", missionIds),
+      selectIn(sb, "tasks", "mission_id", missionIds),
     ]);
+  tasksRes.data.sort((a, b) => String(a.due_at ?? "").localeCompare(String(b.due_at ?? "")));
 
   const skip =
     optionalTable(needsRes.error) ||
@@ -76,14 +78,14 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
     const slot = ensure(row.mission_id as string);
     const need: Need = {
       id: row.id as string,
-      category: row.category,
+      category: row.category as Need["category"],
       title: (row.title as string) || "",
       description: (row.description as string) ?? "",
       priority: (row.priority as number | null) ?? null,
       quote: (row.quote as string) ?? undefined,
       expectedResult: (row.expected_result as string) ?? undefined,
       constraints: (row.constraints as string) ?? undefined,
-      status: row.status,
+      status: row.status as Need["status"],
       confirmed: row.status === "fact" && Boolean(row.confirmed_at),
     };
     slot.needs = [...(slot.needs ?? []), need];
@@ -121,7 +123,7 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
 
   for (const row of offersRes.data ?? []) {
     const slot = ensure(row.mission_id as string);
-    slot.selectedVariant = row.variant;
+    slot.selectedVariant = row.variant as Mission["selectedVariant"];
     slot.offerApproved = row.status === "approved" || row.status === "sent" || Boolean(row.approved_at);
     slot.offerSentAt = (row.sent_at as string) ?? undefined;
   }
@@ -407,7 +409,12 @@ async function syncNextStepTask(
 ): Promise<TaskItem | null> {
   const sb = getSupabase();
   if (!sb) return null;
-  const closing = mission.status === "lost" || mission.status === "no_fit";
+  const title = mission.nextStepLabel.trim();
+  // Przegrana, brak dopasowania albo pauza bez terminu powrotu: otwarte kroki się zamykają.
+  const closing =
+    mission.status === "lost" ||
+    mission.status === "no_fit" ||
+    (mission.status !== "active" && mission.status !== "won" && !title);
 
   const { data: rows, error: listError } = await sb
     .from("tasks")
@@ -432,7 +439,6 @@ async function syncNextStepTask(
     return null;
   }
 
-  const title = mission.nextStepLabel.trim();
   if (!title) return null;
   const dueAt = dateOrNull(mission.nextStepAt);
   const current = open[0];

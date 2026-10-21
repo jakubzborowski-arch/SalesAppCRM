@@ -1,6 +1,7 @@
 import { loadMissionCore, syncMissionCore } from "./mission-core";
 import { nextPriorityForDb, normalizePartnerPriority, priorityForDb } from "./partner-priority";
 import { OBJECTION_KEYS } from "./playbook";
+import { fetchAll, groupBy, selectIn } from "./fetch-all";
 import { emptyMission } from "./seed";
 import { dateOrNull, uuidOrNull } from "./sql-coerce";
 import { getSupabase, isMissingCrmTable } from "./supabase";
@@ -18,6 +19,7 @@ import type {
   Partner,
   PartnerContact,
   StageId,
+  InvitePeek,
   TaskItem,
   TeamInvite,
   TeamMember,
@@ -202,77 +204,79 @@ export async function loadCrm(workspaceId: string): Promise<{
   partners: Partner[];
   missions: Mission[];
   tasks: import("./types").TaskItem[];
+  /** Wersje misji z bazy (`updated_at`). Ustawia je ten, kto podmienia misje w widoku. */
+  versions: Map<string, string>;
 }> {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
 
-  const { data: partnerRows, error: partnerError } = await sb
-    .from("partners")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: true });
+  const { data: partnerRows, error: partnerError } = await fetchAll((from, to) =>
+    sb
+      .from("partners")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (partnerError) throw partnerError;
 
-  const partnerIds = (partnerRows ?? []).map((p) => p.id as string);
-  const { data: contactRows } = partnerIds.length
-    ? await sb.from("partner_contacts").select("*").in("partner_id", partnerIds)
-    : { data: [] };
-  const { data: consentRows } = partnerIds.length
-    ? await sb.from("consents").select("*").in("partner_id", partnerIds)
-    : { data: [] };
+  const partnerIds = partnerRows.map((p) => p.id as string);
+  const { data: contactRows } = await selectIn(sb, "partner_contacts", "partner_id", partnerIds);
+  const { data: consentRows } = await selectIn(sb, "consents", "partner_id", partnerIds);
+  const contactsByPartner = groupBy(contactRows, "partner_id");
+  const consentsByPartner = groupBy(consentRows, "partner_id");
 
-  const partners = (partnerRows ?? []).map((row) =>
+  const partners = partnerRows.map((row) =>
     mapPartner(
-      row,
-      (contactRows ?? [])
-        .filter((c) => c.partner_id === row.id)
-        .map((c) => ({
-          id: c.id as string,
-          name: String(c.name ?? c.contact_person ?? "").trim(),
-          role: (c.role as string) ?? "",
-          isDecisionMaker: Boolean(c.is_decision_maker),
-          phone: (c.phone as string) ?? undefined,
-          email: (c.email as string) ?? undefined,
-          linkedin: (c.linkedin as string) ?? undefined,
-        })),
-      (consentRows ?? [])
-        .filter((c) => c.partner_id === row.id)
-        .map((c) => ({
-          channel: c.channel as Channel,
-          purpose: c.purpose as Partner["consents"][number]["purpose"],
-          status: c.status as ConsentStatus,
-        })),
+      row as Parameters<typeof mapPartner>[0],
+      (contactsByPartner.get(row.id as string) ?? []).map((c) => ({
+        id: c.id as string,
+        name: String(c.name ?? c.contact_person ?? "").trim(),
+        role: (c.role as string) ?? "",
+        isDecisionMaker: Boolean(c.is_decision_maker),
+        phone: (c.phone as string) ?? undefined,
+        email: (c.email as string) ?? undefined,
+        linkedin: (c.linkedin as string) ?? undefined,
+      })),
+      (consentsByPartner.get(row.id as string) ?? []).map((c) => ({
+        channel: c.channel as Channel,
+        purpose: c.purpose as Partner["consents"][number]["purpose"],
+        status: c.status as ConsentStatus,
+      })),
     ),
   );
 
-  const { data: missionRows, error: missionError } = await sb
-    .from("missions")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .order("started_at", { ascending: false });
+  const { data: missionRows, error: missionError } = await fetchAll((from, to) =>
+    sb
+      .from("missions")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (missionError) throw missionError;
+  const versions = new Map<string, string>();
+  for (const row of missionRows) {
+    if (row.updated_at) versions.set(row.id as string, String(row.updated_at));
+  }
 
-  const missionIds = (missionRows ?? []).map((m) => m.id as string);
+  const missionIds = missionRows.map((m) => m.id as string);
   const callsByMission = new Map<string, CallRecord[]>();
   const activitiesByMission = new Map<string, Activity[]>();
   const eventsByMission = new Map<string, MissionEvent[]>();
   if (missionIds.length) {
-    const { data: convos } = await sb
-      .from("conversations")
-      .select("*")
-      .in("mission_id", missionIds)
-      .order("started_at", { ascending: false });
-    const convoIds = (convos ?? []).map((c) => c.id as string);
-    const { data: recs } = convoIds.length
-      ? await sb.from("recordings").select("*").in("conversation_id", convoIds)
-      : { data: [] };
-    const { data: trs } = convoIds.length
-      ? await sb.from("transcripts").select("*").in("conversation_id", convoIds)
-      : { data: [] };
+    const { data: convos } = await selectIn(sb, "conversations", "mission_id", missionIds);
+    const convoIds = convos.map((c) => c.id as string);
+    const { data: recs } = await selectIn(sb, "recordings", "conversation_id", convoIds);
+    const { data: trs } = await selectIn(sb, "transcripts", "conversation_id", convoIds);
+    const recByConvo = new Map(recs.map((r) => [r.conversation_id as string, r]));
+    const trByConvo = new Map(trs.map((t) => [t.conversation_id as string, t]));
 
-    for (const convo of convos ?? []) {
-      const rec = (recs ?? []).find((r) => r.conversation_id === convo.id);
-      const tr = (trs ?? []).find((t) => t.conversation_id === convo.id);
+    for (const convo of convos) {
+      const rec = recByConvo.get(convo.id as string);
+      const tr = trByConvo.get(convo.id as string);
       const call: CallRecord = {
         id: convo.id as string,
         channel: convo.channel as Channel,
@@ -303,25 +307,24 @@ export async function loadCrm(workspaceId: string): Promise<{
       acts.push(activity);
       activitiesByMission.set(activity.missionId, acts);
     }
+    for (const list of callsByMission.values()) list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    for (const list of activitiesByMission.values()) list.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 
-    const { data: eventRows, error: eventsError } = await sb
-      .from("mission_events")
-      .select("*")
-      .in("mission_id", missionIds)
-      .order("created_at", { ascending: true });
+    const { data: eventRows, error: eventsError } = await selectIn(sb, "mission_events", "mission_id", missionIds);
     if (!eventsError) {
-      for (const row of eventRows ?? []) {
+      for (const row of eventRows) {
         const event = eventFromRow(row);
         const list = eventsByMission.get(event.missionId) ?? [];
         list.push(event);
         eventsByMission.set(event.missionId, list);
       }
+      for (const list of eventsByMission.values()) list.sort((a, b) => a.at.localeCompare(b.at));
     }
   }
 
-  const missions = (missionRows ?? []).map((row) =>
+  const missions = missionRows.map((row) =>
     missionFromRow(
-      row,
+      row as Parameters<typeof missionFromRow>[0],
       callsByMission.get(row.id as string) ?? [],
       activitiesByMission.get(row.id as string) ?? [],
       eventsByMission.get(row.id as string) ?? [],
@@ -368,7 +371,7 @@ export async function loadCrm(workspaceId: string): Promise<{
     };
   });
 
-  return { partners, missions: merged, tasks };
+  return { partners, missions: merged, tasks, versions };
 }
 
 export async function insertPartner(
@@ -641,6 +644,37 @@ export async function deletePartner(partnerId: string) {
  */
 let coreTablesAvailable: boolean | null = null;
 
+/**
+ * Wersja misji z bazy (`missions.updated_at`, migracja v4), na której opiera się misja w widoku.
+ * Zapis przechodzi tylko, gdy w bazie jest wciąż ta wersja — inaczej ktoś z zespołu był szybszy.
+ * Wersję ustawia ten, kto podmienia treść misji (wczytanie, odświeżenie, własny zapis).
+ */
+const missionVersions = new Map<string, string>();
+
+export function setMissionVersion(missionId: string, version: string | undefined) {
+  if (version) missionVersions.set(missionId, version);
+  else missionVersions.delete(missionId);
+}
+
+export function replaceMissionVersions(versions: Map<string, string>) {
+  missionVersions.clear();
+  for (const [id, version] of versions) missionVersions.set(id, version);
+}
+
+/** Po wylogowaniu wersje z poprzedniej sesji nie są już nic warte. */
+export function clearMissionVersions() {
+  missionVersions.clear();
+}
+
+export class MissionConflictError extends Error {
+  missionId: string;
+  constructor(missionId: string) {
+    super("Ktoś z zespołu zmienił tę misję w tym samym czasie.");
+    this.name = "MissionConflictError";
+    this.missionId = missionId;
+  }
+}
+
 export async function persistMission(
   mission: Mission,
   workspaceId: string,
@@ -649,8 +683,7 @@ export async function persistMission(
   const sb = getSupabase();
   if (!sb) return { nextStepTask: null };
   const slim = coreTablesAvailable === true;
-  const { error } = await sb.from("missions").upsert({
-    id: mission.id,
+  const changes = {
     workspace_id: workspaceId,
     partner_id: mission.partnerId,
     // Właściciel zostaje ten sam, nawet gdy misję zapisuje ktoś inny z zespołu.
@@ -663,16 +696,39 @@ export async function persistMission(
     loss_reason: mission.lossReason || null,
     details: slim ? uiDetailsOf(mission) : detailsOf(mission),
     closed_at: mission.status === "active" ? null : (mission.closedAt ?? null),
-  });
-  if (error) throw error;
+  };
+
+  const version = missionVersions.get(mission.id);
+  if (version) {
+    const { data, error } = await sb
+      .from("missions")
+      .update(changes)
+      .eq("id", mission.id)
+      .eq("updated_at", version)
+      .select("*");
+    if (error) throw error;
+    if (!data?.length) throw new MissionConflictError(mission.id);
+    if (data[0].updated_at) setMissionVersion(mission.id, String(data[0].updated_at));
+  } else {
+    const { data, error } = await sb
+      .from("missions")
+      .upsert({ id: mission.id, ...changes })
+      .select("*")
+      .single();
+    if (error) throw error;
+    if (data?.updated_at) setMissionVersion(mission.id, String(data.updated_at));
+  }
+
   const core = await syncMissionCore(mission, workspaceId, userId);
   if (core.status === "synced") {
     if (!slim) {
-      const { error: slimError } = await sb
+      const { data, error: slimError } = await sb
         .from("missions")
         .update({ details: uiDetailsOf(mission) })
-        .eq("id", mission.id);
+        .eq("id", mission.id)
+        .select("*");
       if (slimError) throw slimError;
+      if (data?.[0]?.updated_at) setMissionVersion(mission.id, String(data[0].updated_at));
     }
     coreTablesAvailable = true;
   } else {
@@ -785,8 +841,9 @@ export async function insertActivity(input: NewActivityInput): Promise<Activity>
 export async function deleteActivity(activityId: string) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
-  const { error } = await sb.from("conversations").delete().eq("id", activityId);
+  const { data, error } = await sb.from("conversations").delete().eq("id", activityId).select("id");
   if (error) throw error;
+  if (!data?.length) throw new Error("Ten wpis usuwa jego autor albo administrator workspace.");
 }
 
 export async function loadMissionEvents(missionId: string): Promise<MissionEvent[]> {
@@ -822,6 +879,34 @@ export async function loadTeam(): Promise<TeamMember[] | null> {
     email: String(row.email ?? ""),
     isMe: Boolean(row.is_me),
   }));
+}
+
+export async function peekInvite(token: string): Promise<InvitePeek> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.rpc("peek_workspace_invite", { p_token: token.trim() });
+  if (error) throw rpcError(error, "Nie udało się sprawdzić zaproszenia.");
+  const row = ((data ?? []) as Array<Record<string, unknown>>)[0] ?? { status: "missing" };
+  const statuses: InvitePeek["status"][] = [
+    "ok",
+    "missing",
+    "revoked",
+    "accepted",
+    "used",
+    "expired",
+    "email_mismatch",
+    "same_workspace",
+  ];
+  const status = statuses.includes(row.status as InvitePeek["status"]) ? (row.status as InvitePeek["status"]) : "missing";
+  return {
+    status,
+    workspaceName: (row.workspace_name as string | null) ?? null,
+    invitedBy: (row.invited_by as string | null) ?? null,
+    inviteEmail: (row.invite_email as string | null) ?? null,
+    alone: Boolean(row.alone),
+    ownPartners: Number(row.own_partners ?? 0),
+    ownMissions: Number(row.own_missions ?? 0),
+  };
 }
 
 export async function listInvites(): Promise<TeamInvite[]> {

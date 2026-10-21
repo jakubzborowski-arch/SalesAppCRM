@@ -94,6 +94,18 @@ export type TeamMember = {
   isMe: boolean;
 };
 
+/** Podgląd zaproszenia przed dołączeniem (RPC peek_workspace_invite). */
+export type InvitePeek = {
+  status: "ok" | "missing" | "revoked" | "accepted" | "used" | "expired" | "email_mismatch" | "same_workspace";
+  workspaceName: string | null;
+  invitedBy: string | null;
+  inviteEmail: string | null;
+  /** Czy pytający jest sam w obecnym workspace (wtedy jego dane przechodzą do zespołu). */
+  alone: boolean;
+  ownPartners: number;
+  ownMissions: number;
+};
+
 export type TeamInvite = {
   id: string;
   email: string | null;

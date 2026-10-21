@@ -23,6 +23,81 @@ function NoticeBanner() {
   );
 }
 
+const INVITE_STATUS: Record<string, string> = {
+  missing: "Ten link zaproszenia nie działa. Sprawdź, czy skopiowałeś go w całości.",
+  revoked: "To zaproszenie zostało cofnięte.",
+  used: "To zaproszenie zostało już użyte przez kogoś innego.",
+  accepted: "Już dołączyłeś przez to zaproszenie.",
+  expired: "Zaproszenie wygasło. Poproś o nowy link.",
+};
+
+/** Zaproszenie do zespołu czeka na decyzję. Nic się nie dzieje bez kliknięcia „Dołącz”. */
+function InviteBanner() {
+  const { invite, confirmInvite, dismissInvite, state } = useStore();
+  if (!invite) return null;
+  const box = "mx-8 mt-4 rounded-2xl border px-5 py-4 text-sm";
+
+  if (invite.loading) {
+    return <div className={`${box} border-line bg-white text-muted`}>Sprawdzam zaproszenie do zespołu…</div>;
+  }
+  const info = invite.info;
+  if (!info || info.status !== "ok") {
+    const text = !info
+      ? (invite.error ?? "Nie udało się sprawdzić zaproszenia.")
+      : info.status === "email_mismatch"
+        ? `To zaproszenie jest na adres ${info.inviteEmail ?? "innego konta"}. Zaloguj się tym kontem.`
+        : info.status === "same_workspace"
+          ? `Jesteś już w workspace „${info.workspaceName ?? state.workspace.name}”. Link nie został użyty.`
+          : (INVITE_STATUS[info.status] ?? "Nie da się użyć tego zaproszenia.");
+    return (
+      <div className={`${box} flex items-start justify-between gap-4 border-amber-200 bg-amber-50 text-amber-950`}>
+        <p>{text}</p>
+        <button type="button" onClick={dismissInvite} className="text-xs font-semibold">
+          Zamknij
+        </button>
+      </div>
+    );
+  }
+
+  const owned = info.ownPartners + info.ownMissions > 0;
+  return (
+    <div className={`${box} border-blue/30 bg-chip text-navy`}>
+      <p className="font-semibold">
+        Zaproszenie od {info.invitedBy ?? "zespołu"} do workspace „{info.workspaceName ?? "Lutra"}”.
+      </p>
+      <p className="mt-1">
+        {info.alone
+          ? owned
+            ? `Twoi partnerzy (${info.ownPartners}) i misje (${info.ownMissions}) przejdą razem z Tobą do tego zespołu.`
+            : "Twój obecny workspace jest pusty — nic nie przenosimy."
+          : `Opuścisz obecny workspace „${state.workspace.name}”. Jego partnerzy i misje zostaną tam, a Ty stracisz do nich dostęp.`}
+      </p>
+      <p className="mt-1 text-xs text-navy/70">
+        Dołączaj tylko do zespołu, który znasz. Wyjść możesz tylko przez administratora tamtego zespołu.
+      </p>
+      {invite.error ? <p className="mt-2 text-sm text-rose-600">{invite.error}</p> : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={invite.busy}
+          onClick={() => void confirmInvite()}
+          className="rounded-full bg-lutra px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          {invite.busy ? "Dołączam…" : "Dołącz do zespołu"}
+        </button>
+        <button
+          type="button"
+          disabled={invite.busy}
+          onClick={dismissInvite}
+          className="rounded-full border border-line bg-white px-4 py-2 text-xs font-semibold text-muted"
+        >
+          Odrzuć
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SetupBanner() {
   const { dbStatus, dbError, retryCloud, schemaV4 } = useStore();
   const [copied, setCopied] = useState<"all" | "v4" | null>(null);
@@ -40,6 +115,7 @@ export function SetupBanner() {
     return (
       <>
         <NoticeBanner />
+        <InviteBanner />
         <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
           <p className="font-semibold">Baza czeka na migrację v4: zespół, dziennik kontaktów, historia etapów.</p>
           <p className="mt-1 text-amber-900/80">
@@ -75,11 +151,19 @@ export function SetupBanner() {
     );
   }
 
-  if (dbStatus !== "need-sql" && dbStatus !== "error") return <NoticeBanner />;
+  if (dbStatus !== "need-sql" && dbStatus !== "error") {
+    return (
+      <>
+        <NoticeBanner />
+        <InviteBanner />
+      </>
+    );
+  }
 
   return (
     <>
       <NoticeBanner />
+      <InviteBanner />
       <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
         <p className="font-semibold">
           {dbStatus === "need-sql"

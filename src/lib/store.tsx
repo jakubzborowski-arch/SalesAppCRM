@@ -14,7 +14,11 @@ import { activationBlockers, canEnterStage, contractBlockers, nextStage, offerBl
 import { categoryLabel, suggestVariant } from "./playbook";
 import { emptyMission, seedState } from "./seed";
 import {
+  MissionConflictError,
   acceptInviteToken,
+  clearMissionVersions,
+  replaceMissionVersions,
+  setMissionVersion,
   createInvite as createInviteRow,
   deleteActivity,
   ensureWorkspace,
@@ -25,6 +29,7 @@ import {
   loadCrm,
   loadMissionEvents,
   loadTeam,
+  peekInvite,
   persistMission,
   persistPartner,
   deletePartner as deletePartnerRow,
@@ -51,6 +56,7 @@ import type {
   AppState,
   Channel,
   CloseStatus,
+  InvitePeek,
   Mission,
   Need,
   NewActivityInput,
@@ -70,6 +76,15 @@ const REFRESH_MIN_MS = 30_000;
 export type DbStatus = "loading" | "need-login" | "need-sql" | "ok" | "error";
 
 export type Notice = { kind: "ok" | "error"; text: string };
+
+/** Zaproszenie czekające na decyzję: podgląd z bazy i stan przycisku „Dołącz”. */
+export type InviteState = {
+  token: string;
+  loading: boolean;
+  busy: boolean;
+  info: InvitePeek | null;
+  error: string | null;
+};
 
 type Result = { ok: boolean; error?: string };
 type GateResult = { ok: boolean; reason?: string };
@@ -173,7 +188,13 @@ type Store = {
   addTask: (input: { missionId: string; title: string; dueAt: string }) => Promise<{ ok: boolean; error?: string }>;
   completeTask: (taskId: string, done: boolean) => void;
   completeActivation: (missionId: string) => GateResult;
-  acceptInvite: (tokenOrLink: string) => Promise<Result>;
+  /** Zaproszenie do zespołu czekające na potwierdzenie (z linku albo wklejone w Ustawieniach). */
+  invite: InviteState | null;
+  /** Sprawdza link/kod i pokazuje potwierdzenie. Niczego jeszcze nie przyjmuje. */
+  checkInvite: (tokenOrLink: string) => Promise<Result>;
+  /** Przyjmuje sprawdzone zaproszenie (po kliknięciu „Dołącz”). */
+  confirmInvite: () => Promise<Result>;
+  dismissInvite: () => void;
   createInvite: (email: string) => Promise<{ ok: boolean; token?: string; error?: string }>;
   listInvites: () => Promise<{ ok: boolean; invites?: TeamInvite[]; error?: string }>;
   revokeInvite: (inviteId: string) => Promise<Result>;
@@ -210,13 +231,19 @@ export function rememberInvite(token: string) {
   }
 }
 
-export function takePendingInvite() {
+function readPendingInvite() {
   try {
-    const token = window.sessionStorage.getItem(INVITE_KEY);
-    if (token) window.sessionStorage.removeItem(INVITE_KEY);
-    return token;
+    return window.sessionStorage.getItem(INVITE_KEY);
   } catch {
     return null;
+  }
+}
+
+function clearPendingInvite() {
+  try {
+    window.sessionStorage.removeItem(INVITE_KEY);
+  } catch {
+    /* brak sessionStorage */
   }
 }
 
@@ -337,6 +364,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [schemaV4, setSchemaV4] = useState<boolean | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [invite, setInvite] = useState<InviteState | null>(null);
   const userIdRef = useRef<string | null>(null);
   const workspaceIdRef = useRef<string | null>(null);
   const dbStatusRef = useRef<DbStatus>("loading");
@@ -348,6 +376,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /** Ostatnio zapisane obiekty. Inny obiekt w stanie = zmiana do zapisania. */
   const savedMissions = useRef(new Map<string, Mission>());
   const savedPartners = useRef(new Map<string, Partner>());
+  /** Licznik udanych zapisów (klucz `m:id` / `p:id`) — odświeżenie nie cofa zapisanych w międzyczasie zmian. */
+  const saveCounter = useRef(new Map<string, number>());
+  /** W trakcie wczytywania workspace nie zapisujemy (stan zaraz zostanie podmieniony). */
+  const hydrating = useRef(false);
   const flushChain = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
@@ -363,12 +395,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     savedPartners.current = new Map(data.partners.map((p) => [p.id, p]));
   }, []);
 
-  /** Zapisuje tylko misje i partnerów zmienionych od ostatniego zapisu. Nie nadpisuje cudzej pracy. */
+  const bump = (key: string) => saveCounter.current.set(key, (saveCounter.current.get(key) ?? 0) + 1);
+
+  /**
+   * Zapisuje tylko misje i partnerów zmienionych od ostatniego zapisu. Misja zapisuje się tylko,
+   * gdy w bazie jest wersja, którą wczytaliśmy — inaczej wczytujemy wersję kolegi i mówimy o tym.
+   */
   const flush = useCallback(async () => {
     const workspaceId = workspaceIdRef.current;
     const userId = userIdRef.current;
-    if (!workspaceId || !userId || dbStatusRef.current !== "ok") return;
+    if (!workspaceId || !userId || dbStatusRef.current !== "ok" || hydrating.current) return;
     const snapshot = latest.current;
+    // Stan z innego workspace (np. tuż po dołączeniu do zespołu) nigdy nie idzie do zapisu.
+    if (snapshot.workspace.id && snapshot.workspace.id !== workspaceId) return;
     const partners = snapshot.partners.filter((p) => savedPartners.current.get(p.id) !== p);
     const missions = snapshot.missions.filter((m) => savedMissions.current.get(m.id) !== m);
     if (!partners.length && !missions.length) return;
@@ -379,23 +418,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         await persistPartner(partner);
         savedPartners.current.set(partner.id, partner);
+        bump(`p:${partner.id}`);
       } catch (err) {
         firstError ??= err as { code?: string; message?: string };
       }
     }
     const tasks: TaskItem[] = [];
     const eventsFor: string[] = [];
+    const conflicts: string[] = [];
     for (const mission of missions) {
       const before = savedMissions.current.get(mission.id);
       try {
         const { nextStepTask } = await persistMission(mission, workspaceId, userId);
         savedMissions.current.set(mission.id, mission);
+        bump(`m:${mission.id}`);
         if (nextStepTask) tasks.push(nextStepTask);
         if (!before || before.currentStage !== mission.currentStage || before.status !== mission.status) {
           eventsFor.push(mission.id);
         }
       } catch (err) {
-        firstError ??= err as { code?: string; message?: string };
+        if (err instanceof MissionConflictError) conflicts.push(mission.id);
+        else firstError ??= err as { code?: string; message?: string };
       }
     }
 
@@ -403,18 +446,58 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       eventsFor.map(async (missionId) => ({ missionId, events: await loadMissionEvents(missionId) })),
     );
     if (tasks.length || events.some((item) => item.events.length)) {
-      setState((prev) => ({
-        ...prev,
-        tasks: tasks.length ? mergeTasks(prev.tasks, tasks) : prev.tasks,
-        missions: prev.missions.map((m) => {
-          const found = events.find((item) => item.missionId === m.id);
-          if (!found?.events.length) return m;
-          const next = { ...m, events: found.events };
-          // Historia przyszła z bazy — to nie jest zmiana do zapisania.
-          if (savedMissions.current.get(m.id) === m) savedMissions.current.set(m.id, next);
+      setState((prev) => {
+        const next = {
+          ...prev,
+          tasks: tasks.length ? mergeTasks(prev.tasks, tasks) : prev.tasks,
+          missions: prev.missions.map((m) => {
+            const found = events.find((item) => item.missionId === m.id);
+            if (!found?.events.length) return m;
+            const withEvents = { ...m, events: found.events };
+            // Historia przyszła z bazy — to nie jest zmiana do zapisania.
+            if (savedMissions.current.get(m.id) === m) savedMissions.current.set(m.id, withEvents);
+            return withEvents;
+          }),
+        };
+        latest.current = next;
+        return next;
+      });
+    }
+
+    if (conflicts.length) {
+      // Ktoś z zespołu zapisał te misje przed nami: bierzemy jego wersję zamiast nadpisywać.
+      const names = conflicts
+        .map((id) => snapshot.partners.find((p) => p.id === snapshot.missions.find((m) => m.id === id)?.partnerId)?.name)
+        .filter(Boolean)
+        .join(", ");
+      try {
+        const fresh = await loadCrm(workspaceId);
+        setState((prev) => {
+          const next = {
+            ...prev,
+            missions: prev.missions
+              .map((m) => {
+                if (!conflicts.includes(m.id)) return m;
+                const server = fresh.missions.find((item) => item.id === m.id);
+                if (server) {
+                  savedMissions.current.set(server.id, server);
+                  setMissionVersion(server.id, fresh.versions.get(server.id));
+                }
+                return server ?? null;
+              })
+              .filter((m): m is Mission => m !== null),
+            tasks: fresh.tasks,
+          };
+          latest.current = next;
           return next;
-        }),
-      }));
+        });
+      } catch {
+        /* wersja kolegi dojdzie przy następnym odświeżeniu */
+      }
+      setNotice({
+        kind: "error",
+        text: `Ktoś z zespołu zmienił misję${names ? ` (${names})` : ""} w tym samym czasie. Wczytałem jego wersję — sprawdź ją i powtórz swoją ostatnią zmianę.`,
+      });
     }
 
     if (firstError) {
@@ -424,7 +507,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return;
     }
     setDbError(null);
-    setSaveState("saved");
+    setSaveState(conflicts.length ? "error" : "saved");
   }, []);
 
   const scheduleFlush = useCallback(() => {
@@ -432,36 +515,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return flushChain.current;
   }, [flush]);
 
+  /** Sprawdza zaproszenie i pokazuje potwierdzenie. Nic nie przyjmuje bez kliknięcia „Dołącz”. */
+  const inspectInvite = useCallback(async (token: string) => {
+    setInvite({ token, loading: true, busy: false, info: null, error: null });
+    try {
+      const info = await peekInvite(token);
+      setInvite({ token, loading: false, busy: false, info, error: null });
+    } catch (err) {
+      setInvite({ token, loading: false, busy: false, info: null, error: errorText(err, "Nie udało się sprawdzić zaproszenia.") });
+    }
+  }, []);
+
   const hydrateUser = useCallback(
     async (userId: string, email: string, fullName?: string, force = false) => {
       if (!force && hydratedFor.current === userId) return;
       hydratedFor.current = userId;
       userIdRef.current = userId;
       setAuthEmail(email);
-
-      const pendingInvite = takePendingInvite();
-      if (pendingInvite) {
-        try {
-          await acceptInviteToken(pendingInvite);
-          setNotice({ kind: "ok", text: "Dołączyłeś do zespołu. Widzisz teraz wspólnych partnerów i misje." });
-        } catch (err) {
-          setNotice({ kind: "error", text: errorText(err, "Nie udało się dołączyć do zespołu.") });
-        }
-      }
+      hydrating.current = true;
 
       try {
         const ctx = await ensureWorkspace();
-        workspaceIdRef.current = ctx.workspaceId;
-        const [{ partners, missions, tasks }, team] = await Promise.all([
+        const [{ partners, missions, tasks, versions }, team] = await Promise.all([
           loadCrm(ctx.workspaceId),
           loadTeam().catch(() => undefined),
         ]);
         const me = team?.find((member) => member.isMe);
         const name = fullName || me?.fullName || ctx.fullName;
-        markSaved({ partners, missions });
-        lastLoadAt.current = Date.now();
-        setSchemaV4(team === undefined ? null : team !== null);
-        setState({
+        const next: AppState = {
           user: {
             id: userId,
             name,
@@ -474,11 +555,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           missions,
           tasks,
           team: team ?? [],
-        });
+        };
+        // Workspace, stan do zapisu i „zapisane” przestawiamy razem — zapis w tle nie zobaczy pół stanu.
+        workspaceIdRef.current = ctx.workspaceId;
+        latest.current = next;
+        markSaved(next);
+        replaceMissionVersions(versions);
+        lastLoadAt.current = Date.now();
+        setSchemaV4(team === undefined ? null : team !== null);
+        setState(next);
         // Dane są w Supabase. Stara kopia w przeglądarce (z kontaktami) nie jest potrzebna.
         clearLocalCopy();
         setDbStatus("ok");
         setDbError(null);
+        const pending = readPendingInvite();
+        if (pending && team !== null) void inspectInvite(pending);
       } catch (err) {
         hydratedFor.current = null;
         const error = err as { code?: string; message?: string };
@@ -497,34 +588,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setDbStatus("error");
           setDbError(error.message ?? "Nie udało się wczytać workspace.");
         }
+      } finally {
+        hydrating.current = false;
       }
       setReady(true);
     },
-    [markSaved],
+    [markSaved, inspectInvite],
   );
 
   /** Zapisuje lokalne zmiany i wczytuje świeże dane workspace (np. zmiany kolegi z zespołu). */
   const refreshData = useCallback(async () => {
     const workspaceId = workspaceIdRef.current;
-    if (!workspaceId || dbStatusRef.current !== "ok") return;
+    if (!workspaceId || dbStatusRef.current !== "ok" || hydrating.current) return;
     await scheduleFlush();
+    const countersAtStart = new Map(saveCounter.current);
+    const savedSince = (key: string) => (saveCounter.current.get(key) ?? 0) !== (countersAtStart.get(key) ?? 0);
     try {
-      const [{ partners, missions, tasks }, team] = await Promise.all([
+      const [{ partners, missions, tasks, versions }, team] = await Promise.all([
         loadCrm(workspaceId),
         loadTeam().catch(() => undefined),
       ]);
+      if (workspaceIdRef.current !== workspaceId || hydrating.current) return;
       lastLoadAt.current = Date.now();
       setState((prev) => {
-        // Jeśli w trakcie wczytywania ktoś coś zmienił lokalnie, zostawiamy jego wersję.
+        // Zostawiamy lokalną wersję, gdy ma niezapisane zmiany albo zapisała się już po starcie wczytywania.
         const keepMission = new Map(
-          prev.missions.filter((m) => savedMissions.current.get(m.id) !== m).map((m) => [m.id, m]),
+          prev.missions
+            .filter((m) => savedMissions.current.get(m.id) !== m || savedSince(`m:${m.id}`))
+            .map((m) => [m.id, m]),
         );
         const keepPartner = new Map(
-          prev.partners.filter((p) => savedPartners.current.get(p.id) !== p).map((p) => [p.id, p]),
+          prev.partners
+            .filter((p) => savedPartners.current.get(p.id) !== p || savedSince(`p:${p.id}`))
+            .map((p) => [p.id, p]),
         );
         const loadedMissionIds = new Set(missions.map((m) => m.id));
         const loadedPartnerIds = new Set(partners.map((p) => p.id));
-        // Niezapisane jeszcze nowości (np. misja założona przed chwilą) zostają w widoku.
+        // Nowości spoza odczytu (np. misja założona przed chwilą) zostają w widoku.
         const nextMissions = [
           ...[...keepMission.values()].filter((m) => !loadedMissionIds.has(m.id)),
           ...missions.map((m) => keepMission.get(m.id) ?? m),
@@ -533,15 +633,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...partners.map((p) => keepPartner.get(p.id) ?? p),
           ...[...keepPartner.values()].filter((p) => !loadedPartnerIds.has(p.id)),
         ];
-        for (const m of missions) if (!keepMission.has(m.id)) savedMissions.current.set(m.id, m);
+        for (const m of missions) {
+          if (keepMission.has(m.id)) continue;
+          // Treść z bazy = wersja z bazy. Zostawione lokalne wersje trzymają swoją wersję.
+          savedMissions.current.set(m.id, m);
+          setMissionVersion(m.id, versions.get(m.id));
+        }
         for (const p of partners) if (!keepPartner.has(p.id)) savedPartners.current.set(p.id, p);
-        return {
+        const next = {
           ...prev,
           partners: nextPartners,
           missions: nextMissions,
           tasks,
           team: team ?? prev.team,
         };
+        // Zapis w tle porównuje z tym samym stanem, który właśnie oznaczyliśmy jako zapisany.
+        latest.current = next;
+        return next;
       });
     } catch {
       /* odświeżenie w tle — błąd pokaże się przy następnym zapisie */
@@ -581,6 +689,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         userIdRef.current = null;
         workspaceIdRef.current = null;
         hydratedFor.current = null;
+        clearMissionVersions();
         markSaved({ partners: [], missions: [] });
         setAuthEmail(null);
         setState(emptyState);
@@ -732,6 +841,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         userIdRef.current = null;
         workspaceIdRef.current = null;
         hydratedFor.current = null;
+        clearMissionVersions();
         markSaved({ partners: [], missions: [] });
         setAuthEmail(null);
         setState(emptyState);
@@ -1080,11 +1190,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Otwarty „następny krok” misji: zamknięty (przegrana) albo przestawiony na termin powrotu.
           tasks: prev.tasks.map((task) => {
             if (task.missionId !== missionId || task.source !== "next_step" || task.doneAt) return task;
-            if (input.status === "lost" || input.status === "no_fit") return { ...task, doneAt: now };
             if (comesBack) {
               return { ...task, title: `Wróć do partnera${reason ? ` (${reason})` : ""}`, dueAt: returnAt };
             }
-            return task;
+            return { ...task, doneAt: now };
           }),
         }));
         return { ok: true };
@@ -1447,19 +1556,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return { ok: true };
       },
-      acceptInvite: async (tokenOrLink) => {
+      invite,
+      checkInvite: async (tokenOrLink) => {
         const token = parseInviteToken(tokenOrLink);
         if (!token) return { ok: false, error: "To nie wygląda na link ani kod zaproszenia." };
+        rememberInvite(token);
+        await inspectInvite(token);
+        return { ok: true };
+      },
+      confirmInvite: async () => {
+        const current = invite;
+        if (!current?.info || current.info.status !== "ok") return { ok: false, error: "Brak ważnego zaproszenia." };
         const sb = getSupabase();
         const { data } = sb ? await sb.auth.getSession() : { data: { session: null } };
         const user = data.session?.user;
         if (!user) return { ok: false, error: "Najpierw się zaloguj." };
+        setInvite({ ...current, busy: true, error: null });
         try {
           await scheduleFlush();
-          await acceptInviteToken(token);
+          await acceptInviteToken(current.token);
         } catch (err) {
-          return { ok: false, error: errorText(err, "Nie udało się dołączyć do zespołu.") };
+          const error = errorText(err, "Nie udało się dołączyć do zespołu.");
+          setInvite({ ...current, busy: false, error });
+          return { ok: false, error };
         }
+        clearPendingInvite();
+        setInvite(null);
         await hydrateUser(
           user.id,
           user.email ?? "",
@@ -1468,6 +1590,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         setNotice({ kind: "ok", text: "Dołączyłeś do zespołu. Widzisz teraz wspólnych partnerów i misje." });
         return { ok: true };
+      },
+      dismissInvite: () => {
+        clearPendingInvite();
+        setInvite(null);
       },
       createInvite: async (email) => {
         try {
@@ -1505,6 +1631,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     authEmail,
     schemaV4,
     notice,
+    invite,
+    inspectInvite,
     hydrateUser,
     markSaved,
     refreshData,

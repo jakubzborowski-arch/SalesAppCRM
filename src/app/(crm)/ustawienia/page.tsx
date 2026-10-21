@@ -248,31 +248,30 @@ function TeamSection() {
 }
 
 function JoinSection() {
-  const { acceptInvite, schemaV4 } = useStore();
+  const { checkInvite, schemaV4 } = useStore();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   if (schemaV4 === false) return null;
 
   return (
     <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
       <h2 className="font-semibold">Masz zaproszenie do zespołu?</h2>
       <p className="mt-1 text-xs leading-5 text-muted">
-        Wklej link albo kod. Jeśli jesteś sam w obecnym workspace, Twoi partnerzy i misje przejdą razem z Tobą.
+        Wklej link albo kod. Najpierw zobaczysz, do jakiego zespołu dołączasz i co stanie się z Twoimi danymi.
       </p>
       <form
         className="mt-3 flex flex-wrap items-end gap-2"
         onSubmit={async (event) => {
           event.preventDefault();
           setBusy(true);
-          const outcome = await acceptInvite(value);
+          const outcome = await checkInvite(value);
           setBusy(false);
-          setResult(
-            outcome.ok
-              ? { ok: true, text: "Gotowe — jesteś w zespole." }
-              : { ok: false, text: outcome.error ?? "Nie udało się dołączyć." },
-          );
-          if (outcome.ok) setValue("");
+          setError(outcome.ok ? null : (outcome.error ?? "Nie udało się sprawdzić zaproszenia."));
+          if (outcome.ok) {
+            setValue("");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }
         }}
       >
         <div className="min-w-[280px] flex-1">
@@ -285,12 +284,10 @@ function JoinSection() {
           disabled={busy || !value.trim()}
           className="rounded-full bg-navy px-5 py-3 text-sm font-medium text-white disabled:opacity-40"
         >
-          {busy ? "Dołączam…" : "Dołącz"}
+          {busy ? "Sprawdzam…" : "Sprawdź zaproszenie"}
         </button>
       </form>
-      {result ? (
-        <p className={`mt-3 text-sm ${result.ok ? "text-emerald-700" : "text-rose-600"}`}>{result.text}</p>
-      ) : null}
+      {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
     </section>
   );
 }

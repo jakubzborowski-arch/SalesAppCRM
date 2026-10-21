@@ -2,11 +2,11 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { parseInviteToken, rememberInvite, takePendingInvite, useStore } from "@/lib/store";
+import { parseInviteToken, rememberInvite, useStore } from "@/lib/store";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { dbStatus, signIn, signUp, acceptInvite } = useStore();
+  const { dbStatus, signIn, signUp } = useStore();
   // Kod z linku zaproszenia (`/login?invite=…`). Pokazujemy go dopiero po zamontowaniu.
   const [invite] = useState(() =>
     typeof window === "undefined" ? "" : parseInviteToken(window.location.search),
@@ -28,15 +28,9 @@ export default function LoginPage() {
   }, [invite]);
 
   useEffect(() => {
-    if (dbStatus !== "ok" && dbStatus !== "need-sql") return;
-    // Zalogowany wcześniej: zaproszenie nie zostało jeszcze użyte, więc przyjmujemy je teraz.
-    const pending = dbStatus === "ok" ? takePendingInvite() : null;
-    if (pending) {
-      void acceptInvite(pending).then(() => router.replace("/pulpit"));
-      return;
-    }
-    router.replace("/pulpit");
-  }, [dbStatus, router, acceptInvite]);
+    // Zaproszenie czeka w tej karcie. Po zalogowaniu CRM pokaże je do potwierdzenia.
+    if (dbStatus === "ok" || dbStatus === "need-sql") router.replace("/pulpit");
+  }, [dbStatus, router]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -62,7 +56,7 @@ export default function LoginPage() {
         </p>
         {mounted && invite ? (
           <p className="mt-4 rounded-2xl bg-chip px-4 py-3 text-sm text-navy">
-            Masz zaproszenie do zespołu. Załóż konto albo zaloguj się — dołączysz do wspólnego workspace od razu.
+            Masz zaproszenie do zespołu. Załóż konto albo zaloguj się — potem potwierdzisz dołączenie.
           </p>
         ) : null}
 
