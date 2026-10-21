@@ -123,8 +123,16 @@ create policy "partners_insert" on partners for insert
 create policy "partners_update" on partners for update
   using (public.can_edit_partner(id))
   with check (workspace_id = public.current_workspace_id());
+-- Usunięcie partnera kasuje kaskadowo jego misje — także cudze. Dlatego tylko opiekun albo admin
+-- i tylko, gdy nie ma na nim misji, których usuwający nie może edytować.
 create policy "partners_delete" on partners for delete
-  using (public.can_edit_partner(id));
+  using (
+    workspace_id = public.current_workspace_id()
+    and (owner_user_id is null or owner_user_id = auth.uid() or public.is_workspace_admin())
+    and not exists (
+      select 1 from missions m where m.partner_id = partners.id and not public.can_edit_mission(m.id)
+    )
+  );
 
 -- Kontakty i zgody idą za partnerem.
 drop policy if exists "contacts_all" on partner_contacts;
@@ -222,14 +230,17 @@ create policy "transcripts_write" on transcripts for all
 -- ---------------------------------------------------------------------------
 -- 4. Przekazanie misji innej osobie z zespołu
 
+drop function if exists public.transfer_mission(uuid, uuid);
+-- Zwraca nową wersję misji (updated_at), żeby widok nie wziął własnego zapisu za cudzy.
 create or replace function public.transfer_mission(p_mission uuid, p_user uuid)
-returns void
+returns timestamptz
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
   v_ws uuid;
+  v_version timestamptz;
 begin
   if not public.can_edit_mission(p_mission) then
     raise exception 'Tę misję może przekazać jej właściciel albo administrator.' using errcode = '42501';
@@ -238,8 +249,9 @@ begin
   if not exists (select 1 from profiles where id = p_user and workspace_id = v_ws and is_active) then
     raise exception 'Ta osoba nie jest w zespole.' using errcode = '23514';
   end if;
-  update missions set owner_user_id = p_user where id = p_mission;
+  update missions set owner_user_id = p_user where id = p_mission returning updated_at into v_version;
   update tasks set owner_user_id = p_user where mission_id = p_mission and done_at is null;
+  return v_version;
 end;
 $$;
 
@@ -260,6 +272,77 @@ alter table public.contracts add constraint contracts_status_check
 update storage.buckets
 set allowed_mime_types = array['application/pdf', 'image/jpeg', 'image/png']
 where id = 'contracts';
+
+-- Plik umowy należy do zespołu misji także jako podpisany skan.
+create or replace function public.storage_object_workspace(p_bucket text, p_name text)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select ws from (
+    select m.workspace_id as ws
+    from contracts c
+    join missions m on m.id = c.mission_id
+    where p_bucket = 'contracts' and (c.document_path = p_name or c.signed_document_path = p_name)
+    union all
+    select m.workspace_id
+    from recordings r
+    join conversations cv on cv.id = r.conversation_id
+    join missions m on m.id = cv.mission_id
+    where p_bucket = 'recordings' and r.storage_path = p_name
+  ) found
+  limit 1
+$$;
+
+-- Misja, do której należy plik (umowa albo nagranie). Plik niepodpięty: misja z nazwy folderu
+-- („<user>/<misja>/<plik>”), jeśli to misja z tego zespołu.
+create or replace function public.storage_object_mission(p_bucket text, p_name text)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (
+      select c.mission_id from contracts c
+      where p_bucket = 'contracts' and (c.document_path = p_name or c.signed_document_path = p_name)
+      limit 1
+    ),
+    (
+      select cv.mission_id from recordings r join conversations cv on cv.id = r.conversation_id
+      where p_bucket = 'recordings' and r.storage_path = p_name
+      limit 1
+    ),
+    (
+      select m.id from missions m
+      where m.id::text = split_part(p_name, '/', 2)
+        and m.workspace_id = public.current_workspace_id()
+    )
+  )
+$$;
+
+revoke all on function public.storage_object_mission(text, text) from public, anon;
+grant execute on function public.storage_object_mission(text, text) to authenticated;
+
+-- Pliki kasuje ten, kto może edytować misję (podmiana PDF, sprzątanie, usunięcie partnera).
+drop policy if exists "contracts_delete_workspace" on storage.objects;
+drop policy if exists "recordings_delete_workspace" on storage.objects;
+drop policy if exists "contracts_delete_editor" on storage.objects;
+drop policy if exists "recordings_delete_editor" on storage.objects;
+-- Usuwanie wymaga też widoczności wiersza: prowadzący widzi pliki swojej misji, także niepodpięte.
+drop policy if exists "contracts_select_editor" on storage.objects;
+drop policy if exists "recordings_select_editor" on storage.objects;
+create policy "contracts_select_editor" on storage.objects for select to authenticated
+  using (bucket_id = 'contracts' and public.can_edit_mission(public.storage_object_mission(bucket_id, name)));
+create policy "recordings_select_editor" on storage.objects for select to authenticated
+  using (bucket_id = 'recordings' and public.can_edit_mission(public.storage_object_mission(bucket_id, name)));
+create policy "contracts_delete_editor" on storage.objects for delete to authenticated
+  using (bucket_id = 'contracts' and public.can_edit_mission(public.storage_object_mission(bucket_id, name)));
+create policy "recordings_delete_editor" on storage.objects for delete to authenticated
+  using (bucket_id = 'recordings' and public.can_edit_mission(public.storage_object_mission(bucket_id, name)));
 
 -- Umowy podpisane przed v6 miały tylko podpis handlowca — traktujemy je jako podpisane przez obie strony.
 update public.contracts

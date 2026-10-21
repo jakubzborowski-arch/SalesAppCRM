@@ -21,7 +21,7 @@ const SOURCE_LABEL: Record<string, string> = {
 type Filter = "open" | "done" | "all";
 
 export default function TasksPage() {
-  const { state, partnerById, addTask, completeTask } = useStore();
+  const { state, partnerById, addTask, completeTask, canEditMission } = useStore();
   const [filter, setFilter] = useState<Filter>("open");
   const [title, setTitle] = useState("");
   const [dueAt, setDueAt] = useState(new Date().toISOString().slice(0, 10));
@@ -210,7 +210,7 @@ export default function TasksPage() {
                   type="checkbox"
                   className="mt-1"
                   checked={Boolean(row.doneAt)}
-                  disabled={row.source !== "human" && row.id.includes(":")}
+                  disabled={(row.source !== "human" && row.id.includes(":")) || (row.mission ? !canEditMission(row.mission) : false)}
                   onChange={(e) => completeTask(row.id, e.target.checked)}
                 />
                 <span>

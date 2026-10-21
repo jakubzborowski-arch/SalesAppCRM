@@ -453,8 +453,33 @@ ok((gAdmin.affectedRows ?? 0) === 1, "administrator edytuje każdą misję");
 await expectError("właściciel spoza zespołu odrzucony", () =>
   as(G, () => db.query("update missions set owner_user_id = $2 where id = $1", [mH, C.id])), /członkiem zespołu/);
 
+// Partner z cudzą misją: handlowiec go nie usunie (kaskada skasowałaby misję szefowej), pliki zostają.
+const pShared = await as(H, async () => (await one("insert into partners (workspace_id, name, owner_user_id) values ($1, 'Wspólny', $2) returning id", [wsG, H.id])).id);
+const mSharedG = await as(G, async () => (await one("insert into missions (workspace_id, partner_id, owner_user_id) values ($1, $2, $3) returning id", [wsG, pShared, G.id])).id);
+const gPath = `${G.id}/${mSharedG}/umowa.pdf`;
+await as(G, () => db.query("insert into storage.objects (bucket_id, name, owner) values ('contracts', $1, $2)", [gPath, G.id]));
+await as(G, () => db.query("insert into contracts (mission_id, document_path) values ($1, $2)", [mSharedG, gPath]));
+const hDelFile = await as(H, () => db.query("delete from storage.objects where bucket_id = 'contracts' and name = $1", [gPath]));
+ok((hDelFile.affectedRows ?? 0) === 0, "handlowiec nie kasuje pliku cudzej misji");
+const hDelPartner = await as(H, () => db.query("delete from partners where id = $1", [pShared]));
+ok((hDelPartner.affectedRows ?? 0) === 0, "handlowiec nie usunie partnera z cudzą misją");
+ok((await all("select id from missions where id = $1", [mSharedG])).length === 1, "misja szefowej nietknięta");
+// Podpisany skan widzi cały zespół; stary plik po podmianie kasuje prowadzący.
+const scanPath = `${H.id}/${mH}/skan.jpg`;
+await as(H, () => db.query("insert into storage.objects (bucket_id, name, owner, created_at) values ('contracts', $1, $2, now() - interval '3 days')", [scanPath, H.id]));
+await as(H, () => db.query("insert into contracts (mission_id, signed_document_path, partner_signed_at) values ($1, $2, now())", [mH, scanPath]));
+ok((await as(G, () => all("select name from storage.objects where name = $1", [scanPath]))).length === 1, "zespół widzi podpisany skan");
+ok((await as(H, () => all("select name from storage.objects where name = $1", [scanPath]))).length === 1, "autor widzi swój skan po kilku dniach");
+const oldPdf = `${H.id}/${mH}/stara.pdf`;
+await as(H, () => db.query("insert into storage.objects (bucket_id, name, owner, created_at) values ('contracts', $1, $2, now() - interval '3 days')", [oldPdf, H.id]));
+const prune = await as(H, () => db.query("delete from storage.objects where bucket_id = 'contracts' and name = $1", [oldPdf]));
+ok((prune.affectedRows ?? 0) === 1, "prowadzący sprząta niepodpięty stary PDF swojej misji");
+
 await as(G, () => db.query("insert into tasks (workspace_id, mission_id, title, owner_user_id) values ($1, $2, 'oddzwonić', $3)", [wsG, mG, G.id]));
-await as(G, () => db.query("select public.transfer_mission($1, $2)", [mG, H.id]));
+const before = (await one("select updated_at::text as v from missions where id = $1", [mG])).v;
+const version = await as(G, async () => (await one("select public.transfer_mission($1, $2)::text as v", [mG, H.id])).v);
+const after = (await one("select updated_at::text as v from missions where id = $1", [mG])).v;
+ok(version === after && version !== before, "przekazanie zwraca nową wersję misji");
 const transferred = await one("select owner_user_id from missions where id = $1", [mG]);
 ok(transferred.owner_user_id === H.id, "misja przekazana");
 const movedTask = await one("select owner_user_id from tasks where mission_id = $1", [mG]);

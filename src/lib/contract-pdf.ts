@@ -19,21 +19,26 @@ const MUTED = rgb(0.42, 0.45, 0.55);
 export function wrapText(text: string, width: number, measure: (s: string) => number) {
   const lines: string[] = [];
   let line = "";
+  // Słowo szersze niż linia (np. długi adres URL) tniemy na kawałki, żeby nie wyszło za margines.
+  const pieces: string[] = [];
   for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (measure(word) <= width) {
+      pieces.push(word);
+      continue;
+    }
+    let chunk = "";
+    for (const ch of word) {
+      if (chunk && measure(chunk + ch) > width) {
+        pieces.push(chunk);
+        chunk = ch;
+      } else chunk += ch;
+    }
+    if (chunk) pieces.push(chunk);
+  }
+  for (const word of pieces) {
     const next = line ? `${line} ${word}` : word;
-    if (measure(next) <= width || !line) {
-      // Pojedyncze bardzo długie słowo tniemy, żeby nie wyszło poza stronę.
-      if (!line && measure(word) > width) {
-        let chunk = "";
-        for (const ch of word) {
-          if (measure(chunk + ch) > width) {
-            lines.push(chunk);
-            chunk = ch;
-          } else chunk += ch;
-        }
-        line = chunk;
-      } else line = next;
-    } else {
+    if (!line || measure(next) <= width) line = next;
+    else {
       lines.push(line);
       line = word;
     }

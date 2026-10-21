@@ -39,7 +39,6 @@ import {
   saveContractTemplate as saveContractTemplateRow,
   transferMission as transferMissionRow,
   V5_MISSING,
-  PartnerConflictError,
   loadPartner,
   deletePartner as deletePartnerRow,
   insertPartnerContact,
@@ -449,11 +448,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     setSaveState("saving");
     let firstError: { code?: string; message?: string } | null = null;
-    const partnerConflicts: PartnerConflictError[] = [];
+    const partnerConflicts: { partner: Partner; contactIds: string[] }[] = [];
     for (const partner of partners) {
       try {
-        const { dropped } = await persistPartner(partner, savedPartners.current.get(partner.id));
+        const { dropped, conflicts } = await persistPartner(partner, savedPartners.current.get(partner.id));
         savedPartners.current.set(partner.id, partner);
+        if (conflicts.length) partnerConflicts.push({ partner, contactIds: conflicts });
         if (dropped.includes("company")) {
           setSchemaV5(false);
           setNotice({ kind: "error", text: `${partner.name}: ${V5_MISSING}` });
@@ -463,24 +463,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         bump(`p:${partner.id}`);
       } catch (err) {
-        if (err instanceof PartnerConflictError) partnerConflicts.push(err);
-        else firstError ??= err as { code?: string; message?: string };
+        firstError ??= err as { code?: string; message?: string };
       }
     }
     for (const conflict of partnerConflicts) {
-      // Bierzemy wersję kolegi zamiast nadpisywać jego zmianę kontaktu.
-      const fresh = await loadPartner(conflict.partnerId).catch(() => null);
+      // Reszta karty jest zapisana. Kontakty zmienione przez kolegę bierzemy w jego wersji.
+      const fresh = await loadPartner(conflict.partner.id).catch(() => null);
       if (!fresh) continue;
-      savedPartners.current.set(fresh.id, fresh);
-      bump(`p:${fresh.id}`);
+      const withFresh = (p: Partner): Partner => ({
+        ...p,
+        contacts: p.contacts
+          .map((c) => (conflict.contactIds.includes(c.id) ? fresh.contacts.find((f) => f.id === c.id) : c))
+          .filter((c): c is PartnerContact => Boolean(c)),
+      });
+      const saved = withFresh(conflict.partner);
+      savedPartners.current.set(saved.id, saved);
       setState((prev) => {
-        const next = { ...prev, partners: prev.partners.map((p) => (p.id === fresh.id ? fresh : p)) };
+        const next = {
+          ...prev,
+          partners: prev.partners.map((p) => (p.id !== saved.id ? p : p === conflict.partner ? saved : withFresh(p))),
+        };
         latest.current = next;
         return next;
       });
+      const names = conflict.partner.contacts
+        .filter((c) => conflict.contactIds.includes(c.id))
+        .map((c) => c.name)
+        .join(", ");
       setNotice({
         kind: "error",
-        text: `${conflict.message} Wczytałem jego wersję karty ${fresh.name} — wprowadź swoją zmianę jeszcze raz.`,
+        text: `Kontakt ${names} (${saved.name}) zmienił w międzyczasie ktoś z zespołu. Pokazuję jego wersję — wprowadź swoją zmianę jeszcze raz.`,
       });
     }
     const tasks: TaskItem[] = [];
@@ -928,17 +940,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       canEditMission: (mission) => canEditMissionIn(state, mission, dbStatus === "ok" && schemaV6 === true),
       canEditPartner: (partner) => canEditPartnerIn(state, partner, dbStatus === "ok" && schemaV6 === true),
       transferMission: async (missionId, userId) => {
-        const result = await runRpc(() => transferMissionRow(missionId, userId), "Nie udało się przekazać misji.");
+        let version: string | undefined;
+        const result = await runRpc(async () => {
+          version = await transferMissionRow(missionId, userId);
+        }, "Nie udało się przekazać misji.");
         if (result.ok) {
-          const apply = (prev: AppState): AppState => ({
-            ...prev,
-            missions: prev.missions.map((m) => (m.id === missionId ? { ...m, ownerUserId: userId } : m)),
-          });
+          // Nowa wersja z bazy — kolejny zapis tej misji nie jest konfliktem.
+          if (version) setMissionVersion(missionId, version);
           setState((prev) => {
-            const next = apply(prev);
-            // Właściciel zmieniony w bazie przez RPC — to nie jest zmiana do zapisu.
+            const next = {
+              ...prev,
+              missions: prev.missions.map((m) => (m.id === missionId ? { ...m, ownerUserId: userId } : m)),
+            };
+            const before = prev.missions.find((m) => m.id === missionId);
+            const saved = savedMissions.current.get(missionId);
             const moved = next.missions.find((m) => m.id === missionId);
-            if (moved && savedMissions.current.has(missionId)) savedMissions.current.set(missionId, moved);
+            if (saved && moved) {
+              // Właściciela zmieniła baza. Niezapisane edycje (jeśli są) zostają do zapisu.
+              savedMissions.current.set(missionId, saved === before ? moved : { ...saved, ownerUserId: userId });
+            }
             latest.current = next;
             return next;
           });
@@ -1674,6 +1694,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       completeTask: (taskId, done) => {
+        const task = latest.current.tasks.find((t) => t.id === taskId);
+        const owner = task ? latest.current.missions.find((m) => m.id === task.missionId) : undefined;
+        if (owner && !canEditMissionIn(latest.current, owner, enforceRef.current)) {
+          setNotice({ kind: "error", text: READ_ONLY });
+          return;
+        }
         const doneAt = done ? new Date().toISOString() : undefined;
         setState((prev) => ({
           ...prev,

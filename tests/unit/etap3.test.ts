@@ -163,12 +163,15 @@ describe("kontakt partnera: konflikt zamiast nadpisania", () => {
     await db.persistPartner({ ...base, contacts: [{ ...contact, phone: "600" }] }, base);
     expect(fake.db.rows("partner_contacts")[0].phone).toBe("600");
   });
-  it("kolega zmienił ten kontakt — konflikt, jego wersja zostaje", async () => {
+  it("kolega zmienił ten kontakt — konflikt, jego wersja zostaje, reszta karty się zapisuje", async () => {
     seed("700");
-    await expect(db.persistPartner({ ...base, contacts: [{ ...contact, phone: "600" }] }, base)).rejects.toBeInstanceOf(
-      db.PartnerConflictError,
+    const result = await db.persistPartner(
+      { ...base, notes: "moja notatka", contacts: [{ ...contact, phone: "600" }] },
+      base,
     );
+    expect(result.conflicts).toEqual([CID]);
     expect(fake.db.rows("partner_contacts")[0].phone).toBe("700");
+    expect(fake.db.rows("partners")[0].notes).toBe("moja notatka");
     const fresh = await db.loadPartner(PID);
     expect(fresh?.contacts[0].phone).toBe("700");
   });

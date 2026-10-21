@@ -52,6 +52,7 @@ describe("szablon umowy", () => {
     const measure = (s: string) => s.length;
     expect(wrapText("ala ma kota", 6, measure)).toEqual(["ala ma", "kota"]);
     expect(wrapText("abcdefghij", 4, measure)).toEqual(["abcd", "efgh", "ij"]);
+    expect(wrapText("adres https://bardzo-dlugi", 8, measure)).toEqual(["adres", "https://", "bardzo-d", "lugi"]);
   });
   it("składa PDF z polskimi znakami", async () => {
     const font = (name: string) => new Uint8Array(readFileSync(path.join(__dirname, "../../public/fonts", name)));

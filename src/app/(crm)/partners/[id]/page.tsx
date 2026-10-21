@@ -60,6 +60,11 @@ export default function PartnerDetailPage({
 
   const owner = partner.contacts.find((c) => c.isDecisionMaker);
   const editable = canEditPartner(partner);
+  // Usunięcie kasuje też misje — tylko opiekun/admin i bez cudzych misji (tak samo pilnuje baza).
+  const canDelete =
+    editable &&
+    (!partner.ownerUserId || partner.ownerUserId === state.user.id || Boolean(state.user.isAdmin) || !state.user.id) &&
+    missions.every((m) => canEditMission(m));
 
   return (
     <div>
@@ -115,7 +120,7 @@ export default function PartnerDetailPage({
           >
             {mission ? "Otwórz misję" : latest ? "Ostatnia misja" : "Zajmuję się partnerem"}
           </button>
-          {confirmDelete ? (
+          {!canDelete ? null : confirmDelete ? (
             <div className="flex flex-wrap items-center gap-2">
               {missions.length ? (
                 <span className="text-xs text-rose-700">

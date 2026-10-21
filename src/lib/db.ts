@@ -262,16 +262,6 @@ export async function loadPartner(partnerId: string): Promise<Partner | null> {
   return partnerFromRows(row, contacts ?? [], consents ?? []);
 }
 
-/** Ktoś inny zmienił ten sam kontakt partnera od naszego ostatniego wczytania. */
-export class PartnerConflictError extends Error {
-  constructor(
-    readonly partnerId: string,
-    readonly contactName: string,
-  ) {
-    super(`Kontakt „${contactName}” zmienił ktoś z zespołu.`);
-  }
-}
-
 export async function loadCrm(workspaceId: string): Promise<{
   partners: Partner[];
   missions: Mission[];
@@ -694,8 +684,10 @@ export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrac
 export async function persistPartner(
   partner: Partner,
   before?: Partner,
-): Promise<{ dropped: ("company" | "priority")[] }> {
+): Promise<{ dropped: ("company" | "priority")[]; conflicts: string[] }> {
   const dropped: ("company" | "priority")[] = [];
+  /** Kontakty zmienione w międzyczasie przez kogoś innego — ich nie zapisujemy. */
+  const conflicts: string[] = [];
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
   for (const contact of partner.contacts) {
@@ -704,7 +696,10 @@ export async function persistPartner(
     if (old) {
       // Edycja istniejącego kontaktu: zapisujemy tylko, jeśli nikt go w międzyczasie nie zmienił.
       const { data: row } = await sb.from("partner_contacts").select("*").eq("id", contact.id).maybeSingle();
-      if (row && !contactRowMatches(row, old)) throw new PartnerConflictError(partner.id, old.name);
+      if (!row || !contactRowMatches(row, old)) {
+        conflicts.push(contact.id);
+        continue;
+      }
     }
     await upsertPartnerContactRow(partner.id, contact);
   }
@@ -767,7 +762,7 @@ export async function persistPartner(
       if (error) throw error;
     }
   }
-  return { dropped };
+  return { dropped, conflicts };
 }
 
 /** Czy baza ma kolumny danych firmy (migracja v5). */
@@ -814,8 +809,11 @@ export async function deletePartner(partnerId: string) {
   }
   const { error: missionError } = await sb.from("missions").delete().eq("partner_id", partnerId);
   if (missionError && !isMissingCrmTable(missionError)) throw missionError;
-  const { error } = await sb.from("partners").delete().eq("id", partnerId);
+  const { data: removed, error } = await sb.from("partners").delete().eq("id", partnerId).select("id");
   if (error) throw error;
+  if (!removed?.length) {
+    throw new Error("Tego partnera usuwa jego opiekun albo administrator (i tylko bez cudzych misji).");
+  }
 }
 
 /**
@@ -1158,11 +1156,13 @@ export async function detectSchemaV6(): Promise<boolean | null> {
   return null;
 }
 
+/** Przekazuje misję. Zwraca nową wersję misji (updated_at) do zapisu warunkowego. */
 export async function transferMission(missionId: string, userId: string) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
-  const { error } = await sb.rpc("transfer_mission", { p_mission: missionId, p_user: userId });
+  const { data, error } = await sb.rpc("transfer_mission", { p_mission: missionId, p_user: userId });
   if (error) throw rpcError(error, "Nie udało się przekazać misji.", V6_MISSING);
+  return typeof data === "string" ? data : undefined;
 }
 
 export async function saveContractTemplate(template: string) {
