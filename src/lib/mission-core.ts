@@ -516,10 +516,12 @@ export async function setTaskDone(taskId: string, done: boolean) {
 export async function uploadContractPdf(userId: string, missionId: string, file: File) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
-  const path = `${userId}/${missionId}.pdf`;
+  // Każda wersja PDF ma własną nazwę: nowy plik nigdy nie nadpisuje starego (także cudzego
+  // albo starego, niepodpiętego pliku, którego RLS już nie pozwala ruszyć).
+  const path = `${userId}/${missionId}/${crypto.randomUUID()}.pdf`;
   const { error } = await sb.storage.from("contracts").upload(path, file, {
     contentType: "application/pdf",
-    upsert: true,
+    upsert: false,
   });
   if (error) throw error;
   return path;
