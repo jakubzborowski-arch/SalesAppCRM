@@ -416,7 +416,8 @@ exception when duplicate_object then null; end $$;
 
 create index if not exists conversations_mission_started_idx on conversations (mission_id, started_at desc);
 
--- Wpis z dziennika usuwa jego autor albo administrator. Czytać i dopisywać może cały zespół.
+-- Dziennik: cały zespół czyta i dopisuje (zawsze jako on sam). Wpisów się nie edytuje.
+-- Usuwa autor albo administrator. Stare wpisy bez autora może usunąć każdy z zespołu.
 drop policy if exists "conversations_all" on conversations;
 drop policy if exists "conversations_select" on conversations;
 drop policy if exists "conversations_insert" on conversations;
@@ -425,10 +426,10 @@ drop policy if exists "conversations_delete" on conversations;
 create policy "conversations_select" on conversations for select
   using (mission_id in (select id from missions where workspace_id = public.current_workspace_id()));
 create policy "conversations_insert" on conversations for insert
-  with check (mission_id in (select id from missions where workspace_id = public.current_workspace_id()));
-create policy "conversations_update" on conversations for update
-  using (mission_id in (select id from missions where workspace_id = public.current_workspace_id()))
-  with check (mission_id in (select id from missions where workspace_id = public.current_workspace_id()));
+  with check (
+    mission_id in (select id from missions where workspace_id = public.current_workspace_id())
+    and created_by = auth.uid()
+  );
 create policy "conversations_delete" on conversations for delete
   using (
     mission_id in (select id from missions where workspace_id = public.current_workspace_id())
@@ -561,14 +562,32 @@ create policy "recordings_select_workspace" on storage.objects for select to aut
     and public.storage_object_workspace(bucket_id, name) = public.current_workspace_id()
   );
 
--- Własny folder działa dalej (świeżo wgrany plik, zanim misja go zapisze),
--- ale nie dla plików misji z innego workspace — np. po odejściu z zespołu.
+-- Zespół kasuje pliki swoich misji (np. razem z partnerem albo przy podmianie PDF umowy).
+drop policy if exists "contracts_delete_workspace" on storage.objects;
+create policy "contracts_delete_workspace" on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'contracts'
+    and public.storage_object_workspace(bucket_id, name) = public.current_workspace_id()
+  );
+
+drop policy if exists "recordings_delete_workspace" on storage.objects;
+create policy "recordings_delete_workspace" on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'recordings'
+    and public.storage_object_workspace(bucket_id, name) = public.current_workspace_id()
+  );
+
+-- Własny folder: plik misji z własnego workspace albo świeżo wgrany (zanim misja go zapisze).
+-- Stary, niepodpięty plik (np. po usunięciu misji) i pliki misji z innego workspace — nie.
 drop policy if exists "contracts_select_own" on storage.objects;
 create policy "contracts_select_own" on storage.objects for select to authenticated
   using (
     bucket_id = 'contracts'
     and (storage.foldername(name))[1] = auth.uid()::text
-    and coalesce(public.storage_object_workspace(bucket_id, name) = public.current_workspace_id(), true)
+    and coalesce(
+      public.storage_object_workspace(bucket_id, name) = public.current_workspace_id(),
+      objects.created_at > now() - interval '1 day'
+    )
   );
 
 drop policy if exists "contracts_update_own" on storage.objects;
@@ -576,7 +595,10 @@ create policy "contracts_update_own" on storage.objects for update to authentica
   using (
     bucket_id = 'contracts'
     and (storage.foldername(name))[1] = auth.uid()::text
-    and coalesce(public.storage_object_workspace(bucket_id, name) = public.current_workspace_id(), true)
+    and coalesce(
+      public.storage_object_workspace(bucket_id, name) = public.current_workspace_id(),
+      objects.created_at > now() - interval '1 day'
+    )
   );
 
 drop policy if exists "recordings_select_own" on storage.objects;
@@ -584,7 +606,10 @@ create policy "recordings_select_own" on storage.objects for select to authentic
   using (
     bucket_id = 'recordings'
     and (storage.foldername(name))[1] = auth.uid()::text
-    and coalesce(public.storage_object_workspace(bucket_id, name) = public.current_workspace_id(), true)
+    and coalesce(
+      public.storage_object_workspace(bucket_id, name) = public.current_workspace_id(),
+      objects.created_at > now() - interval '1 day'
+    )
   );
 
 drop policy if exists "recordings_delete_own" on storage.objects;
@@ -592,7 +617,10 @@ create policy "recordings_delete_own" on storage.objects for delete to authentic
   using (
     bucket_id = 'recordings'
     and (storage.foldername(name))[1] = auth.uid()::text
-    and coalesce(public.storage_object_workspace(bucket_id, name) = public.current_workspace_id(), true)
+    and coalesce(
+      public.storage_object_workspace(bucket_id, name) = public.current_workspace_id(),
+      objects.created_at > now() - interval '1 day'
+    )
   );
 
 notify pgrst, 'reload schema';

@@ -213,7 +213,7 @@ export async function loadCrm(workspaceId: string): Promise<{
   const { data: partnerRows, error: partnerError } = await fetchAll((from, to) =>
     sb
       .from("partners")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
@@ -250,7 +250,7 @@ export async function loadCrm(workspaceId: string): Promise<{
   const { data: missionRows, error: missionError } = await fetchAll((from, to) =>
     sb
       .from("missions")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("workspace_id", workspaceId)
       .order("started_at", { ascending: false })
       .order("id", { ascending: true })
@@ -629,9 +629,38 @@ export async function persistPartner(partner: Partner) {
   }
 }
 
+/** Pliki umów i nagrań misji partnera. Kasujemy je razem z partnerem, żeby nie zostały sieroty. */
+async function partnerFiles(partnerId: string) {
+  const sb = getSupabase();
+  if (!sb) return { contracts: [] as string[], recordings: [] as string[] };
+  const { data: missionRows } = await sb.from("missions").select("id").eq("partner_id", partnerId);
+  const missionIds = (missionRows ?? []).map((row) => row.id as string);
+  if (!missionIds.length) return { contracts: [], recordings: [] };
+  const { data: contractRows } = await selectIn(sb, "contracts", "mission_id", missionIds);
+  const { data: convoRows } = await selectIn(sb, "conversations", "mission_id", missionIds);
+  const { data: recordingRows } = await selectIn(
+    sb,
+    "recordings",
+    "conversation_id",
+    convoRows.map((row) => row.id as string),
+  );
+  return {
+    contracts: contractRows.map((row) => row.document_path as string).filter(Boolean),
+    recordings: recordingRows.map((row) => row.storage_path as string).filter(Boolean),
+  };
+}
+
 export async function deletePartner(partnerId: string) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
+  // Najpierw pliki (póki misje je wskazują i RLS wie, że są zespołu), potem wiersze.
+  try {
+    const files = await partnerFiles(partnerId);
+    if (files.contracts.length) await sb.storage.from("contracts").remove(files.contracts);
+    if (files.recordings.length) await sb.storage.from("recordings").remove(files.recordings);
+  } catch {
+    /* plik, którego nie da się skasować, nie blokuje usunięcia partnera */
+  }
   const { error: missionError } = await sb.from("missions").delete().eq("partner_id", partnerId);
   if (missionError && !isMissingCrmTable(missionError)) throw missionError;
   const { error } = await sb.from("partners").delete().eq("id", partnerId);
@@ -699,6 +728,7 @@ export async function persistMission(
   };
 
   const version = missionVersions.get(mission.id);
+  let claimed: string | undefined;
   if (version) {
     const { data, error } = await sb
       .from("missions")
@@ -708,7 +738,7 @@ export async function persistMission(
       .select("*");
     if (error) throw error;
     if (!data?.length) throw new MissionConflictError(mission.id);
-    if (data[0].updated_at) setMissionVersion(mission.id, String(data[0].updated_at));
+    claimed = data[0].updated_at ? String(data[0].updated_at) : undefined;
   } else {
     const { data, error } = await sb
       .from("missions")
@@ -716,19 +746,31 @@ export async function persistMission(
       .select("*")
       .single();
     if (error) throw error;
-    if (data?.updated_at) setMissionVersion(mission.id, String(data.updated_at));
+    claimed = data?.updated_at ? String(data.updated_at) : undefined;
   }
+  setMissionVersion(mission.id, claimed);
 
   const core = await syncMissionCore(mission, workspaceId, userId);
   if (core.status === "synced") {
-    if (!slim) {
-      const { data, error: slimError } = await sb
+    if (claimed) {
+      // Domknięcie zapisu: nowa wersja dopiero po zapisaniu tabel misji. Kto wczytał misję
+      // w trakcie naszego zapisu, ma starszą wersję i jego zapis skończy się konfliktem,
+      // zamiast wgrać z powrotem połowiczny stan.
+      const { data, error: sealError } = await sb
         .from("missions")
         .update({ details: uiDetailsOf(mission) })
         .eq("id", mission.id)
+        .eq("updated_at", claimed)
         .select("*");
+      if (sealError) throw sealError;
+      if (!data?.length) throw new MissionConflictError(mission.id);
+      setMissionVersion(mission.id, data[0].updated_at ? String(data[0].updated_at) : undefined);
+    } else if (!slim) {
+      const { error: slimError } = await sb
+        .from("missions")
+        .update({ details: uiDetailsOf(mission) })
+        .eq("id", mission.id);
       if (slimError) throw slimError;
-      if (data?.[0]?.updated_at) setMissionVersion(mission.id, String(data[0].updated_at));
     }
     coreTablesAvailable = true;
   } else {

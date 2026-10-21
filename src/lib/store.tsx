@@ -640,8 +640,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setMissionVersion(m.id, versions.get(m.id));
         }
         for (const p of partners) if (!keepPartner.has(p.id)) savedPartners.current.set(p.id, p);
+        const me = team?.find((member) => member.isMe);
         const next = {
           ...prev,
+          // Rola mogła się zmienić (np. awans na administratora po odejściu poprzedniego).
+          user: me
+            ? { ...prev.user, isAdmin: me.role === "admin", role: me.role === "admin" ? "Administrator" : "Handlowiec" }
+            : prev.user,
           partners: nextPartners,
           missions: nextMissions,
           tasks,
@@ -850,6 +855,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       retryCloud: async () => {
         const sb = getSupabase();
         if (!sb) return;
+        // Najpierw zapisujemy, co czeka — wczytanie podmienia cały stan.
+        await scheduleFlush();
         const { data } = await sb.auth.getSession();
         const user = data.session?.user;
         if (!user) {
