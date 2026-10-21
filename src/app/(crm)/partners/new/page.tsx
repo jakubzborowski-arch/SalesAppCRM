@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { PriorityChecks } from "@/components/partners/priority-checks";
 import { Field, inputClass } from "@/components/ui";
+import Link from "next/link";
 import { isValidNip } from "@/lib/company";
+import { findDuplicates } from "@/lib/duplicates";
 import { useStore } from "@/lib/store";
 import type { ConsentStatus } from "@/lib/types";
 
@@ -40,9 +42,28 @@ export default function NewPartnerPage() {
     emailConsent: "unknown" as ConsentStatus,
   });
 
+  const [confirmDuplicate, setConfirmDuplicate] = useState(false);
   const set = (key: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setConfirmDuplicate(false);
   };
+
+  const duplicates = useMemo(
+    () =>
+      form.name.trim().length >= 2
+        ? findDuplicates(
+            {
+              name: form.name,
+              city: form.city,
+              nip: form.nip,
+              phones: [form.contactPhone],
+              emails: [form.contactEmail],
+            },
+            state.partners,
+          )
+        : [],
+    [form.name, form.city, form.nip, form.contactPhone, form.contactEmail, state.partners],
+  );
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -52,6 +73,11 @@ export default function NewPartnerPage() {
     }
     if (form.nip.trim() && !isValidNip(form.nip)) {
       setError("NIP jest niepoprawny — popraw albo zostaw puste i uzupełnij na karcie partnera.");
+      return;
+    }
+    if (duplicates.length && !confirmDuplicate) {
+      setConfirmDuplicate(true);
+      setError("Ten lokal chyba już jest w CRM. Sprawdź listę powyżej albo kliknij „Dodaj mimo to”.");
       return;
     }
     setPending(true);
@@ -95,9 +121,26 @@ export default function NewPartnerPage() {
               disabled={pending}
               className="rounded-full bg-lutra px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
             >
-              {pending ? "Zapisuję…" : "Zapisz partnera"}
+              {pending ? "Zapisuję…" : confirmDuplicate ? "Dodaj mimo to" : "Zapisz partnera"}
             </button>
           </div>
+        </div>
+        {duplicates.length ? (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+            <p className="font-semibold">Podobny partner już jest w CRM:</p>
+            <ul className="mt-2 space-y-1">
+              {duplicates.map(({ partner, reasons }) => (
+                <li key={partner.id}>
+                  <Link href={`/partners/${partner.id}`} className="font-semibold text-lutra">
+                    {partner.name}
+                  </Link>
+                  {partner.city ? ` · ${partner.city}` : ""} — {reasons.join(", ")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        <div>
         </div>
 
         <div className="mt-6 grid gap-5 lg:grid-cols-2">

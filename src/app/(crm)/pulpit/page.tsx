@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { STAGES } from "@/lib/types";
 import { useStore } from "@/lib/store";
+import { AgendaList } from "@/components/reminders";
 
 function Topbar() {
   const { state } = useStore();
@@ -51,6 +52,8 @@ export default function PulpitPage() {
             <p className="mt-1 text-2xl font-semibold">{state.partners.length}</p>
           </div>
         </div>
+
+        <AgendaList />
 
         {urgent ? (
           <Link

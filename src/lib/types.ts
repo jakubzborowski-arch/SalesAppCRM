@@ -142,6 +142,8 @@ export type CompanyData = {
 
 export type Partner = {
   id: string;
+  /** Kto dodał partnera / za niego odpowiada. */
+  ownerUserId?: string;
   name: string;
   segment: PartnerSegment;
   city: string;
@@ -213,11 +215,21 @@ export type ContractRecord = {
   startAt: string;
   endAt: string;
   changeRules: string;
+  /** Podpis po stronie Lutry (handlowiec). */
   signedByHuman: boolean;
   documentPath?: string;
   signedAt?: string;
-  status: "draft" | "ready" | "signed";
+  /** Kiedy umowę wysłano partnerowi do podpisu. */
+  sentAt?: string;
+  /** Kiedy partner podpisał. */
+  partnerSignedAt?: string;
+  /** Skan albo PDF podpisany przez partnera. */
+  signedDocumentPath?: string;
+  status: ContractStatus;
 };
+
+/** draft → ready (jest PDF) → sent (u partnera) → partner_signed → signed (obie strony). */
+export type ContractStatus = "draft" | "ready" | "sent" | "partner_signed" | "signed";
 
 export type ActivationRecord = {
   partnerCode: string;
@@ -290,7 +302,7 @@ export type Mission = {
 
 export type AppState = {
   user: { name: string; initials: string; role: string; id?: string; isAdmin?: boolean };
-  workspace: { name: string; id: string };
+  workspace: { name: string; id: string; contractTemplate?: string | null };
   partners: Partner[];
   missions: Mission[];
   tasks: TaskItem[];

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ActivityLog } from "@/components/mission/activity-log";
 import { CloseMissionPanel } from "@/components/mission/close-mission";
 import { MissionPanel } from "@/components/mission/mission-panel";
+import { TransferMission } from "@/components/mission/transfer-mission";
 import { DraftBubble } from "@/components/mission/draft-bubble";
 import { MissionStepper } from "@/components/mission/stepper";
 import { ActivationStep } from "@/components/mission/steps/activation-step";
@@ -151,6 +152,8 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
   const owner = partner.contacts.find((c) => c.isDecisionMaker);
   // Kroki oglądamy na kopii misji z podmienionym etapem, żeby podpowiedzi pasowały do kroku.
   const shown: typeof mission = viewing ? { ...mission, currentStage: stage } : mission;
+  // Cudza misja (z v6): podgląd bez edycji. Prowadzi właściciel albo administrator.
+  const editable = store.canEditMission(mission);
 
   const show = (id: StageId) => {
     setError(null);
@@ -166,6 +169,10 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
     // Wcześniejsze albo już ukończone kroki tylko podglądamy — postęp misji się nie cofa.
     if (index < currentIndex || mission.completedStages.includes(id)) {
       show(id);
+      return;
+    }
+    if (!editable) {
+      setError("Tylko podgląd — dalej misję prowadzi jej właściciel.");
       return;
     }
     if (index === currentIndex + 1) {
@@ -256,6 +263,9 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {editable ? <TransferMission mission={mission} /> : null}
+            {editable ? (
+            <>
             <button
               type="button"
               onClick={openLog}
@@ -270,12 +280,20 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
             >
               Zamknij misję
             </button>
+            </>
+            ) : null}
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
               {STAGE_BADGE[current]}
             </span>
           </div>
         </div>
-        {closing ? (
+        {editable ? null : (
+          <p className="mt-4 rounded-2xl bg-chip px-4 py-2 text-sm text-navy">
+            Tylko podgląd — misję prowadzi {store.memberName(mission.ownerUserId) || "ktoś z zespołu"}. Edytuje
+            ona albo administrator; administrator może też przekazać misję.
+          </p>
+        )}
+        {closing && editable ? (
           <CloseMissionPanel mission={mission} onCancel={() => setClosing(false)} onClosed={() => setClosing(false)} />
         ) : null}
         <div className="mt-6 max-w-3xl">
@@ -296,11 +314,14 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
                 Podgląd kroku <strong>{stageLabel(stage)}</strong>. Misja jest na kroku{" "}
                 <strong>{stageLabel(current)}</strong> — zmiany tutaj zapisują się, etap zostaje.
               </p>
-              <button type="button" onClick={moveMissionHere} className="text-xs font-semibold text-lutra">
-                {stageIndex < currentIndex ? "Cofnij misję do tego kroku" : "Przenieś misję na ten krok"}
-              </button>
+              {editable ? (
+                <button type="button" onClick={moveMissionHere} className="text-xs font-semibold text-lutra">
+                  {stageIndex < currentIndex ? "Cofnij misję do tego kroku" : "Przenieś misję na ten krok"}
+                </button>
+              ) : null}
             </div>
           ) : null}
+          <fieldset disabled={!editable} className="min-w-0">
           <SkillSmokeBar partner={partner} mission={shown} />
           {stage === "research" ? <ResearchStep mission={shown} /> : null}
           {stage === "contact" ? <ContactStep mission={shown} partner={partner} /> : null}
@@ -312,6 +333,7 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
           {stage === "activation" ? (
             <ActivationStep mission={shown} partner={partner} />
           ) : null}
+          </fieldset>
 
           {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
 
@@ -323,13 +345,17 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
               <button type="button" onClick={onBack} className="text-sm text-muted">
                 ← Wstecz
               </button>
-              <button
-                type="button"
-                onClick={onNext}
-                className="rounded-full bg-lutra px-5 py-2.5 text-sm font-medium text-white hover:bg-lutra-dark"
-              >
-                {viewing ? `Wróć do kroku: ${stageLabel(current)}` : STAGE_CTA[stage]}
-              </button>
+              {editable || viewing ? (
+                <button
+                  type="button"
+                  onClick={onNext}
+                  className="rounded-full bg-lutra px-5 py-2.5 text-sm font-medium text-white hover:bg-lutra-dark"
+                >
+                  {viewing ? `Wróć do kroku: ${stageLabel(current)}` : STAGE_CTA[stage]}
+                </button>
+              ) : (
+                <span className="text-sm text-muted">Tylko podgląd</span>
+              )}
             </div>
           </div>
         </section>
@@ -342,7 +368,7 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
         <ActivityLog
           partner={partner}
           missions={[mission]}
-          activeMission={mission}
+          activeMission={editable ? mission : undefined}
           formOpen={logOpen}
           onFormOpenChange={setLogOpen}
         />

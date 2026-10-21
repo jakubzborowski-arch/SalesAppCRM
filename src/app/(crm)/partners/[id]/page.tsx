@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ActivityLog } from "@/components/mission/activity-log";
 import { CompanyCard } from "@/components/partners/company-card";
 import { MissionDossier } from "@/components/partners/mission-dossier";
+import { ContactForm, PartnerBasicsForm } from "@/components/partners/partner-edit";
 import { PriorityChecks } from "@/components/partners/priority-checks";
 import { CONTACT_CHANNELS } from "@/lib/playbook";
 import { socialUrl, type SocialKind } from "@/lib/social";
@@ -38,6 +39,9 @@ export default function PartnerDetailPage({
     setConsent,
     state,
     deletePartner,
+    canEditPartner,
+    canEditMission,
+    memberName,
   } = useStore();
   const partner = partnerById(id);
   const mission = missionByPartner(id);
@@ -47,12 +51,15 @@ export default function PartnerDetailPage({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [editingBasics, setEditingBasics] = useState(false);
+  const [editingContact, setEditingContact] = useState<string | "new" | null>(null);
 
   if (!partner) {
     return <div className="p-10 text-sm text-muted">Nie znaleziono partnera.</div>;
   }
 
   const owner = partner.contacts.find((c) => c.isDecisionMaker);
+  const editable = canEditPartner(partner);
 
   return (
     <div>
@@ -149,11 +156,32 @@ export default function PartnerDetailPage({
           </div>
         </div>
         {deleteError ? <p className="mt-3 text-sm text-rose-600">{deleteError}</p> : null}
+        {editable ? null : (
+          <p className="mt-3 rounded-2xl bg-chip px-4 py-2 text-sm text-navy">
+            Tylko podgląd — kartę edytuje {memberName(partner.ownerUserId) || "opiekun partnera"} albo administrator.
+          </p>
+        )}
 
         <div className="mt-6 grid items-start gap-4 lg:grid-cols-12">
           <section className="rounded-2xl border border-line bg-white p-5 shadow-[0_8px_30px_rgba(9,12,155,0.05)] lg:col-span-7">
-            <h2 className="text-base font-bold text-navy">Znane fakty</h2>
-            <p className="mt-1 text-xs font-medium text-muted">Obserwacje publiczne, nie potrzeby.</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-navy">Znane fakty</h2>
+                <p className="mt-1 text-xs font-medium text-muted">Obserwacje publiczne, nie potrzeby.</p>
+              </div>
+              {editable && !editingBasics ? (
+                <button
+                  type="button"
+                  onClick={() => setEditingBasics(true)}
+                  className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-lutra"
+                >
+                  Edytuj
+                </button>
+              ) : null}
+            </div>
+            {editingBasics ? (
+              <PartnerBasicsForm partner={partner} onDone={() => setEditingBasics(false)} />
+            ) : (
             <dl className="mt-4 grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Godziny</dt>
@@ -205,10 +233,12 @@ export default function PartnerDetailPage({
               <div>
                 <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Priorytet</dt>
                 <dd className="mt-2">
-                  <PriorityChecks
-                    value={partner.priority}
-                    onChange={(next) => updatePartner(partner.id, { priority: next })}
-                  />
+                  <fieldset disabled={!editable}>
+                    <PriorityChecks
+                      value={partner.priority}
+                      onChange={(next) => updatePartner(partner.id, { priority: next })}
+                    />
+                  </fieldset>
                 </dd>
               </div>
               <div>
@@ -217,25 +247,58 @@ export default function PartnerDetailPage({
               </div>
               <div>
                 <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Notatka</dt>
-                <dd className="mt-0.5 font-semibold text-foreground">{partner.notes ?? "—"}</dd>
+                <dd className="mt-0.5 font-semibold text-foreground">{partner.notes || "—"}</dd>
               </div>
             </dl>
+            )}
           </section>
 
           <section className="rounded-2xl border border-line bg-white p-5 shadow-[0_8px_30px_rgba(9,12,155,0.05)] lg:col-span-5">
-            <h2 className="text-base font-bold text-navy">Kontakty</h2>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-base font-bold text-navy">Kontakty</h2>
+              {editable && editingContact === null ? (
+                <button
+                  type="button"
+                  onClick={() => setEditingContact("new")}
+                  className="text-xs font-semibold text-lutra"
+                >
+                  + Dodaj osobę
+                </button>
+              ) : null}
+            </div>
+            {editingContact === "new" ? (
+              <ContactForm partner={partner} onDone={() => setEditingContact(null)} />
+            ) : null}
             <ul className="mt-4 space-y-3 text-sm">
-              {partner.contacts.map((c) => (
-                <li key={c.id}>
-                  <p className="font-bold text-foreground">
-                    {c.name} · {c.role}
-                    {c.isDecisionMaker ? " · decydent" : ""}
-                  </p>
-                  <p className="font-medium text-muted">
-                    {[c.phone, c.email].filter(Boolean).join(" · ") || "brak danych"}
-                  </p>
-                </li>
-              ))}
+              {partner.contacts.map((c) =>
+                editingContact === c.id ? (
+                  <li key={c.id}>
+                    <ContactForm partner={partner} contact={c} onDone={() => setEditingContact(null)} />
+                  </li>
+                ) : (
+                  <li key={c.id} className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-foreground">
+                        {c.name}
+                        {c.role ? ` · ${c.role}` : ""}
+                        {c.isDecisionMaker ? " · decydent" : ""}
+                      </p>
+                      <p className="font-medium text-muted">
+                        {[c.phone, c.email, c.linkedin].filter(Boolean).join(" · ") || "brak danych"}
+                      </p>
+                    </div>
+                    {editable && editingContact === null ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingContact(c.id)}
+                        className="shrink-0 text-xs font-semibold text-lutra"
+                      >
+                        Edytuj
+                      </button>
+                    ) : null}
+                  </li>
+                ),
+              )}
             </ul>
             {owner ? (
               <p className="mt-4 text-xs text-muted">Główny decydent: {owner.name}</p>
@@ -257,13 +320,14 @@ export default function PartnerDetailPage({
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
+                  disabled={!editable}
                   checked={partner.dnc}
                   onChange={(e) => updatePartner(partner.id, { dnc: e.target.checked })}
                 />
                 Nie kontaktować
               </label>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <fieldset disabled={!editable} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {CONTACT_CHANNELS.map((channel) => {
                 const consent = partner.consents.find(
                   (c) => c.channel === channel.id && c.purpose === "contact",
@@ -289,7 +353,7 @@ export default function PartnerDetailPage({
                   </label>
                 );
               })}
-            </div>
+            </fieldset>
             {partner.dnc ? (
               <p className="mt-4 text-sm text-rose-600">
                 Misji nie da się zacząć, dopóki status DNC jest aktywny.
@@ -303,7 +367,7 @@ export default function PartnerDetailPage({
             <ActivityLog
               partner={partner}
               missions={missions}
-              activeMission={mission}
+              activeMission={mission && canEditMission(mission) ? mission : undefined}
               formOpen={logOpen}
               onFormOpenChange={setLogOpen}
               title="Historia kontaktów"

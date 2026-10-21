@@ -139,6 +139,12 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
       signedByHuman: Boolean(row.signed_by_human),
       documentPath: (row.document_path as string) ?? undefined,
       signedAt: (row.signed_at as string) ?? undefined,
+      sentAt: (row.sent_at as string) ?? undefined,
+      // Przed v6 „podpisana” znaczyło podpis handlowca po rozmowie z partnerem.
+      partnerSignedAt:
+        (row.partner_signed_at as string) ??
+        (row.status === "signed" && !("partner_signed_at" in row) ? ((row.signed_at as string) ?? undefined) : undefined),
+      signedDocumentPath: (row.signed_document_path as string) ?? undefined,
       status: (row.status as ContractRecord["status"]) ?? "draft",
     };
   }
@@ -339,25 +345,54 @@ export async function syncMissionCore(
     c.endAt;
   if (hasContract) {
     const { data: offer } = await sb.from("offers").select("id").eq("mission_id", mission.id).maybeSingle();
-    const status = c.signedByHuman ? "signed" : c.companyName.trim() ? "ready" : "draft";
-    const { error } = await sb.from("contracts").upsert(
+    const { data: previous } = await sb.from("contracts").select("*").eq("mission_id", mission.id).maybeSingle();
+    const status = contractStatus(c);
+    const base = {
+      mission_id: mission.id,
+      offer_id: offer?.id ?? null,
+      company_name: c.companyName.trim() || null,
+      nip: c.nip.trim() || null,
+      address: c.address.trim() || null,
+      start_at: c.startAt || null,
+      end_at: c.endAt || null,
+      change_rules: c.changeRules.trim() || null,
+      signed_by_human: c.signedByHuman,
+      document_path: c.documentPath || null,
+      signed_at: c.signedByHuman ? (c.signedAt ?? new Date().toISOString()) : null,
+    };
+    let { error } = await sb.from("contracts").upsert(
       {
-        mission_id: mission.id,
-        offer_id: offer?.id ?? null,
-        company_name: c.companyName.trim() || null,
-        nip: c.nip.trim() || null,
-        address: c.address.trim() || null,
-        start_at: c.startAt || null,
-        end_at: c.endAt || null,
-        change_rules: c.changeRules.trim() || null,
-        signed_by_human: c.signedByHuman,
-        document_path: c.documentPath || null,
-        signed_at: c.signedByHuman ? (c.signedAt ?? new Date().toISOString()) : null,
+        ...base,
+        sent_at: c.sentAt ?? null,
+        partner_signed_at: c.partnerSignedAt ?? null,
+        signed_document_path: c.signedDocumentPath ?? null,
         status,
       },
       { onConflict: "mission_id" },
     );
+    if (error && /sent_at|partner_signed_at|signed_document_path|contracts_status_check/.test(error.message ?? "")) {
+      // Baza bez v6: zapisujemy po staremu (bez etapów podpisu).
+      ({ error } = await sb.from("contracts").upsert(
+        { ...base, status: status === "signed" ? "signed" : c.documentPath ? "ready" : "draft" },
+        { onConflict: "mission_id" },
+      ));
+    }
     if (error) throw error;
+    // Zastąpione pliki PDF nie zostają w Storage jako sieroty.
+    const stale = [previous?.document_path, previous?.signed_document_path].filter(
+      (path): path is string =>
+        typeof path === "string" &&
+        !path.startsWith("local/") &&
+        path !== c.documentPath &&
+        path !== c.signedDocumentPath,
+    );
+    if (stale.length) {
+      try {
+        await sb.storage.from("contracts").remove(stale);
+      } catch {
+        // Sprzątanie jest najlepszym wysiłkiem — zapis umowy już się udał.
+      }
+    }
   }
 
   const a = mission.activation;
@@ -513,14 +548,25 @@ export async function setTaskDone(taskId: string, done: boolean) {
   if (error && !optionalTable(error)) throw error;
 }
 
+/** Status umowy wynika z faktów: PDF, wysyłka, podpisy obu stron. */
+export function contractStatus(c: ContractRecord): ContractRecord["status"] {
+  if (c.signedByHuman && c.partnerSignedAt) return "signed";
+  if (c.partnerSignedAt) return "partner_signed";
+  if (c.sentAt) return "sent";
+  if (c.documentPath) return "ready";
+  return "draft";
+}
+
 export async function uploadContractPdf(userId: string, missionId: string, file: File) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
   // Każda wersja PDF ma własną nazwę: nowy plik nigdy nie nadpisuje starego (także cudzego
   // albo starego, niepodpiętego pliku, którego RLS już nie pozwala ruszyć).
-  const path = `${userId}/${missionId}/${crypto.randomUUID()}.pdf`;
+  const type = file.type === "image/png" || file.type === "image/jpeg" ? file.type : "application/pdf";
+  const ext = type === "image/png" ? "png" : type === "image/jpeg" ? "jpg" : "pdf";
+  const path = `${userId}/${missionId}/${crypto.randomUUID()}.${ext}`;
   const { error } = await sb.storage.from("contracts").upload(path, file, {
-    contentType: "application/pdf",
+    contentType: type,
     upsert: false,
   });
   if (error) throw error;

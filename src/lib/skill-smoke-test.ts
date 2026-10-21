@@ -145,6 +145,8 @@ export function skillSmokeFullMission(
       documentPath: mission.contract.documentPath || `smoke/${mission.id}.pdf`,
       signedByHuman: true,
       signedAt: new Date().toISOString(),
+      sentAt: new Date().toISOString(),
+      partnerSignedAt: new Date().toISOString(),
       status: "signed",
     },
     activation: {

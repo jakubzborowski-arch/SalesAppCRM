@@ -1,39 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { offerName } from "@/lib/playbook";
 import { cleanCompany, companyMissing, contractFromCompany } from "@/lib/company";
 import { contractBlockers, isValidNip } from "@/lib/gates";
-import { contractPdfUrl } from "@/lib/mission-core";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
+import { ContractDocument, ContractSigning } from "@/components/mission/contract-flow";
 import { LocalDraft } from "@/components/mission/local-draft";
-import { CheckRow, Field, inputClass } from "@/components/ui";
+import { Field, inputClass } from "@/components/ui";
 
 export function ContractStep({ mission, partner }: { mission: Mission; partner?: Partner }) {
-  const { updateContract, uploadContract, updatePartner, schemaV5 } = useStore();
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [signed, setSigned] = useState<{ path: string; url: string | null } | null>(null);
+  const { updateContract, updatePartner, schemaV5 } = useStore();
   const c = mission.contract;
   const missing = contractBlockers(mission);
   const selectedOfferName = offerName(mission.selectedVariant);
-  const pdfName = c.documentPath?.split("/").pop();
-  const localOnly = Boolean(c.documentPath?.startsWith("local/"));
-
-  // Link do PDF tylko dla aktualnego pliku — stary link nie zostaje po zmianie pliku.
-  const pdfUrl = signed && signed.path === c.documentPath && !localOnly ? signed.url : null;
-  useEffect(() => {
-    const path = c.documentPath;
-    if (!path || localOnly) return;
-    let cancelled = false;
-    void contractPdfUrl(path).then((url) => {
-      if (!cancelled) setSigned({ path, url });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [c.documentPath, localOnly]);
 
   const fillFromPartner = () => {
     if (!partner) return;
@@ -164,65 +144,8 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner?:
         </Field>
       </div>
 
-      <div className="mt-5 rounded-2xl border border-line px-4 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">PDF umowy</p>
-        <p className="mt-1 text-sm text-muted">
-          {pdfName ? `Zapisany: ${pdfName}` : "Jeszcze nie wgrano pliku."}
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="inline-flex cursor-pointer rounded-full bg-lutra px-4 py-2 text-sm font-medium text-white">
-            {uploading ? "Wgrywam…" : pdfName ? "Zamień PDF" : "Wgraj PDF"}
-            <input
-              type="file"
-              accept="application/pdf"
-              className="hidden"
-              disabled={uploading}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                setUploading(true);
-                setUploadError(null);
-                const result = await uploadContract(mission.id, file);
-                setUploading(false);
-                if (!result.ok) setUploadError(result.error ?? "Nie udało się wgrać PDF.");
-              }}
-            />
-          </label>
-          {pdfUrl ? (
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-lutra px-4 py-2 text-sm font-medium text-lutra"
-            >
-              Otwórz PDF
-            </a>
-          ) : null}
-        </div>
-        {localOnly ? (
-          <p className="mt-2 text-xs text-muted">Kopia lokalna — wgraj ponownie po połączeniu z bazą, żeby otworzyć plik.</p>
-        ) : null}
-        {uploadError ? <p className="mt-2 text-sm text-rose-600">{uploadError}</p> : null}
-      </div>
-
-      <div className="mt-4">
-        <CheckRow
-          checked={c.signedByHuman}
-          disabled={!c.documentPath}
-          label={
-            c.documentPath
-              ? "Podpisuję jako handlowiec — dokument jest kompletny i zgodny z zatwierdzoną ofertą"
-              : "Najpierw wgraj PDF, potem podpis"
-          }
-          onChange={() => updateContract(mission.id, { signedByHuman: !c.signedByHuman })}
-        />
-        {c.signedAt ? (
-          <p className="mt-2 text-xs text-muted">
-            Podpis zapisany {new Date(c.signedAt).toLocaleString("pl-PL")}
-          </p>
-        ) : null}
-      </div>
+      <ContractDocument mission={mission} partner={partner} />
+      <ContractSigning mission={mission} />
     </div>
   );
 }

@@ -22,7 +22,8 @@ function shown(key: keyof CompanyData, value: string) {
 
 /** Dane rejestrowe partnera. Trafiają do umowy, gdy pola umowy są puste. */
 export function CompanyCard({ partner }: { partner: Partner }) {
-  const { updatePartner, schemaV5, dbStatus } = useStore();
+  const { updatePartner, schemaV5, dbStatus, canEditPartner } = useStore();
+  const editable = canEditPartner(partner);
   const [draft, setDraft] = useState<CompanyData | null>(null);
   // Stan z chwili otwarcia formularza: zapisujemy tylko pola, które ktoś tu zmienił.
   const [opened, setOpened] = useState<CompanyData | null>(null);
@@ -57,7 +58,7 @@ export function CompanyCard({ partner }: { partner: Partner }) {
               : "Komplet do umowy. Krok Umowa weźmie je stąd."}
           </p>
         </div>
-        {draft ? null : (
+        {draft || !editable ? null : (
           <button
             type="button"
             disabled={blocked}

@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { SetupBanner } from "@/components/setup-banner";
+import { ReminderNotifier } from "@/components/reminders";
 import { useStore } from "@/lib/store";
 
 export default function CrmLayout({ children }: { children: ReactNode }) {
@@ -26,6 +27,7 @@ export default function CrmLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-surface">
       <Sidebar />
+      <ReminderNotifier />
       <div className="min-w-0 flex-1">
         <SetupBanner />
         {children}

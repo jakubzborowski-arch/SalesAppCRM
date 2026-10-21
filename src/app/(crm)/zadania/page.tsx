@@ -7,6 +7,16 @@ import { useStore } from "@/lib/store";
 import { Field, inputClass } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { isIsoDate } from "@/lib/dates";
+import { agenda } from "@/lib/agenda";
+
+const SOURCE_LABEL: Record<string, string> = {
+  human: "ręczne",
+  next_step: "następny krok",
+  ai_draft: "szkic",
+  deadline: "termin decyzji",
+  signature: "podpis umowy",
+  contract_end: "koniec umowy",
+};
 
 type Filter = "open" | "done" | "all";
 
@@ -52,7 +62,7 @@ export default function TasksPage() {
         title: m.nextStepLabel,
         dueAt: m.nextStepAt,
         doneAt: undefined as string | undefined,
-        source: "next_step" as "next_step" | "deadline",
+        source: "next_step" as "next_step" | "deadline" | "signature" | "contract_end",
         mission: m,
         partner: partnerById(m.partnerId),
       }));
@@ -70,11 +80,27 @@ export default function TasksPage() {
         partner: partnerById(m.partnerId),
       }));
 
-    const all = [...fromTable, ...fallback, ...deadlines].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+    // Umowy czekające na podpis i kończące się umowy (z „Na dziś”).
+    const contracts = agenda(state, false)
+      .filter((item) => item.kind === "signature" || item.kind === "contract_end")
+      .map((item) => {
+        const mission = state.missions.find((m) => m.id === item.missionId);
+        return {
+          id: `${item.kind}:${item.missionId}`,
+          title: item.title,
+          dueAt: item.due,
+          doneAt: undefined as string | undefined,
+          source: item.kind as "signature" | "contract_end",
+          mission,
+          partner: partnerById(item.partnerId),
+        };
+      });
+
+    const all = [...fromTable, ...fallback, ...deadlines, ...contracts].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     if (filter === "open") return all.filter((row) => !row.doneAt);
     if (filter === "done") return all.filter((row) => row.doneAt);
     return all;
-  }, [state.tasks, state.missions, followUpMissions, activeMissions, filter, partnerById]);
+  }, [state, followUpMissions, activeMissions, filter, partnerById]);
 
   return (
     <div>
@@ -184,7 +210,7 @@ export default function TasksPage() {
                   type="checkbox"
                   className="mt-1"
                   checked={Boolean(row.doneAt)}
-                  disabled={row.id.startsWith("next:") || row.id.startsWith("deadline:")}
+                  disabled={row.source !== "human" && row.id.includes(":")}
                   onChange={(e) => completeTask(row.id, e.target.checked)}
                 />
                 <span>
@@ -193,7 +219,7 @@ export default function TasksPage() {
                   </span>
                   <span className="mt-1 block text-sm text-muted">
                     {row.title} · {row.dueAt || "bez daty"} ·{" "}
-                    {row.source === "human" ? "ręczne" : row.source === "deadline" ? "termin decyzji" : "następny krok"}
+                    {SOURCE_LABEL[row.source]}
                     {row.mission
                       ? ` · ${STAGES.find((s) => s.id === row.mission?.currentStage)?.label}`
                       : ""}

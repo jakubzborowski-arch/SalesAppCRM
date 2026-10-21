@@ -12,6 +12,8 @@ import {
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useMemo } from "react";
+import { agenda, agendaCount } from "@/lib/agenda";
 import { useStore } from "@/lib/store";
 
 const NAV = [
@@ -27,6 +29,7 @@ const NAV = [
 export function Sidebar() {
   const pathname = usePathname();
   const { state, authEmail } = useStore();
+  const dueCount = useMemo(() => agendaCount(agenda(state)), [state]);
 
   return (
     <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-line bg-white">
@@ -57,6 +60,14 @@ export function Sidebar() {
             >
               <Icon size={18} />
               {item.label}
+              {item.href === "/zadania" && dueCount ? (
+                <span
+                  className="ml-auto rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white"
+                  aria-label={`${dueCount} na dziś`}
+                >
+                  {dueCount}
+                </span>
+              ) : null}
             </Link>
           );
         })}

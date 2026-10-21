@@ -30,6 +30,8 @@ export type WorkspaceContext = {
   workspaceId: string;
   workspaceName: string;
   fullName: string;
+  /** Szablon umowy zespołu (migracja v6). `null` = szablon domyślny. */
+  contractTemplate: string | null;
 };
 
 type MissionDetails = {
@@ -154,6 +156,7 @@ function mapPartner(
     dnc_status: string;
     hours: string | null;
     notes: string | null;
+    owner_user_id?: string | null;
     legal_name?: string | null;
     nip?: string | null;
     regon?: string | null;
@@ -166,6 +169,7 @@ function mapPartner(
 ): Partner {
   return {
     id: row.id,
+    ownerUserId: row.owner_user_id ?? undefined,
     name: row.name,
     segment: row.segment,
     city: row.city ?? "",
@@ -201,7 +205,7 @@ export async function ensureWorkspace(): Promise<WorkspaceContext> {
   const { data: wsId, error } = await sb.rpc("ensure_workspace");
   if (error) throw error;
   const workspaceId = wsId as string;
-  const { data: workspace } = await sb.from("workspaces").select("name").eq("id", workspaceId).maybeSingle();
+  const { data: workspace } = await sb.from("workspaces").select("*").eq("id", workspaceId).maybeSingle();
   const { data: userData } = await sb.auth.getUser();
   const { data: profile } = await sb
     .from("profiles")
@@ -212,7 +216,60 @@ export async function ensureWorkspace(): Promise<WorkspaceContext> {
     workspaceId,
     workspaceName: workspace?.name ?? "Lutra",
     fullName: profile?.full_name ?? "Handlowiec",
+    contractTemplate: (workspace?.contract_template as string | null | undefined) ?? null,
   };
+}
+
+function contactFromRow(c: Record<string, unknown>): PartnerContact {
+  return {
+    id: c.id as string,
+    name: String(c.name ?? c.contact_person ?? "").trim(),
+    role: (c.role as string) ?? "",
+    isDecisionMaker: Boolean(c.is_decision_maker),
+    phone: (c.phone as string) ?? undefined,
+    email: (c.email as string) ?? undefined,
+    linkedin: (c.linkedin as string) ?? undefined,
+  };
+}
+
+function partnerFromRows(
+  row: Record<string, unknown>,
+  contactRows: Record<string, unknown>[],
+  consentRows: Record<string, unknown>[],
+) {
+  return mapPartner(
+    row as Parameters<typeof mapPartner>[0],
+    contactRows.map(contactFromRow),
+    consentRows.map((c) => ({
+      channel: c.channel as Channel,
+      purpose: c.purpose as Partner["consents"][number]["purpose"],
+      status: c.status as ConsentStatus,
+    })),
+  );
+}
+
+/** Świeża wersja jednego partnera z bazy (np. po konflikcie zapisu kontaktu). */
+export async function loadPartner(partnerId: string): Promise<Partner | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data: row, error } = await sb.from("partners").select("*").eq("id", partnerId).maybeSingle();
+  if (error) throw error;
+  if (!row) return null;
+  const [{ data: contacts }, { data: consents }] = await Promise.all([
+    sb.from("partner_contacts").select("*").eq("partner_id", partnerId),
+    sb.from("consents").select("*").eq("partner_id", partnerId),
+  ]);
+  return partnerFromRows(row, contacts ?? [], consents ?? []);
+}
+
+/** Ktoś inny zmienił ten sam kontakt partnera od naszego ostatniego wczytania. */
+export class PartnerConflictError extends Error {
+  constructor(
+    readonly partnerId: string,
+    readonly contactName: string,
+  ) {
+    super(`Kontakt „${contactName}” zmienił ktoś z zespołu.`);
+  }
 }
 
 export async function loadCrm(workspaceId: string): Promise<{
@@ -243,23 +300,7 @@ export async function loadCrm(workspaceId: string): Promise<{
   const consentsByPartner = groupBy(consentRows, "partner_id");
 
   const partners = partnerRows.map((row) =>
-    mapPartner(
-      row as Parameters<typeof mapPartner>[0],
-      (contactsByPartner.get(row.id as string) ?? []).map((c) => ({
-        id: c.id as string,
-        name: String(c.name ?? c.contact_person ?? "").trim(),
-        role: (c.role as string) ?? "",
-        isDecisionMaker: Boolean(c.is_decision_maker),
-        phone: (c.phone as string) ?? undefined,
-        email: (c.email as string) ?? undefined,
-        linkedin: (c.linkedin as string) ?? undefined,
-      })),
-      (consentsByPartner.get(row.id as string) ?? []).map((c) => ({
-        channel: c.channel as Channel,
-        purpose: c.purpose as Partner["consents"][number]["purpose"],
-        status: c.status as ConsentStatus,
-      })),
-    ),
+    partnerFromRows(row, contactsByPartner.get(row.id as string) ?? [], consentsByPartner.get(row.id as string) ?? []),
   );
 
   const { data: missionRows, error: missionError } = await fetchAll((from, to) =>
@@ -530,7 +571,23 @@ function contactWritePayload(partnerId: string, contact: PartnerContact) {
     is_decision_maker: contact.isDecisionMaker,
     phone: contact.phone ?? null,
     email: contact.email ?? null,
+    linkedin: contact.linkedin ?? null,
   } satisfies Record<string, unknown>;
+}
+
+const blank = (value: unknown) => (value == null ? "" : String(value).trim());
+
+/** Czy wiersz w bazie to dalej ta wersja kontaktu, którą znamy (nikt jej w międzyczasie nie zmienił). */
+function contactRowMatches(row: Record<string, unknown>, known: PartnerContact) {
+  const current = contactFromRow(row);
+  return (
+    blank(current.name) === blank(known.name) &&
+    blank(current.role) === blank(known.role) &&
+    blank(current.phone) === blank(known.phone) &&
+    blank(current.email) === blank(known.email) &&
+    ("linkedin" in row ? blank(current.linkedin) === blank(known.linkedin) : true) &&
+    current.isDecisionMaker === known.isDecisionMaker
+  );
 }
 
 function adaptContactPayload(payload: Record<string, unknown>, message: string) {
@@ -644,6 +701,11 @@ export async function persistPartner(
   for (const contact of partner.contacts) {
     const old = before?.contacts.find((c) => c.id === contact.id);
     if (old && JSON.stringify(old) === JSON.stringify(contact)) continue;
+    if (old) {
+      // Edycja istniejącego kontaktu: zapisujemy tylko, jeśli nikt go w międzyczasie nie zmienił.
+      const { data: row } = await sb.from("partner_contacts").select("*").eq("id", contact.id).maybeSingle();
+      if (row && !contactRowMatches(row, old)) throw new PartnerConflictError(partner.id, old.name);
+    }
     await upsertPartnerContactRow(partner.id, contact);
   }
 
@@ -989,8 +1051,10 @@ export async function loadMissionEvents(missionId: string): Promise<MissionEvent
   return (data ?? []).map(eventFromRow);
 }
 
-function rpcError(error: { code?: string; message?: string }, fallback: string) {
-  if (isMissingFunction(error)) return new Error(V4_MISSING);
+export const V6_MISSING = "Brakuje migracji v6 w bazie (uprawnienia, obieg podpisu, szablon umowy). Skopiuj SQL z paska u góry strony.";
+
+function rpcError(error: { code?: string; message?: string }, fallback: string, missing = V4_MISSING) {
+  if (isMissingFunction(error)) return new Error(missing);
   return new Error(error.message || fallback);
 }
 
@@ -1082,6 +1146,30 @@ export async function removeMember(memberId: string) {
   if (!sb) throw new Error("Brak klienta Supabase.");
   const { error } = await sb.rpc("remove_workspace_member", { p_user: memberId });
   if (error) throw rpcError(error, "Nie udało się usunąć osoby z zespołu.");
+}
+
+/** Czy baza ma uprawnienia per właściciel i obieg podpisu (migracja v6). */
+export async function detectSchemaV6(): Promise<boolean | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { error } = await sb.from("contracts").select("sent_at, partner_signed_at").limit(1);
+  if (!error) return true;
+  if (isMissingColumn(error) || isMissingCrmTable(error)) return false;
+  return null;
+}
+
+export async function transferMission(missionId: string, userId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("transfer_mission", { p_mission: missionId, p_user: userId });
+  if (error) throw rpcError(error, "Nie udało się przekazać misji.", V6_MISSING);
+}
+
+export async function saveContractTemplate(template: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("set_contract_template", { p_template: template });
+  if (error) throw rpcError(error, "Nie udało się zapisać szablonu.", V6_MISSING);
 }
 
 export async function renameWorkspace(name: string) {

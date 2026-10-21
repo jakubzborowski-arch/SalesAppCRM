@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listInvites as fetchInvites } from "@/lib/db";
 import { FORBIDDEN_PROMISES } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
+import { ContractTemplateSection } from "@/components/settings/contract-template-section";
+import { RemindersSection } from "@/components/reminders";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { TeamInvite } from "@/lib/types";
 import { Field, inputClass } from "@/components/ui";
@@ -344,6 +346,9 @@ export default function SettingsPage() {
             <JoinSection />
           </>
         ) : null}
+
+        <ContractTemplateSection />
+        <RemindersSection />
 
         <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
           <h2 className="font-semibold">Czego nie obiecywać</h2>

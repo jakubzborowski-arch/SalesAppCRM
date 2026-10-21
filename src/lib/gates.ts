@@ -47,8 +47,9 @@ export function contractBlockers(mission: Mission) {
   if (!c.startAt.trim()) missing.push("data rozpoczęcia");
   if (!c.endAt.trim()) missing.push("data zakończenia");
   else if (c.startAt.trim() && c.endAt < c.startAt) missing.push("koniec umowy po starcie");
-  if (!c.documentPath) missing.push("PDF umowy");
-  if (!c.signedByHuman) missing.push("podpis handlowca");
+  if (!c.documentPath) missing.push("dokument umowy");
+  if (!c.partnerSignedAt) missing.push("podpis partnera");
+  if (!c.signedByHuman) missing.push("podpis Lutry");
   return missing;
 }
 

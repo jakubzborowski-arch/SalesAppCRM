@@ -13,6 +13,7 @@ import {
 import { activationBlockers, canEnterStage, contractBlockers, nextStage, offerBlockers } from "./gates";
 import { categoryLabel, suggestVariant } from "./playbook";
 import { emptyCompany } from "./company";
+import { canEditMission as canEditMissionIn, canEditPartner as canEditPartnerIn } from "./permissions";
 import { emptyMission, seedState } from "./seed";
 import {
   MissionConflictError,
@@ -34,7 +35,12 @@ import {
   persistMission,
   persistPartner,
   detectSchemaV5,
+  detectSchemaV6,
+  saveContractTemplate as saveContractTemplateRow,
+  transferMission as transferMissionRow,
   V5_MISSING,
+  PartnerConflictError,
+  loadPartner,
   deletePartner as deletePartnerRow,
   insertPartnerContact,
   removeMember as removeMemberRow,
@@ -49,6 +55,7 @@ import {
   generatePartnerCode,
   insertTask,
   setTaskDone,
+  contractStatus,
   uploadContractPdf,
 } from "./mission-core";
 import { getSupabase, isMissingCrmTable, isSupabaseConfigured } from "./supabase";
@@ -64,6 +71,7 @@ import type {
   NewPartnerInput,
   OfferVariant,
   Partner,
+  PartnerContact,
   StageId,
   TaskItem,
   TeamInvite,
@@ -107,6 +115,19 @@ type Store = {
   schemaV4: boolean | null;
   /** Czy baza ma pola danych firmy (migracja v5). */
   schemaV5: boolean | null;
+  /** Czy baza ma uprawnienia per właściciel i obieg podpisu (migracja v6). */
+  schemaV6: boolean | null;
+  /** Czy bieżący użytkownik może edytować misję / partnera (cudze — tylko podgląd). */
+  canEditMission: (mission: Mission) => boolean;
+  canEditPartner: (partner: Partner) => boolean;
+  /** Przekazanie misji innej osobie z zespołu. */
+  transferMission: (missionId: string, userId: string) => Promise<Result>;
+  /** Szablon umowy zespołu (`null` = domyślny). Zmienia administrator. */
+  saveContractTemplate: (template: string) => Promise<Result>;
+  /** Generuje PDF umowy z szablonu i podpina go do misji. */
+  generateContract: (missionId: string, pdf: Uint8Array) => Promise<{ ok: boolean; error?: string }>;
+  /** Podpisany przez partnera skan / PDF. */
+  uploadSignedContract: (missionId: string, file: File) => Promise<{ ok: boolean; error?: string }>;
   notice: Notice | null;
   dismissNotice: () => void;
   state: AppState;
@@ -159,6 +180,7 @@ type Store = {
   removeActivity: (missionId: string, activityId: string) => Promise<Result>;
   toggleChecklist: (missionId: string, key: string) => void;
   updatePartner: (partnerId: string, patch: Partial<Partner>) => void;
+  updatePartnerContact: (partnerId: string, contactId: string, patch: Partial<PartnerContact>) => void;
   addPartnerContact: (
     partnerId: string,
     input: { name: string; role?: string; isDecisionMaker?: boolean },
@@ -354,6 +376,8 @@ function initialsFrom(name: string, email: string) {
   return email.slice(0, 2).toUpperCase();
 }
 
+const READ_ONLY = "To misja kogoś z zespołu — możesz ją oglądać. Edytuje właściciel albo administrator.";
+
 function errorText(err: unknown, fallback: string) {
   const message = (err as { message?: string } | null)?.message;
   return message?.trim() ? message : fallback;
@@ -368,6 +392,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [schemaV4, setSchemaV4] = useState<boolean | null>(null);
   const [schemaV5, setSchemaV5] = useState<boolean | null>(null);
+  const [schemaV6, setSchemaV6] = useState<boolean | null>(null);
+  /** Uprawnienia egzekwujemy w widoku tylko, gdy baza ma v6 (inaczej baza też nikogo nie ogranicza). */
+  const enforceRef = useRef(false);
+  useEffect(() => {
+    enforceRef.current = dbStatus === "ok" && schemaV6 === true;
+  }, [dbStatus, schemaV6]);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [invite, setInvite] = useState<InviteState | null>(null);
   const userIdRef = useRef<string | null>(null);
@@ -419,6 +449,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     setSaveState("saving");
     let firstError: { code?: string; message?: string } | null = null;
+    const partnerConflicts: PartnerConflictError[] = [];
     for (const partner of partners) {
       try {
         const { dropped } = await persistPartner(partner, savedPartners.current.get(partner.id));
@@ -432,8 +463,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         bump(`p:${partner.id}`);
       } catch (err) {
-        firstError ??= err as { code?: string; message?: string };
+        if (err instanceof PartnerConflictError) partnerConflicts.push(err);
+        else firstError ??= err as { code?: string; message?: string };
       }
+    }
+    for (const conflict of partnerConflicts) {
+      // Bierzemy wersję kolegi zamiast nadpisywać jego zmianę kontaktu.
+      const fresh = await loadPartner(conflict.partnerId).catch(() => null);
+      if (!fresh) continue;
+      savedPartners.current.set(fresh.id, fresh);
+      bump(`p:${fresh.id}`);
+      setState((prev) => {
+        const next = { ...prev, partners: prev.partners.map((p) => (p.id === fresh.id ? fresh : p)) };
+        latest.current = next;
+        return next;
+      });
+      setNotice({
+        kind: "error",
+        text: `${conflict.message} Wczytałem jego wersję karty ${fresh.name} — wprowadź swoją zmianę jeszcze raz.`,
+      });
     }
     const tasks: TaskItem[] = [];
     const eventsFor: string[] = [];
@@ -562,7 +610,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             role: me?.role === "admin" ? "Administrator" : "Handlowiec",
             isAdmin: me?.role === "admin",
           },
-          workspace: { name: ctx.workspaceName, id: ctx.workspaceId },
+          workspace: { name: ctx.workspaceName, id: ctx.workspaceId, contractTemplate: ctx.contractTemplate },
           partners,
           missions,
           tasks,
@@ -576,6 +624,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         lastLoadAt.current = Date.now();
         setSchemaV4(team === undefined ? null : team !== null);
         void detectSchemaV5().then(setSchemaV5);
+        void detectSchemaV6().then(setSchemaV6);
         setState(next);
         // Dane są w Supabase. Stara kopia w przeglądarce (z kontaktami) nie jest potrzebna.
         clearLocalCopy();
@@ -770,12 +819,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       let changed = false;
       const missions = prev.missions.map((m) => {
         if (m.id !== missionId) return m;
+        // Cudza misja jest tylko do podglądu — zmiana nie trafia ani do widoku, ani do bazy.
+        if (!canEditMissionIn(prev, m, enforceRef.current)) return m;
         const next = fn(m);
         if (next === m) return m;
         changed = true;
         return next;
       });
       return changed ? { ...prev, missions } : prev;
+    });
+  };
+
+  const patchPartner = (partnerId: string, fn: (p: Partner) => Partner) => {
+    setState((prev) => {
+      let changed = false;
+      const partners = prev.partners.map((p) => {
+        if (p.id !== partnerId || !canEditPartnerIn(prev, p, enforceRef.current)) return p;
+        const next = fn(p);
+        if (next !== p) changed = true;
+        return next;
+      });
+      return changed ? { ...prev, partners } : prev;
     });
   };
 
@@ -809,6 +873,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return userId === state.user.id ? state.user.name : "ktoś z zespołu";
     };
 
+    const editable = (missionId: string) => {
+      const mission = latest.current.missions.find((m) => m.id === missionId);
+      return Boolean(mission && canEditMissionIn(latest.current, mission, enforceRef.current));
+    };
+
+    const uploadContractFile = async (missionId: string, file: File): Promise<{ ok: boolean; error?: string }> => {
+      if (!editable(missionId)) return { ok: false, error: READ_ONLY };
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (!isPdf) return { ok: false, error: "Tylko plik PDF." };
+      const userId = userIdRef.current;
+      try {
+        const path = userId
+          ? await uploadContractPdf(userId, missionId, file)
+          : `local/${missionId}.pdf`;
+        // Nowa wersja dokumentu: wcześniejsza wysyłka i podpisy dotyczyły starego pliku.
+        patchMission(missionId, (m) => {
+          const contract = {
+            ...m.contract,
+            documentPath: path,
+            sentAt: undefined,
+            partnerSignedAt: undefined,
+            signedDocumentPath: undefined,
+            signedByHuman: false,
+            signedAt: undefined,
+          };
+          return { ...m, contract: { ...contract, status: contractStatus(contract) } };
+        });
+        return { ok: true };
+      } catch (err) {
+        const error = err as { message?: string };
+        return { ok: false, error: error.message ?? "Nie udało się wgrać PDF. Odpal SQL v3 (bucket contracts)." };
+      }
+    };
+
     const runRpc = async (fn: () => Promise<unknown>, fallback: string): Promise<Result> => {
       try {
         await fn();
@@ -826,6 +924,69 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       authEmail,
       schemaV4,
       schemaV5,
+      schemaV6,
+      canEditMission: (mission) => canEditMissionIn(state, mission, dbStatus === "ok" && schemaV6 === true),
+      canEditPartner: (partner) => canEditPartnerIn(state, partner, dbStatus === "ok" && schemaV6 === true),
+      transferMission: async (missionId, userId) => {
+        const result = await runRpc(() => transferMissionRow(missionId, userId), "Nie udało się przekazać misji.");
+        if (result.ok) {
+          const apply = (prev: AppState): AppState => ({
+            ...prev,
+            missions: prev.missions.map((m) => (m.id === missionId ? { ...m, ownerUserId: userId } : m)),
+          });
+          setState((prev) => {
+            const next = apply(prev);
+            // Właściciel zmieniony w bazie przez RPC — to nie jest zmiana do zapisu.
+            const moved = next.missions.find((m) => m.id === missionId);
+            if (moved && savedMissions.current.has(missionId)) savedMissions.current.set(missionId, moved);
+            latest.current = next;
+            return next;
+          });
+          setNotice({ kind: "ok", text: `Misja przekazana: ${memberName(userId)}.` });
+        }
+        return result;
+      },
+      saveContractTemplate: async (template) => {
+        // Tryb demo: szablon tylko w tej przeglądarce.
+        const result =
+          dbStatus === "ok" && userIdRef.current
+            ? await runRpc(() => saveContractTemplateRow(template), "Nie udało się zapisać szablonu.")
+            : { ok: true };
+        if (result.ok) {
+          setState((prev) => ({
+            ...prev,
+            workspace: { ...prev.workspace, contractTemplate: template.trim() || null },
+          }));
+        }
+        return result;
+      },
+      generateContract: async (missionId, pdf) => {
+        const copy = new Uint8Array(pdf.byteLength);
+        copy.set(pdf);
+        const file = new File([copy.buffer], "umowa.pdf", { type: "application/pdf" });
+        return uploadContractFile(missionId, file);
+      },
+      uploadSignedContract: async (missionId, file) => {
+        if (!editable(missionId)) return { ok: false, error: READ_ONLY };
+        const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+        const isImage = /^image\/(png|jpe?g)$/.test(file.type);
+        if (!isPdf && !isImage) return { ok: false, error: "Podpisana umowa: PDF albo zdjęcie (JPG/PNG)." };
+        const userId = userIdRef.current;
+        try {
+          const path = userId ? await uploadContractPdf(userId, missionId, file) : `local/${missionId}-signed`;
+          patchMission(missionId, (m) => {
+            const contract = {
+              ...m.contract,
+              signedDocumentPath: path,
+              partnerSignedAt: m.contract.partnerSignedAt ?? new Date().toISOString(),
+            };
+            return { ...m, contract: { ...contract, status: contractStatus(contract) } };
+          });
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: errorText(err, "Nie udało się wgrać podpisanej umowy.") };
+        }
+      },
       notice,
       dismissNotice: () => setNotice(null),
       state,
@@ -1307,12 +1468,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       },
       updatePartner: (partnerId, patch) => {
-        setState((prev) => ({
-          ...prev,
-          partners: prev.partners.map((p) => (p.id === partnerId ? { ...p, ...patch } : p)),
+        patchPartner(partnerId, (p) => ({ ...p, ...patch }));
+      },
+      updatePartnerContact: (partnerId, contactId, patch) => {
+        patchPartner(partnerId, (p) => ({
+          ...p,
+          contacts: p.contacts.map((c) => {
+            if (c.id === contactId) return { ...c, ...patch };
+            // Jeden główny decydent na kartę.
+            if (patch.isDecisionMaker && c.isDecisionMaker) return { ...c, isDecisionMaker: false };
+            return c;
+          }),
         }));
       },
       addPartnerContact: async (partnerId, input) => {
+        const target = latest.current.partners.find((p) => p.id === partnerId);
+        if (target && !canEditPartnerIn(latest.current, target, enforceRef.current)) {
+          return { ok: false, error: "Tego partnera edytuje jego opiekun albo administrator." };
+        }
         if (!input.name.trim()) return { ok: false, error: "Podaj imię i nazwisko." };
         try {
           const contact = await insertPartnerContact(partnerId, input);
@@ -1329,10 +1502,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       setConsent: (partnerId, channel, status) => {
-        setState((prev) => ({
-          ...prev,
-          partners: prev.partners.map((p) => {
-            if (p.id !== partnerId) return p;
+        patchPartner(partnerId, (p) => {
             const exists = p.consents.some((c) => c.channel === channel && c.purpose === "contact");
             const consents = exists
               ? p.consents.map((c) =>
@@ -1340,8 +1510,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 )
               : [...p.consents, { channel, purpose: "contact" as const, status }];
             return { ...p, consents };
-          }),
-        }));
+        });
       },
       setChannel: (missionId, channel) => {
         patchMission(missionId, (m) => ({ ...m, selectedChannel: channel }));
@@ -1454,39 +1623,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return m;
           }
           const contract = { ...m.contract, ...patch };
-          if (patch.signedByHuman === true) {
-            contract.signedAt = new Date().toISOString();
-            contract.status = "signed";
-          }
-          if (patch.signedByHuman === false) {
-            contract.signedAt = undefined;
-            contract.status = contract.documentPath ? "ready" : "draft";
-          }
+          if (patch.signedByHuman === true) contract.signedAt = new Date().toISOString();
+          if (patch.signedByHuman === false) contract.signedAt = undefined;
+          contract.status = contractStatus(contract);
           return { ...m, contract };
         });
       },
-      uploadContract: async (missionId, file) => {
-        const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-        if (!isPdf) return { ok: false, error: "Tylko plik PDF." };
-        const userId = userIdRef.current;
-        try {
-          const path = userId
-            ? await uploadContractPdf(userId, missionId, file)
-            : `local/${missionId}.pdf`;
-          patchMission(missionId, (m) => ({
-            ...m,
-            contract: {
-              ...m.contract,
-              documentPath: path,
-              status: m.contract.signedByHuman ? "signed" : "ready",
-            },
-          }));
-          return { ok: true };
-        } catch (err) {
-          const error = err as { message?: string };
-          return { ok: false, error: error.message ?? "Nie udało się wgrać PDF. Odpal SQL v3 (bucket contracts)." };
-        }
-      },
+      uploadContract: uploadContractFile,
       updateActivation: (missionId, patch) => {
         patchMission(missionId, (m) => ({
           ...m,
@@ -1647,6 +1790,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     authEmail,
     schemaV4,
     schemaV5,
+    schemaV6,
     notice,
     invite,
     inspectInvite,

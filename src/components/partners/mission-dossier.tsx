@@ -1,3 +1,4 @@
+import { CONTRACT_STATUS_LABEL } from "@/components/mission/contract-flow";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -167,19 +168,16 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
             <Row label="Koniec" value={text(mission.contract?.endAt)} />
             <Row label="Zasady zmian" value={text(mission.contract?.changeRules)} />
             <Row label="Plik PDF" value={text(mission.contract?.documentPath?.split("/").pop())} />
-            <Row label="Podpis handlowca" value={mission.contract?.signedByHuman ? "tak" : "nie"} />
             <Row
-              label="Status"
+              label="Podpis partnera"
               value={
-                mission.contract?.status === "signed"
-                  ? "podpisana"
-                  : mission.contract?.status === "ready"
-                    ? "gotowa"
-                    : mission.contract?.status === "draft"
-                      ? "szkic"
-                      : "—"
+                mission.contract?.partnerSignedAt
+                  ? new Date(mission.contract.partnerSignedAt).toLocaleDateString("pl-PL")
+                  : "nie"
               }
             />
+            <Row label="Podpis Lutry" value={mission.contract?.signedByHuman ? "tak" : "nie"} />
+            <Row label="Status" value={mission.contract ? CONTRACT_STATUS_LABEL[mission.contract.status] : "—"} />
           </Block>
 
           <Block title="Aktywacja">

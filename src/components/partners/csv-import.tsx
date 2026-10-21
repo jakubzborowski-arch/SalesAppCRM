@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState, type DragEvent } from "react";
+import { duplicateIndex, duplicateKeys, type DuplicateProbe } from "@/lib/duplicates";
+import type { NewPartnerInput } from "@/lib/types";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileSpreadsheet, GripVertical, Upload, X } from "lucide-react";
@@ -25,6 +27,17 @@ type ImportResult = {
   skippedDup: number;
   failed: { name: string; error: string }[];
 };
+
+
+function inputProbe(input: NewPartnerInput): DuplicateProbe {
+  return {
+    name: input.name,
+    city: input.city,
+    nip: input.nip,
+    phones: [input.contactPhone],
+    emails: [input.contactEmail],
+  };
+}
 
 function sampleFor(table: CsvTable, column: number) {
   return table.rows.map((row) => row[column] ?? "").find((value) => value.trim()) ?? "";
@@ -70,10 +83,22 @@ export function CsvImport() {
     return table.rows.filter((row) => rowToPartnerInput(row, mapping)).length;
   }, [table, mapping]);
 
-  const existingNames = useMemo(
-    () => new Set(state.partners.map((p) => p.name.trim().toLowerCase())),
-    [state.partners],
-  );
+  const existingKeys = useMemo(() => new Set(duplicateIndex(state.partners).keys()), [state.partners]);
+
+  /** Wiersze, które wyglądają na partnera już zapisanego albo powtórzonego w pliku. */
+  const duplicateRows = useMemo(() => {
+    if (!table) return 0;
+    const seen = new Set(existingKeys);
+    let count = 0;
+    for (const row of table.rows) {
+      const input = rowToPartnerInput(row, mapping);
+      if (!input) continue;
+      const keys = duplicateKeys(inputProbe(input)).map((k) => k.key);
+      if (keys.some((k) => seen.has(k))) count += 1;
+      keys.forEach((k) => seen.add(k));
+    }
+    return count;
+  }, [table, mapping, existingKeys]);
 
   const assign = (field: PartnerImportField, column: number) => {
     setMapping((prev) => {
@@ -169,7 +194,7 @@ export function CsvImport() {
     const inputs = [];
     let skippedEmpty = 0;
     let skippedDup = 0;
-    const seen = new Set(existingNames);
+    const seen = new Set(existingKeys);
 
     for (const row of table.rows) {
       const input = rowToPartnerInput(row, mapping);
@@ -177,12 +202,12 @@ export function CsvImport() {
         skippedEmpty += 1;
         continue;
       }
-      const key = input.name.trim().toLowerCase();
-      if (skipDup && seen.has(key)) {
+      const keys = duplicateKeys(inputProbe(input)).map((k) => k.key);
+      if (skipDup && keys.some((k) => seen.has(k))) {
         skippedDup += 1;
         continue;
       }
-      seen.add(key);
+      keys.forEach((k) => seen.add(k));
       inputs.push(input);
     }
 
@@ -516,7 +541,8 @@ export function CsvImport() {
                 onChange={(event) => setSkipDup(event.target.checked)}
                 className="h-4 w-4 accent-blue"
               />
-              Pomiń partnerów o tej samej nazwie
+              Pomiń duplikaty — ta sama nazwa w mieście, NIP, telefon albo e-mail
+              {duplicateRows ? ` (${duplicateRows})` : ""}
             </label>
             <button
               type="button"
