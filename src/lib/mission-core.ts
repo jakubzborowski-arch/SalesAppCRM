@@ -1,12 +1,15 @@
 import { selectIn } from "./fetch-all";
 import { dateOrNull, persistNeedId, uuidOrNull } from "./sql-coerce";
-import { ACTIVATION_ITEMS, CONTRACT_ITEMS, RESEARCH_ITEMS } from "./playbook";
+import { ACTIVATION_ITEMS, CONTRACT_ITEMS, RESEARCH_ITEMS_BY_SEGMENT, ROLLOUT_ITEMS } from "./playbook";
 import { getSupabase, isMissingCrmTable } from "./supabase";
+import { agreementFormOf } from "./terms";
 import type {
   ActivationRecord,
+  AgreementForm,
   ContractRecord,
   Mission,
   Need,
+  PartnerSegment,
   TaskItem,
 } from "./types";
 
@@ -15,7 +18,12 @@ function optionalTable(error: { code?: string; message?: string } | null) {
 }
 
 const CHECKLIST_LABELS: Record<string, string> = {
-  ...Object.fromEntries(RESEARCH_ITEMS.map((i) => [`research:${i.key}`, i.label])),
+  ...Object.fromEntries(
+    Object.values(RESEARCH_ITEMS_BY_SEGMENT)
+      .flat()
+      .map((i) => [`research:${i.key}`, i.label]),
+  ),
+  ...Object.fromEntries(ROLLOUT_ITEMS.map((i) => [i.key, i.label])),
   ...Object.fromEntries(CONTRACT_ITEMS.map((i) => [`contract:${i.key}`, i.label])),
   ...Object.fromEntries(ACTIVATION_ITEMS.map((i) => [`activation:${i.key}`, i.label])),
 };
@@ -184,6 +192,7 @@ export async function syncMissionCore(
   mission: Mission,
   workspaceId: string,
   userId: string,
+  segment: PartnerSegment = "venue",
 ): Promise<CoreSyncResult> {
   const sb = getSupabase();
   if (!sb) return { status: "skipped", nextStepTask: null };
@@ -297,7 +306,7 @@ export async function syncMissionCore(
     const { data: library } = await sb
       .from("offer_library")
       .select("id")
-      .eq("segment", "venue")
+      .eq("segment", segment)
       .eq("variant", mission.selectedVariant)
       .maybeSingle();
     const { data: existingOffer } = await sb
@@ -317,6 +326,11 @@ export async function syncMissionCore(
         custom_terms: {
           constraints: mission.decision.constraintSummary,
           nextStep: mission.decision.nextStep,
+          // Ustalone warunki (zniżka, miejsce, cykl, pilotaż) — do odczytu także poza CRM.
+          segment,
+          terms: mission.terms,
+          period: { from: mission.contract.startAt || null, to: mission.contract.endAt || null },
+          agreementForm: agreementFormOf(mission),
         },
         recommended_by: "human",
         approved_by: mission.offerApproved
@@ -342,11 +356,13 @@ export async function syncMissionCore(
     c.signedByHuman ||
     c.documentPath ||
     c.startAt ||
-    c.endAt;
+    c.endAt ||
+    c.sentAt ||
+    c.partnerSignedAt;
   if (hasContract) {
     const { data: offer } = await sb.from("offers").select("id").eq("mission_id", mission.id).maybeSingle();
     const { data: previous } = await sb.from("contracts").select("*").eq("mission_id", mission.id).maybeSingle();
-    const status = contractStatus(c);
+    const status = contractStatus(c, agreementFormOf(mission));
     const base = {
       mission_id: mission.id,
       offer_id: offer?.id ?? null,
@@ -548,12 +564,15 @@ export async function setTaskDone(taskId: string, done: boolean) {
   if (error && !optionalTable(error)) throw error;
 }
 
-/** Status umowy wynika z faktów: PDF, wysyłka, podpisy obu stron. */
-export function contractStatus(c: ContractRecord): ContractRecord["status"] {
+/**
+ * Status umowy wynika z faktów: dokument (albo mail z warunkami), wysyłka, potwierdzenie obu stron.
+ * Porozumienie mailowe nie ma PDF — „wysłana” to mail z warunkami, „podpis partnera” to jego odpowiedź.
+ */
+export function contractStatus(c: ContractRecord, form: AgreementForm = "contract"): ContractRecord["status"] {
   if (c.signedByHuman && c.partnerSignedAt) return "signed";
   if (c.partnerSignedAt) return "partner_signed";
   if (c.sentAt) return "sent";
-  if (c.documentPath) return "ready";
+  if (form === "contract" && c.documentPath) return "ready";
   return "draft";
 }
 

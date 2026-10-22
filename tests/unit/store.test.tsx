@@ -86,9 +86,9 @@ const { StoreProvider, useStore } = await import("@/lib/store");
 const { clearMissionVersions } = await import("@/lib/db");
 type StoreApi = ReturnType<typeof useStore>;
 
-function Grab({ out }: { out: { store: StoreApi | null } }) {
-  // eslint-disable-next-line react-hooks/globals
-  out.store = useStore();
+/** Wyciąga sklep z kontekstu do testu (callback zamiast mutacji propsów). */
+function Grab({ onStore }: { onStore: (store: StoreApi) => void }) {
+  onStore(useStore());
   return null;
 }
 
@@ -96,7 +96,7 @@ async function mount() {
   const out: { store: StoreApi | null } = { store: null };
   render(
     <StoreProvider>
-      <Grab out={out} />
+      <Grab onStore={(store) => { out.store = store; }} />
     </StoreProvider>,
   );
   await waitFor(() => expect(out.store?.dbStatus).toBe("ok"));

@@ -1,5 +1,6 @@
 import { constraintText } from "./gates";
-import { offerName } from "./playbook";
+import { offerName, segmentLabel } from "./playbook";
+import { termsLines } from "./terms";
 import type { Mission, Partner } from "./types";
 
 export type LocalDraftMode = "wniosek" | "umowa" | "mail" | "pola";
@@ -122,7 +123,7 @@ export function briefForModel(partner: Partner, mission: Mission, mode: LocalDra
   const decision = mission.decision;
   const constraints = constraintText(mission);
   const lines = [
-    `Lokal: ${clipField(partner.name) || "lokal"}`,
+    `Partner (${segmentLabel(partner.segment).toLowerCase()}): ${clipField(partner.name) || "partner"}`,
     partner.city.trim() ? `Miasto: ${clipField(partner.city)}` : "",
     partner.category.trim() ? `Kategoria: ${clipField(partner.category)}` : "",
     decision.problem.trim() ? `Problem: ${clipField(decision.problem)}` : "",
@@ -136,15 +137,19 @@ export function briefForModel(partner: Partner, mission: Mission, mode: LocalDra
     facts.length ? `Potwierdzone fakty:\n- ${facts.join("\n- ")}` : "Potwierdzone fakty: brak",
     gateLine(decision, constraints, mission.nextStepAt),
     mission.selectedVariant
-      ? `Wybrany wariant: ${mission.selectedVariant}. ${offerName(mission.selectedVariant)}`
+      ? `Wybrany wariant: ${mission.selectedVariant}. ${offerName(mission.selectedVariant, partner.segment)}`
       : "",
+    // Warunki ustalone w kroku Oferta (zniżka, cykl, pilotaż, okres) — jedyne, które wolno powtórzyć.
+    termsLines(mission, partner.segment).length
+      ? `Ustalone warunki:\n- ${termsLines(mission, partner.segment).map((line) => clipField(line)).join("\n- ")}`
+      : "Ustalone warunki: brak",
     mode === "umowa" ? "" : callNote(mission.conversationNote),
   ].filter(Boolean);
 
   const source = lines.join("\n");
   const task =
     mode === "umowa"
-      ? "Napisz po polsku dwie krótkie części: „Do powiedzenia” (3-5 zdań) i „Recap warunków”. Użyj tylko pól powyżej. Nie dodawaj rabatu, liczby gości, wyłączności, VIP, Premium ani dat, których nie ma w polach."
+      ? "Napisz po polsku dwie krótkie części: „Do powiedzenia” (3-5 zdań) i „Recap warunków”. Użyj tylko pól powyżej. Zniżkę i okres podaj tylko tak, jak stoją w „Ustalone warunki”. Nie dodawaj innych rabatów, liczby gości, wyłączności, VIP, Premium ani dat, których nie ma w polach."
       : mode === "mail"
         ? "Napisz propozycję maila recap dla handlowca, nie wysyłkę. Najpierw linia „Temat:”, potem krótka treść. Oprzyj ją na notatce z dzwonienia: powtórz tylko to, co tam padło, i pola, które są wypełnione. Cytat tylko dosłowny z notatki. Status oferty bierz z linii Bramka: przy ZABLOKOWANA nie proponuj wariantu A/B/C. Podpisz „[imię] z Lutry”. Nie powtarzaj listy zakazów i nie podawaj adresu e-mail."
         : "Napisz wniosek po polsku, krótko. 1) Co rozmówca powiedział w notatce z dzwonienia, z jednym krótkim cytatem wziętym stamtąd dosłownie. 2) Co z tego wynika wobec pól. 3) Przepisz status z linii Bramka bez zmiany. Wariant A (ruch poza szczytem), B (oferta grupowa) albo C (pilotaż) tylko gdy Bramka mówi GOTOWA. Nie dopisuj zdań, których nie ma w notatce ani w polach. Nie zmieniaj dni ani godzin. Nie powtarzaj listy zakazów.";
@@ -199,7 +204,7 @@ export function systemForDraft(mode: LocalDraftMode) {
   if (mode === "umowa" || mode === "pola") {
     return mode === "pola" ? `${base} Wypisujesz tylko linie pól. Nie piszesz maila ani wniosku.` : base;
   }
-  return `${base} Oferta A/B/C jest zablokowana, dopóki w polach nie ma razem: problemu, rezultatu, ograniczenia, decydenta, terminu decyzji, wcześniejszych prób i następnego kroku z datą. Nie obiecuj liczby gości, wyłączności, VIP, Premium, rabatu ani darmowego wstępu.`;
+  return `${base} Oferta A/B/C jest zablokowana, dopóki w polach nie ma razem: problemu, rezultatu, ograniczenia, decydenta, terminu decyzji, wcześniejszych prób i następnego kroku z datą. Nie obiecuj liczby gości, wyłączności, VIP, Premium ani darmowego wstępu. Zniżkę podawaj wyłącznie z linii „Ustalone warunki” — innych rabatów nie proponuj.`;
 }
 
 function blank(value: string) {

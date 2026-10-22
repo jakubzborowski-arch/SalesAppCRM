@@ -7,7 +7,8 @@ import { CompanyCard } from "@/components/partners/company-card";
 import { MissionDossier } from "@/components/partners/mission-dossier";
 import { ContactForm, PartnerBasicsForm } from "@/components/partners/partner-edit";
 import { PriorityChecks } from "@/components/partners/priority-checks";
-import { CONTACT_CHANNELS } from "@/lib/playbook";
+import { CONTACT_CHANNELS, segmentLabel } from "@/lib/playbook";
+import { careMissionOf } from "@/lib/care";
 import { socialUrl, type SocialKind } from "@/lib/social";
 import { useStore } from "@/lib/store";
 
@@ -41,6 +42,7 @@ export default function PartnerDetailPage({
     deletePartner,
     canEditPartner,
     canEditMission,
+    canDeletePartner,
     memberName,
   } = useStore();
   const partner = partnerById(id);
@@ -61,10 +63,7 @@ export default function PartnerDetailPage({
   const owner = partner.contacts.find((c) => c.isDecisionMaker);
   const editable = canEditPartner(partner);
   // Usunięcie kasuje też misje — tylko opiekun/admin i bez cudzych misji (tak samo pilnuje baza).
-  const canDelete =
-    editable &&
-    (!partner.ownerUserId || partner.ownerUserId === state.user.id || Boolean(state.user.isAdmin) || !state.user.id) &&
-    missions.every((m) => canEditMission(m));
+  const canDelete = canDeletePartner(partner);
 
   return (
     <div>
@@ -77,14 +76,22 @@ export default function PartnerDetailPage({
       <div className="px-8 pb-10">
         <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
           <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-navy">
+            <p className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-navy">
               Karta partnera
+              <span className="rounded-full bg-chip px-2.5 py-0.5 text-[10px] tracking-[0.08em] text-lutra">
+                {segmentLabel(partner.segment)}
+              </span>
+              {careMissionOf(state.missions, partner.id) ? (
+                <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] tracking-[0.08em] text-emerald-700">
+                  Aktywny partner
+                </span>
+              ) : null}
             </p>
             <h1 className="mt-1 text-4xl font-bold tracking-tight text-navy">{partner.name}</h1>
             <p className="mt-2 text-sm font-semibold text-foreground">
               {[partner.category, partner.city, partner.address, partner.source ? `źródło: ${partner.source}` : ""]
                 .filter(Boolean)
-                .join(" · ") || "Lokal"}
+                .join(" · ") || segmentLabel(partner.segment)}
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -118,7 +125,13 @@ export default function PartnerDetailPage({
             disabled={partner.dnc && !mission && !latest}
             className="rounded-full bg-lutra px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-chip-strong disabled:text-white"
           >
-            {mission ? "Otwórz misję" : latest ? "Ostatnia misja" : "Zajmuję się partnerem"}
+            {mission
+              ? "Otwórz misję"
+              : careMissionOf(state.missions, partner.id)
+                ? "Opieka nad partnerem"
+                : latest
+                  ? "Ostatnia misja"
+                  : "Zajmuję się partnerem"}
           </button>
           {!canDelete ? null : confirmDelete ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -196,6 +209,14 @@ export default function PartnerDetailPage({
                 <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Kategoria</dt>
                 <dd className="mt-0.5 font-semibold text-foreground">{partner.category || "—"}</dd>
               </div>
+              {partner.segment === "venue" ? (
+                <div>
+                  <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Pojemność</dt>
+                  <dd className="mt-0.5 font-semibold text-foreground">
+                    {partner.capacity ? `${partner.capacity} osób` : "—"}
+                  </dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Subkategoria</dt>
                 <dd className="mt-0.5 font-semibold text-foreground">{partner.subcategory || "—"}</dd>

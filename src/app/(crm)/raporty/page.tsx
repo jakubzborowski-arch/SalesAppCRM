@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { formatPlDate } from "@/lib/dates";
-import { activityChannelLabel, MISSION_STATUS_LABEL, stageLabel } from "@/lib/playbook";
+import { activityChannelLabel, MISSION_STATUS_LABEL, SEGMENTS, stageLabel } from "@/lib/playbook";
 import {
   attention,
   contactStats,
@@ -16,7 +16,7 @@ import {
   type ReportPeriod,
 } from "@/lib/reports";
 import { useStore } from "@/lib/store";
-import type { Mission, StageId } from "@/lib/types";
+import type { Mission, PartnerSegment, StageId } from "@/lib/types";
 
 const PERIODS: { id: ReportPeriod; label: string }[] = [
   { id: 30, label: "30 dni" },
@@ -80,6 +80,12 @@ export default function ReportsPage() {
   const { state, partnerById, memberName } = useStore();
   const [period, setPeriod] = useState<ReportPeriod>(90);
   const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [segment, setSegment] = useState<PartnerSegment | null>(null);
+  // Typ partnera zawęża wszystkie liczby na stronie.
+  const scoped = useMemo(
+    () => (segment ? state.missions.filter((m) => partnerById(m.partnerId)?.segment === segment) : state.missions),
+    [state.missions, segment, partnerById],
+  );
 
   const owners = useMemo(() => {
     const ids = new Set(state.missions.map((m) => m.ownerUserId).filter((id): id is string => Boolean(id)));
@@ -87,14 +93,14 @@ export default function ReportsPage() {
   }, [state.missions, memberName]);
 
   const missions = useMemo(
-    () => selectMissions(state.missions, { period, ownerId } satisfies ReportFilter),
-    [state.missions, period, ownerId],
+    () => selectMissions(scoped, { period, ownerId } satisfies ReportFilter),
+    [scoped, period, ownerId],
   );
   const rows = useMemo(() => funnel(missions), [missions]);
   const result = useMemo(() => outcomes(missions), [missions]);
   const reasons = useMemo(() => lossReasons(missions), [missions]);
-  const contacts = useMemo(() => contactStats(state.missions, { period, ownerId }), [state.missions, period, ownerId]);
-  const now = useMemo(() => attention(state.missions, ownerId), [state.missions, ownerId]);
+  const contacts = useMemo(() => contactStats(scoped, { period, ownerId }), [scoped, period, ownerId]);
+  const now = useMemo(() => attention(scoped, ownerId), [scoped, ownerId]);
   const lostTotal = result.lost + result.no_fit;
   const maxReason = reasons[0]?.count ?? 0;
   const maxContacts = contacts.rows[0]?.total ?? 0;
@@ -122,6 +128,19 @@ export default function ReportsPage() {
               {item.label}
             </Chip>
           ))}
+          <select
+            aria-label="Typ partnera"
+            className="ml-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-navy"
+            value={segment ?? ""}
+            onChange={(event) => setSegment((event.target.value || null) as PartnerSegment | null)}
+          >
+            <option value="">Wszystkie typy</option>
+            {SEGMENTS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
           {owners.length > 1 ? (
             <select
               aria-label="Handlowiec"

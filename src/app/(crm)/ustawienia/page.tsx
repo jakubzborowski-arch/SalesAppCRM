@@ -5,7 +5,9 @@ import { listInvites as fetchInvites } from "@/lib/db";
 import { FORBIDDEN_PROMISES } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 import { ContractTemplateSection } from "@/components/settings/contract-template-section";
+import Link from "next/link";
 import { RemindersSection } from "@/components/reminders";
+import { openTour, writeOnboarding } from "@/lib/onboarding";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { TeamInvite } from "@/lib/types";
 import { Field, inputClass } from "@/components/ui";
@@ -346,6 +348,28 @@ export default function SettingsPage() {
             <JoinSection />
           </>
         ) : null}
+
+        <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
+          <h2 className="font-semibold">Wprowadzenie i pomoc</h2>
+          <p className="mt-1 text-sm text-muted">
+            Krótkie wprowadzenie pokazuje się raz. Możesz je obejrzeć ponownie albo zajrzeć do Pomocy.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                writeOnboarding(state.user.id, { tourDone: false, checklistHidden: false });
+                openTour();
+              }}
+              className="rounded-full bg-lutra px-4 py-2 text-xs font-semibold text-white"
+            >
+              Pokaż wprowadzenie
+            </button>
+            <Link href="/pomoc" className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-lutra">
+              Otwórz Pomoc
+            </Link>
+          </div>
+        </section>
 
         <ContractTemplateSection />
         <RemindersSection />

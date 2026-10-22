@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { daysSince, daysUntil, formatPlDate, relativeDay, relativeDeadline } from "@/lib/dates";
-import { MISSION_STATUS_LABEL, activityChannelLabel, activityOutcomeLabel } from "@/lib/playbook";
+import { MISSION_STATUS_LABEL, activityChannelLabel, activityOutcomeLabel, segmentLabel } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 import { STAGES, type Mission, type MissionStatus, type Partner } from "@/lib/types";
 
@@ -32,7 +32,7 @@ type Card = {
 const STALE_DAYS = 7;
 
 function partnerMeta(partner: Partner) {
-  return [partner.city, partner.category].filter(Boolean).join(" · ") || "Lokal";
+  return [segmentLabel(partner.segment), partner.city, partner.category].filter(Boolean).join(" · ");
 }
 
 function missionCard(partner: Partner, mission: Mission): Card {

@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { STAGE_HELP } from "@/lib/playbook";
 import { STAGES, type StageId } from "@/lib/types";
 
 export function MissionStepper({
@@ -38,6 +39,7 @@ export function MissionStepper({
               type="button"
               onClick={() => onSelect(stage.id)}
               aria-current={active ? "step" : undefined}
+              title={`${index + 1}. ${stage.label} — ${STAGE_HELP[stage.id].goal} ${STAGE_HELP[stage.id].gate}`}
               className={cn(
                 "relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition",
                 peek && "ring-2 ring-blue ring-offset-2",

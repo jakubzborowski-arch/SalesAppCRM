@@ -118,7 +118,7 @@ describe("termin decyzji", () => {
     m.contract = { ...m.contract, nip: "5250007737", startAt: "2026-11-01", endAt: "2026-10-01" };
     const missing = contractBlockers(m);
     expect(missing).toContain("poprawny NIP");
-    expect(missing).toContain("koniec umowy po starcie");
+    expect(missing).toContain("koniec okresu po starcie");
   });
 });
 

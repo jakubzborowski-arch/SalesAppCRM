@@ -6,9 +6,10 @@ import {
   MISSION_STATUS_LABEL as MISSION_STATUS,
   NEED_CATEGORIES,
   OBJECTION_KEYS,
-  OFFER_VARIANTS,
-  RESEARCH_ITEMS,
+  offerName,
+  RESEARCH_ITEMS_BY_SEGMENT,
 } from "@/lib/playbook";
+import { termsLines } from "@/lib/terms";
 import { STAGES, type Mission, type Partner } from "@/lib/types";
 
 const NEED_STATUS: Record<Mission["needs"][number]["status"], string> = {
@@ -95,9 +96,9 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
             <div className="sm:col-span-2">
               <dt className="text-muted">Research</dt>
               <dd className="mt-1">
-                {RESEARCH_ITEMS.map(
-                  (item) => `${item.label}: ${mission.checklist[`research:${item.key}`] ? "tak" : "nie"}`,
-                ).join(" · ")}
+                {(RESEARCH_ITEMS_BY_SEGMENT[partner.segment] ?? RESEARCH_ITEMS_BY_SEGMENT.venue)
+                  .map((item) => `${item.label}: ${mission.checklist[`research:${item.key}`] ? "tak" : "nie"}`)
+                  .join(" · ")}
               </dd>
             </div>
           </Block>
@@ -131,11 +132,12 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
               label="Wariant"
               value={
                 mission.selectedVariant
-                  ? `${mission.selectedVariant}. ${OFFER_VARIANTS.find((item) => item.variant === mission.selectedVariant)?.name ?? ""}`
+                  ? `${mission.selectedVariant}. ${offerName(mission.selectedVariant, partner.segment)}`
                   : "—"
               }
             />
             <Row label="Oferta zatwierdzona" value={mission.offerApproved ? "tak" : "nie"} />
+            <Row label="Warunki" value={termsLines(mission, partner.segment).join(" · ") || "—"} />
             <Row label="Wynik" value={mission.outcome ? (MISSION_STATUS[mission.outcome] ?? mission.outcome) : "—"} />
             <Row label="Powód zamknięcia" value={text(mission.lossReason)} />
             {mission.closeNote ? <Row label="Notatka do zamknięcia" value={mission.closeNote} /> : null}

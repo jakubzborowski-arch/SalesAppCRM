@@ -25,3 +25,20 @@ export function canEditPartner(state: AppState, partner: Pick<Partner, "id" | "o
   if (state.missions.some((m) => m.partnerId === partner.id && m.ownerUserId === state.user.id)) return true;
   return ownerOutsideTeam(state, owner);
 }
+
+/**
+ * Usunięcie partnera kasuje też jego misje — tylko opiekun karty albo administrator i tylko wtedy,
+ * gdy nie ma na nim cudzych misji (tak samo pilnuje baza).
+ */
+export function canDeletePartner(
+  state: AppState,
+  partner: Pick<Partner, "id" | "ownerUserId">,
+  enforce: boolean,
+) {
+  if (!canEditPartner(state, partner, enforce)) return false;
+  // Kasowanie jest nieodwracalne — cudzą kartę usuwa tylko administrator (także bez migracji v6).
+  const ownerOk =
+    !state.user.id || !partner.ownerUserId || partner.ownerUserId === state.user.id || Boolean(state.user.isAdmin);
+  if (!ownerOk) return false;
+  return state.missions.filter((m) => m.partnerId === partner.id).every((m) => canEditMission(state, m, enforce));
+}

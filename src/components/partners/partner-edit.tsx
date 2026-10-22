@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { isValidEmail } from "@/lib/company";
+import { CATEGORIES_BY_SEGMENT, SEGMENTS } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
-import type { Partner, PartnerContact } from "@/lib/types";
-import { Field, inputClass } from "@/components/ui";
+import type { Partner, PartnerContact, PartnerSegment } from "@/lib/types";
+import { Field, inputClass, NumberInput, Pills } from "@/components/ui";
 
 type BasicKey =
   | "name"
@@ -22,9 +23,9 @@ type BasicKey =
   | "notes";
 
 const BASIC: { key: BasicKey; label: string; wide?: boolean; long?: boolean }[] = [
-  { key: "name", label: "Nazwa lokalu" },
+  { key: "name", label: "Nazwa" },
   { key: "city", label: "Miasto" },
-  { key: "address", label: "Adres lokalu", wide: true },
+  { key: "address", label: "Adres", wide: true },
   { key: "category", label: "Kategoria" },
   { key: "subcategory", label: "Subkategoria" },
   { key: "hours", label: "Godziny" },
@@ -46,9 +47,11 @@ function basicOf(partner: Partner): Record<BasicKey, string> {
 
 /** Edycja podstawowych danych karty. Zapisuje tylko pola, które zmieniono w formularzu. */
 export function PartnerBasicsForm({ partner, onDone }: { partner: Partner; onDone: () => void }) {
-  const { updatePartner } = useStore();
+  const { updatePartner, schemaV7 } = useStore();
   const [opened] = useState(() => basicOf(partner));
   const [draft, setDraft] = useState(opened);
+  const [segment, setSegment] = useState<PartnerSegment>(partner.segment);
+  const [capacity, setCapacity] = useState<number | null>(partner.capacity);
   const nameMissing = !draft.name.trim();
 
   const save = () => {
@@ -58,6 +61,8 @@ export function PartnerBasicsForm({ partner, onDone }: { partner: Partner; onDon
       const value = draft[key].trim();
       if (value !== opened[key].trim()) (patch as Record<string, string>)[key] = value;
     }
+    if (segment !== partner.segment) patch.segment = segment;
+    if (capacity !== partner.capacity) patch.capacity = capacity;
     if (Object.keys(patch).length) updatePartner(partner.id, patch);
     onDone();
   };
@@ -70,10 +75,48 @@ export function PartnerBasicsForm({ partner, onDone }: { partner: Partner; onDon
         save();
       }}
     >
+      <div className="sm:col-span-2">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-navy">Typ partnera</p>
+        <Pills
+          value={segment}
+          onChange={setSegment}
+          options={SEGMENTS.map((item) => ({ id: item.id, label: item.label, hint: item.who }))}
+        />
+        {segment !== partner.segment ? (
+          <p className="mt-1 text-xs text-muted">
+            Zmiana typu zmienia warianty oferty, wymagane warunki i listę kroków aktywacji.
+          </p>
+        ) : null}
+        {schemaV7 === false ? (
+          <p className="mt-1 text-xs text-amber-700">Typ i pojemność zapiszą się w bazie po migracji v7.</p>
+        ) : null}
+      </div>
+      {segment === "venue" ? (
+        <Field label="Pojemność (osób)">
+          <NumberInput
+            value={capacity}
+            min={1}
+            max={100000}
+            onChange={(next) => setCapacity(next === null ? null : Math.max(1, Math.round(next)))}
+          />
+        </Field>
+      ) : null}
+      <datalist id="partner-categories">
+        {CATEGORIES_BY_SEGMENT[segment].map((item) => (
+          <option key={item} value={item} />
+        ))}
+      </datalist>
       {BASIC.map((field) => (
         <div key={field.key} className={field.wide ? "sm:col-span-2" : ""}>
           <Field label={field.label}>
-            {field.long ? (
+            {field.key === "category" ? (
+              <input
+                className={inputClass}
+                list="partner-categories"
+                value={draft.category}
+                onChange={(event) => setDraft({ ...draft, category: event.target.value })}
+              />
+            ) : field.long ? (
               <textarea
                 className={inputClass}
                 rows={2}
@@ -90,7 +133,7 @@ export function PartnerBasicsForm({ partner, onDone }: { partner: Partner; onDon
           </Field>
         </div>
       ))}
-      {nameMissing ? <p className="text-xs text-rose-600 sm:col-span-2">Nazwa lokalu jest wymagana.</p> : null}
+      {nameMissing ? <p className="text-xs text-rose-600 sm:col-span-2">Nazwa jest wymagana.</p> : null}
       <div className="flex gap-2 sm:col-span-2">
         <button
           type="submit"

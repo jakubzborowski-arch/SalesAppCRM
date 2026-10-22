@@ -102,17 +102,19 @@ const MIGRATION_INFO = {
   v4: "zespół, dziennik kontaktów, historia etapów",
   v5: "dane firmy partnera (nazwa, NIP, REGON, adresy)",
   v6: "kto co edytuje, przekazywanie misji, obieg podpisu i szablon umowy",
+  v7: "typ partnera (miejsce / społeczność / firma), pojemność miejsca i porozumienie mailowe",
 } as const;
 
 type MigrationId = keyof typeof MIGRATION_INFO;
 
 export function SetupBanner() {
-  const { dbStatus, dbError, retryCloud, schemaV4, schemaV5, schemaV6 } = useStore();
+  const { dbStatus, dbError, retryCloud, schemaV4, schemaV5, schemaV6, schemaV7 } = useStore();
   const [copied, setCopied] = useState<string | null>(null);
   const flags: [MigrationId, boolean | null][] = [
     ["v4", schemaV4],
     ["v5", schemaV5],
     ["v6", schemaV6],
+    ["v7", schemaV7],
   ];
   const firstMissing = dbStatus === "ok" ? flags.find(([, has]) => has === false)?.[0] : undefined;
   const pending = firstMissing ? flags.slice(flags.findIndex(([id]) => id === firstMissing)).map(([id]) => id) : [];
@@ -183,7 +185,7 @@ export function SetupBanner() {
       <InviteBanner />
       <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
         <p className="font-semibold">
-          {dbStatus === "need-sql" ? "Brakuje tabel CRM. Odpal skrypt v2–v6 w SQL Editorze." : `Błąd bazy: ${dbError}`}
+          {dbStatus === "need-sql" ? "Brakuje tabel CRM. Odpal skrypt v2–v7 w SQL Editorze." : `Błąd bazy: ${dbError}`}
         </p>
         <p className="mt-1 text-amber-900/80">
           To nowy skrypt (nie bootstrap crm_state). Wklej całość, Run, potem Sprawdź ponownie.
@@ -202,7 +204,7 @@ export function SetupBanner() {
             onClick={() => void copy("all")}
             className="rounded-full bg-lutra px-4 py-2 text-xs font-semibold text-white"
           >
-            {copied === "all" ? "Skopiowano" : "Kopiuj SQL v2–v6"}
+            {copied === "all" ? "Skopiowano" : "Kopiuj SQL v2–v7"}
           </button>
           <button
             type="button"

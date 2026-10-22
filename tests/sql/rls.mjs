@@ -1,4 +1,4 @@
-// Test migracji v2–v6 na PGlite z atrapą Supabase (auth, storage, role).
+// Test migracji v2–v7 na PGlite z atrapą Supabase (auth, storage, role).
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 
@@ -10,6 +10,7 @@ const v23 = readFileSync(`${REPO}/supabase/v2-v3-all.sql`, "utf8").replace(
 const v4 = readFileSync(`${REPO}/supabase/v4-team-timeline.sql`, "utf8");
 const v5 = readFileSync(`${REPO}/supabase/v5-company-data.sql`, "utf8");
 const v6 = readFileSync(`${REPO}/supabase/v6-roles-contracts.sql`, "utf8");
+const v7 = readFileSync(`${REPO}/supabase/v7-partner-types.sql`, "utf8");
 
 const stub = `
 create role anon nologin;
@@ -499,6 +500,59 @@ await expectError("handlowiec nie zmienia szablonu umowy", () =>
 await as(G, () => db.query("select public.set_contract_template($1)", ["  # Umowa zespołu  "]));
 const tpl = await as(H, () => one("select contract_template from workspaces where id = $1", [wsG]));
 ok(tpl.contract_template === "# Umowa zespołu", "admin zapisuje szablon, zespół go czyta");
+
+console.log("16) v7: typ partnera, pojemność, szablon porozumienia");
+// Tabela partnerów z innej aplikacji: bez typu, pojemność jako tekst.
+await db.exec("alter table partners drop column segment");
+await db.exec("alter table partners add column capacity text");
+await db.query("update partners set capacity = '40 osób' where id = $1", [pG]);
+await db.query("update partners set capacity = 'dużo' where id = $1", [pH]);
+await db.query("update partners set capacity = '0' where id = $1", [pShared]);
+const pRange = (await one("insert into partners (workspace_id, name, capacity) values ($1, 'Sala', '20-30 osób, 2 sale') returning id", [wsG])).id;
+await db.exec(v7);
+await db.exec(v7);
+ok((await one("select capacity from partners where id = $1", [pRange])).capacity === 20, "„20-30 osób, 2 sale” → 20 (pierwsza liczba)");
+const segCol = await one(
+  "select data_type, udt_name, column_default from information_schema.columns where table_name = 'partners' and column_name = 'segment'",
+);
+ok(segCol?.udt_name === "partner_segment" && String(segCol.column_default).includes("venue"), "kolumna typu partnera wraca z domyślnym „venue”");
+const capCol = await one("select data_type from information_schema.columns where table_name = 'partners' and column_name = 'capacity'");
+ok(capCol?.data_type === "integer", "pojemność jako liczba");
+const caps = await all("select id, capacity, segment from partners where id = any($1::uuid[])", [[pG, pH, pShared]]);
+const capOf = (id) => caps.find((row) => row.id === id);
+ok(capOf(pG)?.capacity === 40 && capOf(pG)?.segment === "venue", "„40 osób” → 40, istniejący partner to miejsce");
+ok(capOf(pH)?.capacity === null && capOf(pShared)?.capacity === null, "tekst bez liczby i zero → puste");
+const capCheck = await one("select convalidated from pg_constraint where conname = 'partners_capacity_range'");
+ok(capCheck?.convalidated === true, "ograniczenie pojemności sprawdzone");
+const community = await as(H, async () =>
+  (await one("insert into partners (workspace_id, name, owner_user_id, segment) values ($1, 'Klub Pionek', $2, 'community') returning segment", [wsG, H.id])).segment,
+);
+ok(community === "community", "handlowiec dodaje społeczność");
+await as(H, () => db.query("update partners set capacity = 60, segment = 'venue' where id = $1", [pH]));
+ok((await one("select capacity from partners where id = $1", [pH])).capacity === 60, "handlowiec zapisuje pojemność swojego miejsca");
+await expectError("pojemność 0 odrzucona", () =>
+  as(H, () => db.query("update partners set capacity = 0 where id = $1", [pH])), /partners_capacity_range/);
+await expectError("nieznany typ partnera odrzucony", () =>
+  as(H, () => db.query("update partners set segment = 'sklep' where id = $1", [pH])), /partner_segment/);
+await expectError("handlowiec nie zmienia szablonu porozumienia", () =>
+  as(H, () => db.query("select public.set_agreement_template($1)", ["Temat: x"])), /administrator/);
+await as(G, () => db.query("select public.set_agreement_template($1)", ["  Temat: Lutra × {{lokal}}\n\nTreść  "]));
+const agreement = await as(H, () => one("select agreement_template from workspaces where id = $1", [wsG]));
+ok(agreement.agreement_template === "Temat: Lutra × {{lokal}}\n\nTreść", "admin zapisuje szablon porozumienia, zespół go czyta");
+await as(G, () => db.query("select public.set_agreement_template($1)", ["   "]));
+ok((await one("select agreement_template from workspaces where id = $1", [wsG])).agreement_template === null, "pusty szablon = domyślny");
+await expectError("za długi szablon odrzucony", () =>
+  as(G, () => db.query("select public.set_agreement_template($1)", ["x".repeat(50001)])), /za długi/);
+const otherWs = await as(C, () => all("select agreement_template from workspaces where id = $1", [wsG]));
+ok(otherWs.length === 0, "obcy workspace nie widzi szablonu");
+// Pojemność jako liczba z ułamkiem (np. numeric z innej aplikacji): zaokrąglenie, nie sklejanie cyfr.
+await db.exec("alter table partners drop constraint partners_capacity_range");
+await db.exec("alter table partners alter column capacity type numeric(8,2)");
+await db.query("update partners set capacity = 40.4 where id = $1", [pG]);
+await db.query("update partners set capacity = 0.4 where id = $1", [pH]);
+await db.exec(v7);
+const numeric = await all("select id, capacity from partners where id = any($1::uuid[])", [[pG, pH]]);
+ok(numeric.find((row) => row.id === pG)?.capacity === 40 && numeric.find((row) => row.id === pH)?.capacity === null, "40.4 → 40, 0.4 → puste");
 
 console.log(`\nWynik: ${passes} ok, ${failures} błędów`);
 process.exit(failures ? 1 : 0);

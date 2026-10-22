@@ -4,15 +4,9 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { inputClass } from "@/components/ui";
 import { PARTNER_PRIORITIES } from "@/lib/partner-priority";
-import { MISSION_STATUS_LABEL } from "@/lib/playbook";
+import { MISSION_STATUS_LABEL, SEGMENTS, segmentLabel } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
-import { STAGES } from "@/lib/types";
-
-const SEGMENT: Record<string, string> = {
-  venue: "Lokal",
-  company: "Firma",
-  community: "Społeczność",
-};
+import { STAGES, type PartnerSegment } from "@/lib/types";
 
 function fold(value: string) {
   return value
@@ -22,8 +16,9 @@ function fold(value: string) {
 }
 
 export default function PartnersPage() {
-  const { state, missionByPartner, latestMissionByPartner, deletePartner } = useStore();
+  const { state, missionByPartner, latestMissionByPartner, deletePartner, canDeletePartner } = useStore();
   const [query, setQuery] = useState("");
+  const [segment, setSegment] = useState<"all" | PartnerSegment>("all");
   const [priority, setPriority] = useState("all");
   const [category, setCategory] = useState("all");
   const [missionFilter, setMissionFilter] = useState<"all" | "open" | "none">("all");
@@ -47,6 +42,7 @@ export default function PartnersPage() {
     const q = fold(query.trim());
     return state.partners.filter((partner) => {
       const mission = missionByPartner(partner.id);
+      if (segment !== "all" && partner.segment !== segment) return false;
       if (priority !== "all" && fold(partner.priority) !== fold(priority)) return false;
       if (category !== "all" && fold(partner.category) !== fold(category)) return false;
       if (missionFilter === "open" && !mission) return false;
@@ -68,7 +64,7 @@ export default function PartnersPage() {
         .join(" ");
       return hay.includes(q);
     });
-  }, [state.partners, query, priority, category, missionFilter, missionByPartner]);
+  }, [state.partners, query, segment, priority, category, missionFilter, missionByPartner]);
 
   const remove = async (id: string) => {
     setBusyId(id);
@@ -116,13 +112,26 @@ export default function PartnersPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 rounded-[28px] border border-line bg-white p-4 md:grid-cols-[1fr_160px_160px_160px]">
+        <div className="mt-6 grid gap-3 rounded-[28px] border border-line bg-white p-4 md:grid-cols-[1fr_150px_160px_160px_150px]">
           <input
             className={inputClass}
             placeholder="Szukaj nazwy, miasta, adresu…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <select
+            className={inputClass}
+            value={segment}
+            onChange={(e) => setSegment(e.target.value as typeof segment)}
+            aria-label="Typ partnera"
+          >
+            <option value="all">Typ: wszystkie</option>
+            {SEGMENTS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
           <select className={inputClass} value={priority} onChange={(e) => setPriority(e.target.value)}>
             <option value="all">Priorytet: wszystkie</option>
             {priorities.map((item) => (
@@ -155,7 +164,7 @@ export default function PartnersPage() {
         <div className="mt-4 overflow-hidden rounded-[28px] border border-line bg-white">
           {state.partners.length === 0 ? (
             <div className="px-6 py-10 text-sm text-muted">
-              Brak partnerów w workspace. Dodaj pierwszy lokal.
+              Brak partnerów w workspace. Dodaj pierwszego partnera albo zaimportuj listę z Excela / CSV.
             </div>
           ) : filtered.length === 0 ? (
             <div className="px-6 py-10 text-sm text-muted">Brak partnerów w tym filtrze.</div>
@@ -172,7 +181,7 @@ export default function PartnersPage() {
                 <Link href={`/partners/${partner.id}`} className="min-w-0 flex-1">
                   <p className="font-semibold text-foreground">{partner.name}</p>
                   <p className="mt-1 text-sm text-muted">
-                    {SEGMENT[partner.segment]} · {partner.city || partner.address} ·{" "}
+                    {segmentLabel(partner.segment)} · {partner.city || partner.address || "—"} ·{" "}
                     {[partner.category, partner.subcategory].filter(Boolean).join(" / ")}
                     {partner.priority ? ` · ${partner.priority}` : ""}
                   </p>
@@ -195,7 +204,7 @@ export default function PartnersPage() {
                       Brak misji
                     </span>
                   )}
-                  {confirmId === partner.id ? (
+                  {!canDeletePartner(partner) ? null : confirmId === partner.id ? (
                     <div className="flex items-center gap-2">
                       <button
                         type="button"

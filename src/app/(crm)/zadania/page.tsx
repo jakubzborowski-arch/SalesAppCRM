@@ -14,9 +14,17 @@ const SOURCE_LABEL: Record<string, string> = {
   next_step: "następny krok",
   ai_draft: "szkic",
   deadline: "termin decyzji",
-  signature: "podpis umowy",
-  contract_end: "koniec umowy",
+  signature: "podpis / potwierdzenie",
+  contract_end: "koniec współpracy",
+  follow_up: "mail po kontakcie",
+  review: "przegląd po cyklu",
+  terms: "potwierdzenie warunków",
+  report: "informacja o realizacjach",
 };
+
+/** Pozycje z „Na dziś” wyliczane z misji (nie ma ich w tabeli zadań). */
+const DERIVED_KINDS = new Set(["signature", "contract_end", "follow_up", "review", "terms", "report"]);
+type DerivedSource = "signature" | "contract_end" | "follow_up" | "review" | "terms" | "report";
 
 type Filter = "open" | "done" | "all";
 
@@ -62,7 +70,7 @@ export default function TasksPage() {
         title: m.nextStepLabel,
         dueAt: m.nextStepAt,
         doneAt: undefined as string | undefined,
-        source: "next_step" as "next_step" | "deadline" | "signature" | "contract_end",
+        source: "next_step" as "next_step" | "deadline" | DerivedSource,
         mission: m,
         partner: partnerById(m.partnerId),
       }));
@@ -80,17 +88,17 @@ export default function TasksPage() {
         partner: partnerById(m.partnerId),
       }));
 
-    // Umowy czekające na podpis i kończące się umowy (z „Na dziś”).
+    // Podpisy, maile po kontakcie, opieka i końce umów (z „Na dziś”).
     const contracts = agenda(state, false)
-      .filter((item) => item.kind === "signature" || item.kind === "contract_end")
+      .filter((item) => DERIVED_KINDS.has(item.kind))
       .map((item) => {
         const mission = state.missions.find((m) => m.id === item.missionId);
         return {
-          id: `${item.kind}:${item.missionId}`,
+          id: item.key,
           title: item.title,
           dueAt: item.due,
           doneAt: undefined as string | undefined,
-          source: item.kind as "signature" | "contract_end",
+          source: item.kind as DerivedSource,
           mission,
           partner: partnerById(item.partnerId),
         };
@@ -110,7 +118,8 @@ export default function TasksPage() {
       <div className="px-8 pb-10">
         <h1 className="text-3xl font-semibold tracking-tight">Zadania</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Następny krok z misji plus zadania, które dodajesz sam. Jedna lista, nie tablica 30 follow-upów.
+          Następny krok z misji, zadania dodane ręcznie i przypomnienia z CRM (maile po kontakcie, podpisy, opieka). Jedna
+          lista, nie tablica 30 follow-upów.
         </p>
 
         <form
@@ -221,7 +230,9 @@ export default function TasksPage() {
                     {row.title} · {row.dueAt || "bez daty"} ·{" "}
                     {SOURCE_LABEL[row.source]}
                     {row.mission
-                      ? ` · ${STAGES.find((s) => s.id === row.mission?.currentStage)?.label}`
+                      ? row.mission.status === "won"
+                        ? " · opieka"
+                        : ` · ${STAGES.find((s) => s.id === row.mission?.currentStage)?.label}`
                       : ""}
                   </span>
                 </span>

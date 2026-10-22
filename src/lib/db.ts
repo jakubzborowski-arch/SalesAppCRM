@@ -1,5 +1,6 @@
 import { isValidNip, normalizeNip } from "./company";
 import { loadMissionCore, syncMissionCore } from "./mission-core";
+import { mergeCare, mergeTerms } from "./terms";
 import { nextPriorityForDb, normalizePartnerPriority, priorityForDb } from "./partner-priority";
 import { OBJECTION_KEYS } from "./playbook";
 import { fetchAll, groupBy, selectIn } from "./fetch-all";
@@ -32,6 +33,8 @@ export type WorkspaceContext = {
   fullName: string;
   /** Szablon umowy zespołu (migracja v6). `null` = szablon domyślny. */
   contractTemplate: string | null;
+  /** Szablon porozumienia mailowego (migracja v7). `null` = domyślny. */
+  agreementTemplate: string | null;
 };
 
 type MissionDetails = {
@@ -52,6 +55,9 @@ type MissionDetails = {
   contract?: Mission["contract"];
   activation?: Mission["activation"];
   closeNote?: string;
+  terms?: Partial<Mission["terms"]>;
+  agreementForm?: Mission["agreementForm"];
+  care?: Partial<Mission["care"]>;
 };
 
 function uiDetailsOf(mission: Mission): MissionDetails {
@@ -64,6 +70,9 @@ function uiDetailsOf(mission: Mission): MissionDetails {
     discovery: mission.discovery,
     recommendedVariant: mission.recommendedVariant,
     closeNote: mission.closeNote,
+    terms: mission.terms,
+    agreementForm: mission.agreementForm,
+    care: mission.care,
   };
 }
 
@@ -80,10 +89,6 @@ function detailsOf(mission: Mission): MissionDetails {
     contract: mission.contract,
     activation: mission.activation,
   };
-}
-
-function filled(value?: string) {
-  return Boolean(value?.trim());
 }
 
 function missionFromRow(
@@ -126,6 +131,9 @@ function missionFromRow(
     lossReason: row.loss_reason ?? "",
     contract: { ...base.contract, ...(d.contract ?? {}) },
     activation: { ...base.activation, ...(d.activation ?? {}) },
+    terms: mergeTerms(d.terms),
+    agreementForm: d.agreementForm ?? null,
+    care: mergeCare(d.care),
     objections: d.objections?.length
       ? d.objections
       : OBJECTION_KEYS.map((item) => ({
@@ -157,6 +165,7 @@ function mapPartner(
     hours: string | null;
     notes: string | null;
     owner_user_id?: string | null;
+    capacity?: number | null;
     legal_name?: string | null;
     nip?: string | null;
     regon?: string | null;
@@ -171,7 +180,8 @@ function mapPartner(
     id: row.id,
     ownerUserId: row.owner_user_id ?? undefined,
     name: row.name,
-    segment: row.segment,
+    segment: row.segment === "company" || row.segment === "community" ? row.segment : "venue",
+    capacity: typeof row.capacity === "number" && row.capacity > 0 ? row.capacity : null,
     city: row.city ?? "",
     address: row.address ?? "",
     category: row.category ?? "",
@@ -217,6 +227,7 @@ export async function ensureWorkspace(): Promise<WorkspaceContext> {
     workspaceName: workspace?.name ?? "Lutra",
     fullName: profile?.full_name ?? "Handlowiec",
     contractTemplate: (workspace?.contract_template as string | null | undefined) ?? null,
+    agreementTemplate: (workspace?.agreement_template as string | null | undefined) ?? null,
   };
 }
 
@@ -381,28 +392,13 @@ export async function loadCrm(workspaceId: string): Promise<{
   const merged = missions.map((mission) => {
     const core = byMission.get(mission.id);
     if (!core) return mission;
-    const decisionFromCore =
-      core.decision &&
-      (filled(core.decision.problem) ||
-        filled(core.decision.expectedResult) ||
-        filled(core.decision.decisionMakerId) ||
-        filled(core.decision.nextStep));
-    const contractFromCore =
-      core.contract &&
-      (filled(core.contract.companyName) ||
-        filled(core.contract.nip) ||
-        core.contract.documentPath ||
-        core.contract.signedByHuman);
-    const activationFromCore =
-      core.activation &&
-      (filled(core.activation.partnerCode) ||
-        core.activation.hoursConfirmed ||
-        core.activation.testPassed ||
-        filled(core.activation.opsContactName));
     return {
       ...mission,
       needs: core.needs?.length ? core.needs : mission.needs,
-      decision: decisionFromCore ? core.decision! : mission.decision,
+      // Wiersz z tabel misji wygrywa pole po polu. Puste pole w wierszu nie kasuje danych ze starszego
+      // zapisu w `details`. Wcześniej cały wiersz liczył się tylko z nazwą firmy, NIP-em albo PDF-em,
+      // więc okres ustalony w ofercie (bez danych firmy) znikał po odświeżeniu.
+      decision: core.decision ? preferFilled(mission.decision, core.decision) : mission.decision,
       checklist: { ...mission.checklist, ...core.checklist },
       objections: core.objections?.length
         ? mission.objections.map((item) => core.objections?.find((o) => o.key === item.key) ?? item)
@@ -410,14 +406,23 @@ export async function loadCrm(workspaceId: string): Promise<{
       selectedVariant: core.selectedVariant ?? mission.selectedVariant,
       offerApproved: core.offerApproved ?? mission.offerApproved,
       offerSentAt: core.offerSentAt ?? mission.offerSentAt,
-      contract: contractFromCore ? { ...mission.contract, ...core.contract } : mission.contract,
-      activation: activationFromCore
-        ? { ...mission.activation, ...core.activation }
-        : mission.activation,
+      contract: core.contract ? preferFilled(mission.contract, core.contract) : mission.contract,
+      activation: core.activation ? preferFilled(mission.activation, core.activation) : mission.activation,
     };
   });
 
   return { partners, missions: merged, tasks, versions };
+}
+
+/** Pola z `core`, które mają wartość (niepusty tekst, `true`, liczba), nadpisują `base`. */
+export function preferFilled<T extends object>(base: T, core: Partial<T>): T {
+  const out = { ...base } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(core)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    out[key] = value;
+  }
+  return out as T;
 }
 
 export async function insertPartner(
@@ -463,6 +468,8 @@ export async function insertPartner(
     dnc_status: "ok",
   };
   if (!payload.priority) delete payload.priority;
+  if (input.segment === "company" || input.segment === "community") payload.segment = input.segment;
+  if (input.capacity && input.capacity > 0) payload.capacity = Math.round(input.capacity);
   if (input.legalName?.trim()) payload.legal_name = input.legalName.trim();
   if (input.nip && isValidNip(input.nip)) payload.nip = normalizeNip(input.nip);
   else if (input.nip?.trim()) {
@@ -669,10 +676,17 @@ function partnerColumns(partner: Partner): Record<string, unknown> {
     legal_address: c.legalAddress || null,
     mailing_address: c.mailingAddress || null,
     billing_email: c.billingEmail || null,
+    segment: partner.segment,
+    capacity: partner.capacity && partner.capacity > 0 ? Math.round(partner.capacity) : null,
   };
 }
 
 const COMPANY_COLUMNS = ["legal_name", "nip", "regon", "legal_address", "mailing_address", "billing_email"];
+/** Kolumny z migracji v7 (typ partnera i pojemność). */
+const V7_PARTNER_COLUMNS = ["segment", "capacity"];
+
+/** Zabrakło kolumn typu partnera / pojemności — trzeba uruchomić migrację v7. */
+export const V7_MISSING = "Baza nie ma jeszcze pól typu partnera i pojemności. Uruchom migrację v7 z paska u góry strony.";
 
 /** Zabrakło kolumn danych firmy — trzeba uruchomić migrację v5. */
 export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrację v5 z paska u góry strony.";
@@ -684,8 +698,8 @@ export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrac
 export async function persistPartner(
   partner: Partner,
   before?: Partner,
-): Promise<{ dropped: ("company" | "priority")[]; conflicts: string[] }> {
-  const dropped: ("company" | "priority")[] = [];
+): Promise<{ dropped: ("company" | "priority" | "v7")[]; conflicts: string[] }> {
+  const dropped: ("company" | "priority" | "v7")[] = [];
   /** Kontakty zmienione w międzyczasie przez kogoś innego — ich nie zapisujemy. */
   const conflicts: string[] = [];
   const sb = getSupabase();
@@ -708,7 +722,7 @@ export async function persistPartner(
   const prev = before ? partnerColumns(before) : null;
   const changed = Object.fromEntries(
     Object.entries(next).filter(([key, value]) => {
-      if (!prev) return !(COMPANY_COLUMNS.includes(key) && value === null);
+      if (!prev) return !([...COMPANY_COLUMNS, "capacity"].includes(key) && value === null);
       return JSON.stringify(prev[key]) !== JSON.stringify(value);
     }),
   );
@@ -718,11 +732,22 @@ export async function persistPartner(
         ? (await sb.from("partners").update(changed).eq("id", partner.id)).error
         : null;
     let error = await send();
-    for (let attempt = 0; error && attempt < 2; attempt++) {
+    for (let attempt = 0; error && attempt < 5; attempt++) {
+      const missing = missingColumnName(error);
       if ("priority" in changed && /partner_priority/i.test(error.message ?? "")) {
         // Starsza baza ma inny zestaw priorytetów — reszta zmian i tak ma się zapisać.
         delete changed.priority;
         dropped.push("priority");
+      } else if (
+        isMissingColumn(error) &&
+        Object.keys(changed).some((key) => V7_PARTNER_COLUMNS.includes(key)) &&
+        (!missing || V7_PARTNER_COLUMNS.includes(missing))
+      ) {
+        // Bez migracji v7 brakuje kolumny typu albo pojemności — pomijamy tylko brakującą, reszta karty się zapisuje.
+        // (Starsze bazy mają już typ partnera; zmiana typu nie może przepaść razem z pojemnością.)
+        const drop = missing && V7_PARTNER_COLUMNS.includes(missing) ? [missing] : V7_PARTNER_COLUMNS;
+        for (const key of drop) delete changed[key];
+        if (!dropped.includes("v7")) dropped.push("v7");
       } else if (isMissingColumn(error) && Object.keys(changed).some((key) => COMPANY_COLUMNS.includes(key))) {
         // Bez migracji v5 dane firmy nie mają gdzie się zapisać — reszta karty tak.
         for (const key of COMPANY_COLUMNS) delete changed[key];
@@ -857,6 +882,7 @@ export async function persistMission(
   mission: Mission,
   workspaceId: string,
   userId: string,
+  segment: Partner["segment"] = "venue",
 ): Promise<{ nextStepTask: TaskItem | null }> {
   const sb = getSupabase();
   if (!sb) return { nextStepTask: null };
@@ -899,7 +925,7 @@ export async function persistMission(
   }
   setMissionVersion(mission.id, claimed);
 
-  const core = await syncMissionCore(mission, workspaceId, userId);
+  const core = await syncMissionCore(mission, workspaceId, userId, segment);
   if (core.status === "synced") {
     if (claimed) {
       // Domknięcie zapisu: nowa wersja dopiero po zapisaniu tabel misji. Kto wczytał misję
@@ -926,6 +952,17 @@ export async function persistMission(
     coreTablesAvailable = false;
   }
   return { nextStepTask: core.nextStepTask };
+}
+
+/** Nazwa brakującej kolumny z komunikatu PostgREST/Postgres (jeśli da się ją odczytać). */
+function missingColumnName(error: { message?: string } | null) {
+  const message = error?.message ?? "";
+  return (
+    message.match(/Could not find the '([a-z_]+)' column/i)?.[1] ??
+    message.match(/column (?:[a-z_]+\.)?([a-z_]+) does not exist/i)?.[1] ??
+    message.match(/column "([a-z_]+)" (?:of relation|does not exist)/i)?.[1] ??
+    null
+  );
 }
 
 function isMissingColumn(error: { code?: string; message?: string } | null) {
@@ -1163,6 +1200,29 @@ export async function transferMission(missionId: string, userId: string) {
   const { data, error } = await sb.rpc("transfer_mission", { p_mission: missionId, p_user: userId });
   if (error) throw rpcError(error, "Nie udało się przekazać misji.", V6_MISSING);
   return typeof data === "string" ? data : undefined;
+}
+
+/** Czy baza ma typ partnera, pojemność i szablon porozumienia mailowego (migracja v7). */
+export async function detectSchemaV7(): Promise<boolean | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { error } = await sb.from("partners").select("segment, capacity").limit(1);
+  if (error) {
+    if (isMissingColumn(error) || isMissingCrmTable(error)) return false;
+    return null;
+  }
+  const { error: wsError } = await sb.from("workspaces").select("agreement_template").limit(1);
+  if (!wsError) return true;
+  if (isMissingColumn(wsError)) return false;
+  return null;
+}
+
+/** Szablon porozumienia mailowego zespołu (admin, migracja v7). */
+export async function saveAgreementTemplate(template: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("set_agreement_template", { p_template: template });
+  if (error) throw rpcError(error, "Nie udało się zapisać szablonu.", V7_MISSING);
 }
 
 export async function saveContractTemplate(template: string) {

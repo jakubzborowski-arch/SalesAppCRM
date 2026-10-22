@@ -83,9 +83,9 @@ vi.mock("@/lib/supabase", () => ({
 
 const { StoreProvider, useStore } = await import("@/lib/store");
 type StoreApi = ReturnType<typeof useStore>;
-function Grab({ out }: { out: { store: StoreApi | null } }) {
-  // eslint-disable-next-line react-hooks/globals
-  out.store = useStore();
+/** Wyciąga sklep z kontekstu do testu (callback zamiast mutacji propsów). */
+function Grab({ onStore }: { onStore: (store: StoreApi) => void }) {
+  onStore(useStore());
   return null;
 }
 
@@ -93,7 +93,7 @@ describe("latest.current lags savedMissions", () => {
   it("flush between refresh setState and the effect re-saves untouched missions from stale copies", async () => {
     holder.client = makeClient();
     const out: { store: StoreApi | null } = { store: null };
-    render(<StoreProvider><Grab out={out} /></StoreProvider>);
+    render(<StoreProvider><Grab onStore={(store) => { out.store = store; }} /></StoreProvider>);
     await waitFor(() => expect(out.store?.state.missions.length).toBe(2));
     await new Promise((r) => setTimeout(r, 700));
     holder.refresh = out.store!.refresh;

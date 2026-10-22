@@ -11,7 +11,96 @@ export const STAGES = [
 
 export type StageId = (typeof STAGES)[number]["id"];
 
+/** Miejsce (lokal), społeczność (klub, grupa, koło) albo firma (zespoły zdalne). */
 export type PartnerSegment = "venue" | "company" | "community";
+
+export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+
+/** Jak gość realizuje zniżkę: QR skanowany przez obsługę, kod numeryczny w kasie albo hasło lokalu. */
+export type RedemptionMethod = "qr" | "code" | "password";
+
+/** Zniżka dla ludzi z Lutry — warunek obecności lokalu w aplikacji. */
+export type DiscountTerms = {
+  /** Rabat procentowy albo gratis (np. kawa do deseru). */
+  kind: "percent" | "freebie";
+  percent: number | null;
+  freebie: string;
+  /** Dni, w których obowiązuje (puste = każdy dzień otwarcia). */
+  days: Weekday[];
+  /** Okno godzinowe, np. godziny martwe 16:00–19:00 (puste = cały dzień). */
+  hoursFrom: string;
+  hoursTo: string;
+  /** Minimalna grupa (np. 3 = „zniżka od grupy 3+”). */
+  minGroup: number | null;
+  /** Wyłączone produkty, dni albo okazje. */
+  exclusions: string;
+  redemption: RedemptionMethod | null;
+  /** Hasło dla wariantu bez wdrożenia. */
+  password: string;
+};
+
+/** Miejsce na wydarzenia: stolik albo przestrzeń w ustalonych godzinach. */
+export type SpaceTerms = {
+  offered: boolean;
+  days: Weekday[];
+  hoursFrom: string;
+  hoursTo: string;
+  /** Ile osób na jedno wydarzenie. */
+  seats: number | null;
+  notes: string;
+};
+
+/** Społeczność: cykl wydarzeń prowadzony w Lutrze. */
+export type CycleTerms = {
+  events: number | null;
+  frequency: "" | "weekly" | "biweekly" | "monthly";
+  firstEventAt: string;
+};
+
+/** Firma: pilotaż na jednym zespole i feedback. */
+export type PilotTerms = {
+  team: string;
+  people: number | null;
+  feedbackAt: string;
+};
+
+/** Ustalone warunki współpracy. Okres współpracy = daty umowy (`contract.startAt/endAt`). */
+export type MissionTerms = {
+  discount: DiscountTerms;
+  space: SpaceTerms;
+  cycle: CycleTerms;
+  pilot: PilotTerms;
+};
+
+/** Porozumienie mailowe (krótka współpraca do 3 miesięcy) albo umowa (PDF i podpisy). */
+export type AgreementForm = "email" | "contract";
+
+/** Przegląd po cyklu: frekwencja, zgłoszenia uczestników, decyzja o kontynuacji. */
+export type CareReview = {
+  id: string;
+  at: string;
+  attendance: string;
+  feedback: string;
+  decision: "continue" | "change" | "end";
+  note: string;
+  by?: string;
+};
+
+/** Miesięczna informacja dla partnera o liczbie realizacji zniżki. */
+export type RedemptionReport = {
+  /** „2026-10” */
+  month: string;
+  count: number | null;
+  sentAt: string;
+};
+
+/** Opieka po aktywacji. */
+export type CareState = {
+  reviews: CareReview[];
+  /** Kiedy partner ostatnio potwierdził warunki (co kwartał). */
+  termsConfirmedAt?: string;
+  reports: RedemptionReport[];
+};
 export type MissionStatus = "active" | "won" | "lost" | "nurture" | "no_fit" | "paused";
 export type NeedStatus = "fact" | "observation" | "ai_hypothesis";
 export type NeedCategory =
@@ -146,6 +235,8 @@ export type Partner = {
   ownerUserId?: string;
   name: string;
   segment: PartnerSegment;
+  /** Pojemność miejsca (osób) — sprawdzana przed publikacją. */
+  capacity: number | null;
   city: string;
   address: string;
   category: string;
@@ -278,6 +369,11 @@ export type Mission = {
   status: MissionStatus;
   currentStage: StageId;
   completedStages: StageId[];
+  /** Warunki współpracy: zniżka, miejsce, cykl albo pilotaż. */
+  terms: MissionTerms;
+  /** Forma zawarcia: porozumienie mailowe albo umowa. `null` = wynika z okresu. */
+  agreementForm: AgreementForm | null;
+  care: CareState;
   nextStepLabel: string;
   nextStepAt: string;
   checklist: ChecklistState;
@@ -302,7 +398,7 @@ export type Mission = {
 
 export type AppState = {
   user: { name: string; initials: string; role: string; id?: string; isAdmin?: boolean };
-  workspace: { name: string; id: string; contractTemplate?: string | null };
+  workspace: { name: string; id: string; contractTemplate?: string | null; agreementTemplate?: string | null };
   partners: Partner[];
   missions: Mission[];
   tasks: TaskItem[];
@@ -326,6 +422,8 @@ export type NewPartnerInput = {
   notes: string;
   legalName?: string;
   nip?: string;
+  segment?: PartnerSegment;
+  capacity?: number | null;
   contactName: string;
   contactRole: string;
   contactPhone: string;

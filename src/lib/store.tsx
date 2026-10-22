@@ -13,7 +13,12 @@ import {
 import { activationBlockers, canEnterStage, contractBlockers, nextStage, offerBlockers } from "./gates";
 import { categoryLabel, suggestVariant } from "./playbook";
 import { emptyCompany } from "./company";
-import { canEditMission as canEditMissionIn, canEditPartner as canEditPartnerIn } from "./permissions";
+import { agreementFormOf, changeRulesFor, isDefaultChangeRules, isShortTerm, mergeCare, mergeTerms, termsChecks } from "./terms";
+import {
+  canDeletePartner as canDeletePartnerIn,
+  canEditMission as canEditMissionIn,
+  canEditPartner as canEditPartnerIn,
+} from "./permissions";
 import { emptyMission, seedState } from "./seed";
 import {
   MissionConflictError,
@@ -36,7 +41,10 @@ import {
   persistPartner,
   detectSchemaV5,
   detectSchemaV6,
+  detectSchemaV7,
+  saveAgreementTemplate as saveAgreementTemplateRow,
   saveContractTemplate as saveContractTemplateRow,
+  V7_MISSING,
   transferMission as transferMissionRow,
   V5_MISSING,
   loadPartner,
@@ -59,6 +67,9 @@ import {
 } from "./mission-core";
 import { getSupabase, isMissingCrmTable, isSupabaseConfigured } from "./supabase";
 import type {
+  MissionTerms,
+  CareReview,
+  AgreementForm,
   Activity,
   AppState,
   Channel,
@@ -119,10 +130,30 @@ type Store = {
   /** Czy bieżący użytkownik może edytować misję / partnera (cudze — tylko podgląd). */
   canEditMission: (mission: Mission) => boolean;
   canEditPartner: (partner: Partner) => boolean;
+  /** Czy można usunąć partnera (opiekun albo admin, bez cudzych misji). */
+  canDeletePartner: (partner: Partner) => boolean;
   /** Przekazanie misji innej osobie z zespołu. */
   transferMission: (missionId: string, userId: string) => Promise<Result>;
   /** Szablon umowy zespołu (`null` = domyślny). Zmienia administrator. */
   saveContractTemplate: (template: string) => Promise<Result>;
+  /** Szablon porozumienia mailowego (`null` = domyślny). Zmienia administrator. */
+  saveAgreementTemplate: (template: string) => Promise<Result>;
+  /** Czy baza ma typ partnera, pojemność i szablon porozumienia (migracja v7). */
+  schemaV7: boolean | null;
+  /** Zmiana warunków współpracy: zniżka, miejsce, cykl albo pilotaż. */
+  updateTerms: <K extends keyof MissionTerms>(missionId: string, section: K, patch: Partial<MissionTerms[K]>) => void;
+  /** Forma zawarcia: porozumienie mailowe (do 3 miesięcy) albo umowa. */
+  setAgreementForm: (missionId: string, form: AgreementForm) => void;
+  /** Ustawia pozycję checklisty (z datą odhaczenia w bazie). */
+  setChecklistItem: (missionId: string, key: string, done: boolean) => void;
+  /** Opieka: przegląd po cyklu. */
+  addCareReview: (missionId: string, review: Omit<CareReview, "id" | "at" | "by">) => GateResult;
+  /** Opieka: partner potwierdził warunki (kwartalnie). */
+  confirmTerms: (missionId: string) => void;
+  /** Opieka: wysłana miesięczna informacja o liczbie realizacji. */
+  reportRedemptions: (missionId: string, month: string, count: number | null) => void;
+  /** Zapisuje w dzienniku wysłany mail po telefonie albo spotkaniu. */
+  logFollowUpMail: (missionId: string, afterActivityId: string) => Promise<Result>;
   /** Generuje PDF umowy z szablonu i podpina go do misji. */
   generateContract: (missionId: string, pdf: Uint8Array) => Promise<{ ok: boolean; error?: string }>;
   /** Podpisany przez partnera skan / PDF. */
@@ -316,11 +347,18 @@ function syncDecisionFromDiscovery(mission: Mission): Mission {
   };
 }
 
-function withRecommended(mission: Mission): Mission {
+/** Typ albo pojemność z formularza nie wróciły z bazy (brak migracji v7). */
+function lostV7Fields(input: NewPartnerInput, partner: Partner) {
+  const segmentLost = Boolean(input.segment && input.segment !== partner.segment);
+  const capacityLost = Boolean(input.capacity && input.capacity > 0 && partner.capacity !== Math.round(input.capacity));
+  return segmentLost || capacityLost;
+}
+
+function withRecommended(mission: Mission, segment: Partner["segment"] = "venue"): Mission {
   const cats = mission.needs
     .filter((n) => n.confirmed && n.status === "fact")
     .map((n) => n.category);
-  return { ...mission, recommendedVariant: suggestVariant(cats) };
+  return { ...mission, recommendedVariant: suggestVariant(cats, segment) };
 }
 
 function readLocal(): AppState {
@@ -341,6 +379,8 @@ function readLocal(): AppState {
         priority: p.priority ?? "",
         priorityReason: p.priorityReason ?? "",
         company: { ...emptyCompany(), ...(p.company ?? {}) },
+        segment: p.segment ?? "venue",
+        capacity: p.capacity ?? null,
       })),
       missions: (parsed.missions ?? []).map((m) => {
         const base = emptyMission(m.partnerId, m.id);
@@ -352,6 +392,9 @@ function readLocal(): AppState {
           closeNote: m.closeNote ?? "",
           contract: { ...base.contract, ...(m.contract ?? {}) },
           activation: { ...base.activation, ...(m.activation ?? {}) },
+          terms: mergeTerms(m.terms),
+          agreementForm: m.agreementForm ?? null,
+          care: mergeCare(m.care),
         };
       }),
     };
@@ -392,6 +435,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [schemaV4, setSchemaV4] = useState<boolean | null>(null);
   const [schemaV5, setSchemaV5] = useState<boolean | null>(null);
   const [schemaV6, setSchemaV6] = useState<boolean | null>(null);
+  const [schemaV7, setSchemaV7] = useState<boolean | null>(null);
+  const storeRef = useRef<Store | null>(null);
   /** Uprawnienia egzekwujemy w widoku tylko, gdy baza ma v6 (inaczej baza też nikogo nie ogranicza). */
   const enforceRef = useRef(false);
   useEffect(() => {
@@ -458,6 +503,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setSchemaV5(false);
           setNotice({ kind: "error", text: `${partner.name}: ${V5_MISSING}` });
         }
+        if (dropped.includes("v7")) {
+          setSchemaV7(false);
+          setNotice({ kind: "error", text: `${partner.name}: ${V7_MISSING}` });
+        }
         if (dropped.includes("priority")) {
           setNotice({ kind: "error", text: `${partner.name}: baza nie przyjęła tego priorytetu. Reszta zmian zapisana.` });
         }
@@ -501,7 +550,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     for (const mission of missions) {
       const before = savedMissions.current.get(mission.id);
       try {
-        const { nextStepTask } = await persistMission(mission, workspaceId, userId);
+        const segment = snapshot.partners.find((p) => p.id === mission.partnerId)?.segment ?? "venue";
+        const { nextStepTask } = await persistMission(mission, workspaceId, userId, segment);
         savedMissions.current.set(mission.id, mission);
         bump(`m:${mission.id}`);
         if (nextStepTask) tasks.push(nextStepTask);
@@ -622,7 +672,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             role: me?.role === "admin" ? "Administrator" : "Handlowiec",
             isAdmin: me?.role === "admin",
           },
-          workspace: { name: ctx.workspaceName, id: ctx.workspaceId, contractTemplate: ctx.contractTemplate },
+          workspace: {
+            name: ctx.workspaceName,
+            id: ctx.workspaceId,
+            contractTemplate: ctx.contractTemplate,
+            agreementTemplate: ctx.agreementTemplate,
+          },
           partners,
           missions,
           tasks,
@@ -637,6 +692,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setSchemaV4(team === undefined ? null : team !== null);
         void detectSchemaV5().then(setSchemaV5);
         void detectSchemaV6().then(setSchemaV6);
+        void detectSchemaV7().then(setSchemaV7);
         setState(next);
         // Dane są w Supabase. Stara kopia w przeglądarce (z kontaktami) nie jest potrzebna.
         clearLocalCopy();
@@ -842,6 +898,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  /** Typ partnera misji (do wariantów A/B/C i bramek). */
+  const segmentFor = (partnerId: string): Partner["segment"] =>
+    latest.current.partners.find((p) => p.id === partnerId)?.segment ?? "venue";
+
   const patchPartner = (partnerId: string, fn: (p: Partner) => Partner) => {
     setState((prev) => {
       let changed = false;
@@ -939,6 +999,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       schemaV6,
       canEditMission: (mission) => canEditMissionIn(state, mission, dbStatus === "ok" && schemaV6 === true),
       canEditPartner: (partner) => canEditPartnerIn(state, partner, dbStatus === "ok" && schemaV6 === true),
+      canDeletePartner: (partner) => canDeletePartnerIn(state, partner, dbStatus === "ok" && schemaV6 === true),
       transferMission: async (missionId, userId) => {
         let version: string | undefined;
         const result = await runRpc(async () => {
@@ -979,6 +1040,99 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }));
         }
         return result;
+      },
+      saveAgreementTemplate: async (template) => {
+        const result =
+          dbStatus === "ok" && userIdRef.current
+            ? await runRpc(() => saveAgreementTemplateRow(template), "Nie udało się zapisać szablonu.")
+            : { ok: true };
+        if (result.ok) {
+          setState((prev) => ({
+            ...prev,
+            workspace: { ...prev.workspace, agreementTemplate: template.trim() || null },
+          }));
+        }
+        return result;
+      },
+      schemaV7,
+      updateTerms: (missionId, section, patch) => {
+        patchMission(missionId, (m) => ({
+          ...m,
+          terms: { ...m.terms, [section]: { ...m.terms[section], ...patch } },
+        }));
+      },
+      setAgreementForm: (missionId, form) => {
+        patchMission(missionId, (m) => {
+          const next = { ...m, agreementForm: form };
+          return { ...next, contract: { ...m.contract, status: contractStatus(m.contract, agreementFormOf(next)) } };
+        });
+      },
+      setChecklistItem: (missionId, key, done) => {
+        patchMission(missionId, (m) =>
+          Boolean(m.checklist[key]) === done ? m : { ...m, checklist: { ...m.checklist, [key]: done } },
+        );
+      },
+      addCareReview: (missionId, review) => {
+        if (!review.attendance.trim() && !review.feedback.trim() && !review.note.trim()) {
+          return { ok: false, reason: "Wpisz frekwencję albo zgłoszenia uczestników." };
+        }
+        patchMission(missionId, (m) => ({
+          ...m,
+          care: {
+            ...m.care,
+            reviews: [
+              {
+                id: crypto.randomUUID(),
+                at: new Date().toISOString(),
+                by: userIdRef.current ?? undefined,
+                attendance: review.attendance.trim(),
+                feedback: review.feedback.trim(),
+                decision: review.decision,
+                note: review.note.trim(),
+              },
+              ...m.care.reviews,
+            ],
+          },
+        }));
+        return { ok: true };
+      },
+      confirmTerms: (missionId) => {
+        patchMission(missionId, (m) => ({ ...m, care: { ...m.care, termsConfirmedAt: new Date().toISOString() } }));
+      },
+      reportRedemptions: (missionId, month, count) => {
+        patchMission(missionId, (m) => ({
+          ...m,
+          care: {
+            ...m.care,
+            reports: [
+              { month, count, sentAt: new Date().toISOString() },
+              ...m.care.reports.filter((r) => r.month !== month),
+            ].sort((a, b) => b.month.localeCompare(a.month)),
+          },
+        }));
+      },
+      logFollowUpMail: async (missionId, afterActivityId) => {
+        const mission = latest.current.missions.find((m) => m.id === missionId);
+        const after = mission?.activities.find((a) => a.id === afterActivityId);
+        if (!mission || !after) return { ok: false, error: "Nie ma takiego kontaktu." };
+        const partner = latest.current.partners.find((p) => p.id === mission.partnerId);
+        const contactId =
+          after.contactId ??
+          partner?.contacts.find((c) => c.id === mission.decision.decisionMakerId)?.id ??
+          partner?.contacts[0]?.id ??
+          "";
+        const meeting = after.channel === "in_person";
+        return storeRef.current!.logActivity({
+          missionId,
+          channel: "email",
+          direction: "outbound",
+          outcome: "sent",
+          subject: meeting ? "Ustalenia ze spotkania" : "Follow-up po rozmowie telefonicznej",
+          summary: "",
+          contactId,
+          occurredAt: new Date().toISOString(),
+          durationMin: null,
+        });
       },
       generateContract: async (missionId, pdf) => {
         const copy = new Uint8Array(pdf.byteLength);
@@ -1080,6 +1234,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const partner = await insertPartner(workspaceId, userId, input);
           savedPartners.current.set(partner.id, partner);
           setState((prev) => ({ ...prev, partners: [...prev.partners, partner] }));
+          // Baza bez migracji v7 nie ma gdzie zapisać typu albo pojemności — partner wraca bez nich.
+          if (lostV7Fields(input, partner)) {
+            setNotice({ kind: "error", text: `${partner.name}: ${V7_MISSING}` });
+          }
           return { ok: true, id: partner.id };
         } catch (err) {
           const error = err as { message?: string };
@@ -1113,6 +1271,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return { ok: false, created: 0, failed: [], error: "Brak workspace. Odpal SQL v2." };
         }
         const created: Partner[] = [];
+        const createdInputs: NewPartnerInput[] = [];
         const failed: { name: string; error: string }[] = [];
         for (let i = 0; i < inputs.length; i++) {
           const input = inputs[i];
@@ -1120,6 +1279,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const partner = await insertPartner(workspaceId, userId, input);
             savedPartners.current.set(partner.id, partner);
             created.push(partner);
+            createdInputs.push(input);
           } catch (err) {
             const error = err as { message?: string };
             failed.push({
@@ -1131,6 +1291,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         if (created.length) {
           setState((prev) => ({ ...prev, partners: [...prev.partners, ...created] }));
+          if (created.some((partner, index) => lostV7Fields(createdInputs[index], partner))) {
+            setNotice({ kind: "error", text: `Import: ${V7_MISSING}` });
+          }
         }
         return {
           ok: failed.length === 0,
@@ -1218,6 +1381,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
           const nextMission = withRecommended(
             skillSmokeFullMission(mission, partner, { contactId, call }),
+            partner.segment,
           );
           patchMission(missionId, () => nextMission);
           const partnerWithConsent: Partner = {
@@ -1564,37 +1728,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               confirmed: false,
             },
           ];
-          return withRecommended({ ...m, needs });
+          return withRecommended({ ...m, needs }, segmentFor(m.partnerId));
         });
       },
       upsertNeed: (missionId, need) => {
         patchMission(missionId, (m) =>
-          withRecommended({
-            ...m,
-            needs: m.needs.some((n) => n.id === need.id)
-              ? m.needs.map((n) => (n.id === need.id ? need : n))
-              : [...m.needs, need],
-          }),
+          withRecommended(
+            {
+              ...m,
+              needs: m.needs.some((n) => n.id === need.id)
+                ? m.needs.map((n) => (n.id === need.id ? need : n))
+                : [...m.needs, need],
+            },
+            segmentFor(m.partnerId),
+          ),
         );
       },
       removeNeed: (missionId, needId) => {
         patchMission(missionId, (m) =>
-          withRecommended({
-            ...m,
-            needs: m.needs.filter((n) => n.id !== needId),
-          }),
+          withRecommended(
+            {
+              ...m,
+              needs: m.needs.filter((n) => n.id !== needId),
+            },
+            segmentFor(m.partnerId),
+          ),
         );
       },
       confirmNeed: (missionId, needId, confirmed) => {
         patchMission(missionId, (m) =>
-          withRecommended({
-            ...m,
-            needs: m.needs.map((n) =>
-              n.id === needId
-                ? { ...n, confirmed, status: confirmed ? "fact" : n.status }
-                : n,
-            ),
-          }),
+          withRecommended(
+            {
+              ...m,
+              needs: m.needs.map((n) =>
+                n.id === needId ? { ...n, confirmed, status: confirmed ? "fact" : n.status } : n,
+              ),
+            },
+            segmentFor(m.partnerId),
+          ),
         );
       },
       updateDecision: (missionId, patch) => {
@@ -1616,6 +1787,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!mission.selectedVariant) return { ok: false, reason: "Wybierz wariant A, B albo C." };
         const missing = offerBlockers(mission);
         if (missing.length) return { ok: false, reason: `Brakuje: ${missing.join(", ")}.` };
+        const terms = termsChecks(mission, segmentFor(mission.partnerId)).filter((check) => !check.done);
+        if (terms.length) {
+          return { ok: false, reason: `Ustal warunki: ${terms.map((check) => check.label).join(", ")}.` };
+        }
         patchMission(missionId, (m) => ({ ...m, offerApproved: true }));
         return { ok: true };
       },
@@ -1639,13 +1814,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       updateContract: (missionId, patch) => {
         patchMission(missionId, (m) => {
-          if (patch.signedByHuman === true && !m.contract.documentPath && !patch.documentPath) {
+          const form = agreementFormOf({ ...m, contract: { ...m.contract, ...patch } });
+          // Umowę podpisuje się na dokumencie; porozumienie mailowe zatwierdza się bez PDF.
+          if (patch.signedByHuman === true && form === "contract" && !m.contract.documentPath && !patch.documentPath) {
             return m;
           }
           const contract = { ...m.contract, ...patch };
           if (patch.signedByHuman === true) contract.signedAt = new Date().toISOString();
           if (patch.signedByHuman === false) contract.signedAt = undefined;
-          contract.status = contractStatus(contract);
+          // Okres ustalony, zasady puste albo gotowy wzór → zasady zgodne z okresem i typem partnera (7 dni).
+          const datesChanged = patch.startAt !== undefined || patch.endAt !== undefined;
+          const short = isShortTerm(contract.startAt, contract.endAt);
+          if (datesChanged && short !== null && isDefaultChangeRules(contract.changeRules) && patch.changeRules === undefined) {
+            contract.changeRules = changeRulesFor(short, segmentFor(m.partnerId));
+          }
+          contract.status = contractStatus(contract, agreementFormOf({ ...m, contract }));
           return { ...m, contract };
         });
       },
@@ -1710,13 +1893,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       completeActivation: (missionId) => {
         const mission = state.missions.find((m) => m.id === missionId);
         if (!mission) return { ok: false, reason: "Brak misji." };
-        const contractMissing = contractBlockers(mission);
+        const partner = partnerById(mission.partnerId);
+        const contractMissing = contractBlockers(mission, partner);
         if (contractMissing.length) {
           return { ok: false, reason: `Umowa: ${contractMissing.join(", ")}.` };
         }
-        const missing = activationBlockers(mission);
+        const missing = activationBlockers(mission, partner);
         if (missing.length) return { ok: false, reason: `Brakuje: ${missing.join(", ")}.` };
-        const care = "Opieka: check-in i kwartalne potwierdzenie warunków";
+        const care = "Opieka: przegląd po pierwszym cyklu i kwartalne potwierdzenie warunków";
         const now = new Date().toISOString();
         setState((prev) => ({
           ...prev,
@@ -1817,6 +2001,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     schemaV4,
     schemaV5,
     schemaV6,
+    schemaV7,
     notice,
     invite,
     inspectInvite,
@@ -1825,6 +2010,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshData,
     scheduleFlush,
   ]);
+
+  // Akcje, które wołają inne akcje sklepu (np. zapis maila po spotkaniu), sięgają po bieżący sklep.
+  useEffect(() => {
+    storeRef.current = store;
+  }, [store]);
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
 }

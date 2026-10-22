@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { STAGES } from "@/lib/types";
+import { segmentLabel } from "@/lib/playbook";
+import { formatPlDate } from "@/lib/dates";
 import { useStore } from "@/lib/store";
 import { AgendaList } from "@/components/reminders";
+import { FirstSteps } from "@/components/onboarding/first-steps";
 
 function Topbar() {
   const { state } = useStore();
@@ -53,6 +56,7 @@ export default function PulpitPage() {
           </div>
         </div>
 
+        <FirstSteps />
         <AgendaList />
 
         {urgent ? (
@@ -65,12 +69,14 @@ export default function PulpitPage() {
             </p>
             <h2 className="mt-1 text-2xl font-semibold">{urgent.partner.name}</h2>
             <p className="mt-1 text-sm text-muted">
-              {urgent.partner.city} · etap{" "}
+              {[segmentLabel(urgent.partner.segment), urgent.partner.city].filter(Boolean).join(" · ")} · etap{" "}
               {STAGES.find((s) => s.id === urgent.mission.currentStage)?.label}
             </p>
             <p className="mt-4 rounded-2xl bg-surface px-4 py-3 text-sm text-foreground">
-              Następny krok: {urgent.mission.nextStepLabel}
-              <span className="ml-2 text-muted">· {urgent.mission.nextStepAt}</span>
+              Następny krok: {urgent.mission.nextStepLabel || "—"}
+              {urgent.mission.nextStepAt ? (
+                <span className="ml-2 text-muted">· {formatPlDate(urgent.mission.nextStepAt.slice(0, 10))}</span>
+              ) : null}
             </p>
             <span className="mt-4 inline-flex rounded-full bg-lutra px-4 py-2 text-sm font-medium text-white">
               Otwórz misję

@@ -3,18 +3,30 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { PriorityChecks } from "@/components/partners/priority-checks";
-import { Field, inputClass } from "@/components/ui";
+import { Field, inputClass, NumberInput, Pills } from "@/components/ui";
 import Link from "next/link";
 import { isValidNip } from "@/lib/company";
 import { findDuplicates } from "@/lib/duplicates";
+import { CATEGORIES_BY_SEGMENT, lowerFirst, SEGMENTS } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
-import type { ConsentStatus } from "@/lib/types";
+import type { ConsentStatus, PartnerSegment } from "@/lib/types";
 
-const CATEGORIES = ["kawiarnia", "restauracja", "bar / pub", "klub", "hotel", "inna"] as const;
+const NAME_LABEL: Record<PartnerSegment, { label: string; placeholder: string }> = {
+  venue: { label: "Nazwa lokalu", placeholder: "np. Kawiarnia Nova" },
+  community: { label: "Nazwa społeczności", placeholder: "np. Klub Planszówkowy Pionek" },
+  company: { label: "Nazwa firmy", placeholder: "np. Softwarehouse X" },
+};
+const CONTACT_ROLE: Record<PartnerSegment, string> = {
+  venue: "właściciel / menedżer",
+  community: "organizator",
+  company: "HR / lider zespołu",
+};
 
 export default function NewPartnerPage() {
   const router = useRouter();
-  const { addPartner, state } = useStore();
+  const { addPartner, state, schemaV7 } = useStore();
+  const [segment, setSegment] = useState<PartnerSegment>("venue");
+  const [capacity, setCapacity] = useState<number | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -47,6 +59,16 @@ export default function NewPartnerPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
     setConfirmDuplicate(false);
   };
+  const changeSegment = (next: PartnerSegment) => {
+    setSegment(next);
+    setForm((prev) => ({
+      ...prev,
+      category: CATEGORIES_BY_SEGMENT[next][0],
+      // Domyślną rolę kontaktu podmieniamy tylko, jeśli nikt jej nie zmieniał.
+      contactRole: Object.values(CONTACT_ROLE).includes(prev.contactRole) ? CONTACT_ROLE[next] : prev.contactRole,
+    }));
+  };
+  const segmentInfo = SEGMENTS.find((item) => item.id === segment);
 
   const duplicates = useMemo(
     () =>
@@ -68,7 +90,7 @@ export default function NewPartnerPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!form.name.trim()) {
-      setError("Wystarczy nazwa lokalu — resztę uzupełnisz na karcie i w researchu.");
+      setError("Wystarczy nazwa — resztę uzupełnisz na karcie i w researchu.");
       return;
     }
     if (form.nip.trim() && !isValidNip(form.nip)) {
@@ -77,12 +99,12 @@ export default function NewPartnerPage() {
     }
     if (duplicates.length && !confirmDuplicate) {
       setConfirmDuplicate(true);
-      setError("Ten lokal chyba już jest w CRM. Sprawdź listę powyżej albo kliknij „Dodaj mimo to”.");
+      setError("Ten partner chyba już jest w CRM. Sprawdź listę powyżej albo kliknij „Dodaj mimo to”.");
       return;
     }
     setPending(true);
     setError(null);
-    const result = await addPartner(form);
+    const result = await addPartner({ ...form, segment, capacity: segment === "venue" ? capacity : null });
     setPending(false);
     if (!result.ok || !result.id) {
       setError(result.error ?? "Nie udało się zapisać partnera.");
@@ -100,12 +122,12 @@ export default function NewPartnerPage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
-              Nowy lokal
+              Nowy partner
             </p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Dodaj partnera</h1>
             <p className="mt-2 text-sm text-muted">
-              Do startu wystarczy nazwa. Miasto i kategoria pomagają na liście. Kontakt, godziny i
-              zgody uzupełnisz przy researchu — nie zgaduj zgody przy dodawaniu.
+              Wybierz typ partnera i wpisz nazwę — to wystarczy na start. Miasto i kategoria pomagają na liście.
+              Kontakt, godziny i zgody uzupełnisz przy researchu — nie zgaduj zgody przy dodawaniu.
             </p>
           </div>
           <div className="flex gap-3">
@@ -145,16 +167,34 @@ export default function NewPartnerPage() {
 
         <div className="mt-6 grid gap-5 lg:grid-cols-2">
           <section className="rounded-[28px] border border-line bg-white p-6">
-            <h2 className="font-semibold">Lokal</h2>
+            <h2 className="font-semibold">Partner</h2>
             <p className="mt-1 text-xs text-muted">To, czego potrzebujesz, żeby karta w ogóle powstała.</p>
+            <div className="mt-4">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-navy">Typ partnera</p>
+              <Pills
+                value={segment}
+                onChange={changeSegment}
+                options={SEGMENTS.map((item) => ({ id: item.id, label: item.label, hint: item.who }))}
+              />
+              {segmentInfo ? (
+                <p className="mt-2 text-xs leading-5 text-muted">
+                  {segmentInfo.who}. Oczekujemy: {lowerFirst(segmentInfo.expects)}.
+                </p>
+              ) : null}
+              {schemaV7 === false && segment !== "venue" ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  Typ zapisze się w bazie po migracji v7 (pasek u góry strony). Bez niej partner trafi jako miejsce.
+                </p>
+              ) : null}
+            </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <Field label="Nazwa lokalu">
+                <Field label={NAME_LABEL[segment].label}>
                   <input
                     className={inputClass}
                     autoFocus
                     required
-                    placeholder="np. Kawiarnia Nova"
+                    placeholder={NAME_LABEL[segment].placeholder}
                     value={form.name}
                     onChange={(e) => set("name", e.target.value)}
                   />
@@ -174,7 +214,7 @@ export default function NewPartnerPage() {
                   value={form.category}
                   onChange={(e) => set("category", e.target.value)}
                 >
-                  {CATEGORIES.map((item) => (
+                  {CATEGORIES_BY_SEGMENT[segment].map((item) => (
                     <option key={item} value={item}>
                       {item}
                     </option>
@@ -191,6 +231,18 @@ export default function NewPartnerPage() {
                   />
                 </Field>
               </div>
+              {segment === "venue" ? (
+                <Field label="Pojemność" optional>
+                  <NumberInput
+                    value={capacity}
+                    min={1}
+                    max={100000}
+                    suffix="osób"
+                    placeholder="ile osób zmieści"
+                    onChange={(next) => setCapacity(next === null ? null : Math.max(1, Math.round(next)))}
+                  />
+                </Field>
+              ) : null}
               <div className="sm:col-span-2">
                 <Field label="Priorytet" optional>
                   <PriorityChecks value={form.priority} onChange={(next) => set("priority", next)} />
@@ -208,7 +260,7 @@ export default function NewPartnerPage() {
               <Field label="Imię i nazwisko" optional>
                 <input
                   className={inputClass}
-                  placeholder="właściciel / menedżer"
+                  placeholder={CONTACT_ROLE[segment]}
                   value={form.contactName}
                   onChange={(e) => set("contactName", e.target.value)}
                 />

@@ -24,6 +24,16 @@ mission.selectedVariant = "A";
 mission.decision.decisionMakerId = partner.contacts[0].id;
 mission.decision.constraintSummary = "tylko środy i czwartki 16–19";
 mission.contract = { ...mission.contract, startAt: "2026-11-01", endAt: "2027-04-30", changeRules: "Wypowiedzenie z 30-dniowym okresem." };
+mission.terms.discount = {
+  ...mission.terms.discount,
+  percent: 15,
+  days: ["wed", "thu"],
+  hoursFrom: "16:00",
+  hoursTo: "19:00",
+  redemption: "qr",
+};
+mission.activation = { ...mission.activation, opsContactName: "Anna, kierowniczka", opsContactPhone: "500 100 200" };
+mission.checklist["contract:brand_app"] = true;
 
 describe("szablon umowy", () => {
   it("wypełnia pola z karty i misji", () => {
@@ -31,10 +41,17 @@ describe("szablon umowy", () => {
     const text = fillTemplate(DEFAULT_CONTRACT_TEMPLATE, values);
     expect(text).toContain("Nova Kawiarnie sp. z o.o., ul. Siedziby 2, 31-000 Kraków, NIP 525-000-77-38");
     expect(text).toContain("Wariant: A — Ruch poza szczytem.");
-    expect(text).toContain("od 01.11.2026 do 30.04.2027");
+    expect(text).toContain("Umowa obowiązuje w okresie: 01.11.2026 – 30.04.2027.");
+    expect(text).toContain("- Zniżka dla ludzi z Lutry: 15% rabatu · śr, czw 16:00–19:00 · realizacja: QR");
+    expect(text).toContain("aplikacja generuje kod QR ważny jednorazowo");
+    expect(text).toContain("Strony nie pobierają od siebie opłat.");
+    expect(text).toContain("Zgoda Partnera na użycie: nazwy i logo w aplikacji Lutra.");
+    expect(text).toContain("raz w miesiącu przekazuje Partnerowi informację o liczbie realizacji");
+    expect(text).toContain("Kontakt awaryjny po stronie Partnera: Anna, kierowniczka, 500 100 200.");
     expect(text).toContain("Zawarta dnia 21.10.2026");
-    expect(text).toContain("- Wyłączność");
-    expect(missingFields(DEFAULT_CONTRACT_TEMPLATE, values)).toEqual(["REGON partnera", "E-mail do faktur"]);
+    expect(text).toContain("- wyłączności");
+    expect(text).not.toContain("Opłaty w którąkolwiek stronę");
+    expect(missingFields(DEFAULT_CONTRACT_TEMPLATE, values)).toEqual(["E-mail do faktur"]);
     expect(unknownFields("{{firma}} {{fima}}")).toEqual(["fima"]);
     expect(fillTemplate("NIP {{nip}}", { nip: "" })).toBe("NIP ……………");
   });

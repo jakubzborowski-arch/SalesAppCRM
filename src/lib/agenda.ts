@@ -1,7 +1,19 @@
 import { addDaysIso, daysUntil, isIsoDate, toIsoDate } from "./dates";
+import { careMissionOf } from "./care";
+import { pendingFollowUps } from "./followups";
+import { addMonthsIso, agreementFormOf } from "./terms";
 import type { AppState, Mission } from "./types";
 
-export type AgendaKind = "task" | "next_step" | "deadline" | "signature" | "contract_end";
+export type AgendaKind =
+  | "task"
+  | "next_step"
+  | "deadline"
+  | "signature"
+  | "contract_end"
+  | "follow_up"
+  | "review"
+  | "terms"
+  | "report";
 
 export type AgendaItem = {
   /** Stały klucz — po nim powiadomienie wychodzi raz dziennie. */
@@ -14,15 +26,48 @@ export type AgendaItem = {
   due: string;
   /** Dni do terminu (ujemne = zaległe). */
   days: number;
+  /** Dla maila po kontakcie: wpis w dzienniku, po którym mail ma wyjść. */
+  activityId?: string;
 };
 
 export const AGENDA_LABEL: Record<AgendaKind, string> = {
   task: "Zadanie",
   next_step: "Następny krok",
   deadline: "Termin decyzji",
-  signature: "Podpis umowy",
-  contract_end: "Koniec umowy",
+  signature: "Podpis / potwierdzenie",
+  contract_end: "Koniec współpracy",
+  follow_up: "Mail po kontakcie",
+  review: "Przegląd po cyklu",
+  terms: "Potwierdzenie warunków",
+  report: "Informacja o realizacjach",
 };
+
+/** Co ile miesięcy partner potwierdza warunki (KB → „Poprawność danych”). */
+export const TERMS_CONFIRM_MONTHS = 3;
+
+const MONTHS = [
+  "styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
+  "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień",
+];
+
+/** „2026-10” → „październik 2026” */
+export function monthLabel(month: string) {
+  const [y, m] = month.split("-").map(Number);
+  return `${MONTHS[(m || 1) - 1]} ${y}`;
+}
+
+/** Poprzedni miesiąc kalendarzowy jako „RRRR-MM”. */
+export function previousMonth(today = new Date()) {
+  const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Kiedy partner powinien znowu potwierdzić warunki (ostatnie potwierdzenie albo aktywacja + 3 mies.). */
+export function nextTermsConfirmation(mission: Pick<Mission, "care" | "activation" | "closedAt">) {
+  const base = mission.care.termsConfirmedAt ?? mission.activation.activatedAt ?? mission.closedAt;
+  if (!base) return null;
+  return addMonthsIso(toIsoDate(new Date(base)), TERMS_CONFIRM_MONTHS);
+}
 
 /** Ile dni przed końcem umowy przypominamy o przedłużeniu. */
 export const CONTRACT_END_NOTICE_DAYS = 30;
@@ -44,7 +89,7 @@ export function agenda(state: AppState, onlyMine = true, today = new Date()): Ag
   const partnerName = (id: string) => state.partners.find((p) => p.id === id)?.name ?? "Partner";
   const missions = state.missions.filter((m) => mine(state, m, onlyMine));
   const byId = new Map(missions.map((m) => [m.id, m]));
-  const push = (mission: Mission, kind: AgendaKind, title: string, due: string, keyPart = "") => {
+  const push = (mission: Mission, kind: AgendaKind, title: string, due: string, keyPart = "", activityId?: string) => {
     const days = daysUntil(due, today);
     if (days === null) return;
     items.push({
@@ -56,8 +101,19 @@ export function agenda(state: AppState, onlyMine = true, today = new Date()): Ag
       missionId: mission.id,
       due,
       days,
+      activityId,
     });
   };
+  const segmentOf = (partnerId: string) => state.partners.find((p) => p.id === partnerId)?.segment ?? "venue";
+  /** Nowsza misja tego partnera w danym statusie (odnowienie) — wtedy stara przestaje przypominać. */
+  const newer = (mission: Mission, statuses: Mission["status"][]) =>
+    state.missions.some(
+      (other) =>
+        other.partnerId === mission.partnerId &&
+        other.id !== mission.id &&
+        statuses.includes(other.status) &&
+        (other.startedAt ?? "") > (mission.startedAt ?? ""),
+    );
 
   // Zadania z bazy (otwarte, na dziś albo zaległe).
   const openStepTasks = new Set<string>();
@@ -82,13 +138,54 @@ export function agenda(state: AppState, onlyMine = true, today = new Date()): Ag
       const c = mission.contract;
       if (c.sentAt && !c.partnerSignedAt) {
         const nudge = addDaysIso(SIGNATURE_NUDGE_DAYS, new Date(c.sentAt));
-        if (nudge <= todayIso) push(mission, "signature", "Umowa czeka na podpis partnera", nudge);
+        const title =
+          agreementFormOf(mission) === "email"
+            ? "Porozumienie czeka na potwierdzenie partnera"
+            : "Umowa czeka na podpis partnera";
+        if (nudge <= todayIso) push(mission, "signature", title, nudge);
       }
     }
-    if (mission.status === "won" && isIsoDate(mission.contract.endAt)) {
-      const days = daysUntil(mission.contract.endAt, today) ?? 0;
-      if (days <= CONTRACT_END_NOTICE_DAYS && days >= -CONTRACT_END_NOTICE_DAYS) {
-        push(mission, "contract_end", "Umowa się kończy — porozmawiaj o przedłużeniu", mission.contract.endAt);
+    if (mission.status === "active" || mission.status === "won" || mission.status === "nurture" || mission.status === "paused") {
+      // Mail po telefonie albo spotkaniu, którego jeszcze nie ma w dzienniku (także po odłożeniu misji).
+      for (const followUp of pendingFollowUps(mission, today)) {
+        push(mission, "follow_up", followUp.title, followUp.due, followUp.activity.id, followUp.activity.id);
+      }
+    }
+    if (mission.status === "won") {
+      const care = mission.care;
+      // Po przeglądzie z decyzją „kończymy” albo po końcu okresu opieka nie generuje już przypomnień.
+      const endedByReview = care.reviews[0]?.decision === "end";
+      const periodOver = isIsoDate(mission.contract.endAt) && mission.contract.endAt < todayIso;
+      // Odnowiona współpraca (nowsza wygrana misja) przejmuje opiekę.
+      const current = careMissionOf(state.missions, mission.partnerId)?.id === mission.id;
+      const caring = !endedByReview && !periodOver && current;
+      // Przegląd po pierwszym cyklu: frekwencja, zgłoszenia, decyzja o kontynuacji.
+      const reviewAt = mission.activation.checkInAt;
+      if (isIsoDate(reviewAt) && reviewAt <= todayIso && !care.reviews.length && current) {
+        push(mission, "review", "Przegląd po pierwszym cyklu: frekwencja, zgłoszenia, decyzja", reviewAt);
+      }
+      const confirmAt = nextTermsConfirmation(mission);
+      if (caring && confirmAt && confirmAt <= todayIso) {
+        push(mission, "terms", "Kwartalne potwierdzenie warunków z partnerem", confirmAt);
+      }
+      // Miesięczna informacja o liczbie realizacji zniżki (tylko lokale).
+      const activated = mission.activation.activatedAt ?? mission.closedAt;
+      const month = previousMonth(today);
+      if (
+        caring &&
+        segmentOf(mission.partnerId) === "venue" &&
+        activated &&
+        toIsoDate(new Date(activated)).slice(0, 7) <= month &&
+        !care.reports.some((report) => report.month === month)
+      ) {
+        push(mission, "report", `Wyślij partnerowi liczbę realizacji za ${monthLabel(month)}`, `${todayIso.slice(0, 7)}-01`, month);
+      }
+      // Rozmowa o przedłużeniu już trwa (nowa misja) — nie przypominamy o końcu starej umowy.
+      if (!endedByReview && !newer(mission, ["active", "won"]) && isIsoDate(mission.contract.endAt)) {
+        const days = daysUntil(mission.contract.endAt, today) ?? 0;
+        if (days <= CONTRACT_END_NOTICE_DAYS && days >= -CONTRACT_END_NOTICE_DAYS) {
+          push(mission, "contract_end", "Współpraca się kończy — porozmawiaj o przedłużeniu", mission.contract.endAt);
+        }
       }
     }
   }

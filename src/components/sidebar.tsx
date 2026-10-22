@@ -8,6 +8,7 @@ import {
   Columns3,
   FileText,
   LayoutDashboard,
+  LifeBuoy,
   Settings,
   Users,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const NAV = [
   { href: "/oferty", label: "Oferty", icon: FileText },
   { href: "/raporty", label: "Raporty", icon: BarChart3 },
   { href: "/ustawienia", label: "Ustawienia", icon: Settings },
+  { href: "/pomoc", label: "Pomoc", icon: LifeBuoy },
 ];
 
 export function Sidebar() {
@@ -74,7 +76,10 @@ export function Sidebar() {
       </nav>
 
       <div className="mx-4 mt-8 rounded-2xl border border-line bg-surface px-4 py-4 text-[12px] leading-5 text-muted">
-        Tryb prowadzenia CRM pomaga handlowcowi prowadzić tylko jedną najpilniejszą misję naraz.
+        Prowadź jedną najpilniejszą misję naraz. Każdy krok pokazuje, czego jeszcze brakuje.
+        <Link href="/pomoc" className="mt-2 block font-semibold text-lutra">
+          Jak to działa →
+        </Link>
       </div>
 
       <div className="mt-auto border-t border-line px-5 py-4 text-xs text-muted">

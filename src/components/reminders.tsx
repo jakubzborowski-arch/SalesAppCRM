@@ -36,6 +36,48 @@ function when(item: AgendaItem) {
   return item.days < 0 ? `zaległe od ${formatPlDate(item.due)}` : "dziś";
 }
 
+/** Szybka akcja przy pozycji „Na dziś” (mail po kontakcie, potwierdzenie warunków). */
+function QuickAction({ item }: { item: AgendaItem }) {
+  const { state, logFollowUpMail, confirmTerms, canEditMission } = useStore();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mission = state.missions.find((m) => m.id === item.missionId);
+  if (!mission || !canEditMission(mission)) return null;
+  if (item.kind === "follow_up" && item.activityId) {
+    return (
+      <>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            const result = await logFollowUpMail(item.missionId, item.activityId!);
+            setBusy(false);
+            if (!result.ok) setError(result.error ?? "Nie udało się zapisać maila.");
+          }}
+          className="mt-1 rounded-full bg-lutra px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? "Zapisuję…" : "Mail wysłany"}
+        </button>
+        {error ? <span className="mt-1 max-w-[220px] text-right text-[11px] text-rose-600">{error}</span> : null}
+      </>
+    );
+  }
+  if (item.kind === "terms") {
+    return (
+      <button
+        type="button"
+        onClick={() => confirmTerms(item.missionId)}
+        className="mt-1 rounded-full bg-lutra px-3 py-1 text-[11px] font-semibold text-white"
+      >
+        Potwierdzone
+      </button>
+    );
+  }
+  return null;
+}
+
 /** Lista „Na dziś” na pulpicie. */
 export function AgendaList({ limit = 8 }: { limit?: number }) {
   const { state } = useStore();
@@ -48,7 +90,9 @@ export function AgendaList({ limit = 8 }: { limit?: number }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold text-navy">Na dziś</h2>
-          <p className="mt-1 text-xs text-muted">Zaległe i dzisiejsze zadania, terminy decyzji, podpisy, końce umów.</p>
+          <p className="mt-1 text-xs text-muted">
+            Zadania, terminy decyzji, maile po kontakcie, podpisy, opieka nad aktywnymi partnerami i końce umów.
+          </p>
         </div>
         {team ? (
           <button type="button" onClick={() => setAll((v) => !v)} className="text-xs font-semibold text-lutra">
@@ -68,19 +112,24 @@ export function AgendaList({ limit = 8 }: { limit?: number }) {
                   <span className="font-medium text-navy">{AGENDA_LABEL[item.kind]}:</span> {item.title}
                 </p>
               </div>
-              <span
-                className={cn(
-                  "shrink-0 text-xs font-semibold",
-                  item.days < 0 && item.kind !== "contract_end" ? "text-rose-600" : "text-navy",
-                )}
-              >
-                {when(item)}
-              </span>
+              <div className="flex shrink-0 flex-col items-end">
+                <span
+                  className={cn(
+                    "text-xs font-semibold",
+                    item.days < 0 && item.kind !== "contract_end" ? "text-rose-600" : "text-navy",
+                  )}
+                >
+                  {when(item)}
+                </span>
+                <QuickAction item={item} />
+              </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-4 text-sm text-muted">Na dziś nic zaległego. Prowadź najpilniejszą misję.</p>
+        <p className="mt-4 text-sm text-muted">
+          Na dziś nic zaległego. Prowadź najpilniejszą misję albo dodaj partnerów do researchu.
+        </p>
       )}
       {items.length > limit ? (
         <Link href="/zadania" className="mt-3 inline-flex text-xs font-semibold text-lutra">

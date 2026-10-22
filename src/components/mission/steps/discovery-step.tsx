@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { requestFactFill } from "@/components/mission/local-draft";
-import { TagInput, Field, inputClass } from "@/components/ui";
-import { offerBlockers } from "@/lib/gates";
+import { TagInput, Field, HelpLink, inputClass, Requirements } from "@/components/ui";
+import { NeedsMap } from "@/components/mission/needs-map";
+import { offerChecks } from "@/lib/gates";
+import { NEED_CATEGORIES, PRIORITIES } from "@/lib/playbook";
 import { getSupabase } from "@/lib/supabase";
 import { parseDeadline } from "@/lib/dates";
 import { useStore } from "@/lib/store";
@@ -36,8 +38,7 @@ function deadlineFrom(text: string, mission: Mission) {
 const SLOTS = ["problem", "result", "constraint", "maker", "deadline", "attempts", "next", "fact"] as const;
 
 export function DiscoveryStep({ mission, partner }: { mission: Mission; partner: Partner }) {
-  const { updateDiscovery, updateDecision, setNextStepAt, upsertNeed, confirmNeed, addPartnerContact } =
-    useStore();
+  const { updateDiscovery, updateDecision, setNextStepAt, upsertNeed, addPartnerContact } = useStore();
   const [contactName, setContactName] = useState("");
   const [contactRole, setContactRole] = useState("");
   const [contactBusy, setContactBusy] = useState(false);
@@ -47,8 +48,9 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
   const [talkBusy, setTalkBusy] = useState(false);
   const [talkError, setTalkError] = useState<string | null>(null);
   const [llmOn, setLlmOn] = useState(false);
+  const [factError, setFactError] = useState<string | null>(null);
   const klub = /klub/i.test(partner.category);
-  const missing = offerBlockers(mission);
+  const checks = offerChecks(mission);
   const discovery = mission.discovery;
   const factConfirmed = mission.needs.some((need) => need.confirmed && need.status === "fact");
 
@@ -113,27 +115,41 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
     }
   };
 
+  /** Fakt z pól rozmowy: cytat / problem + kategoria i priorytet wybrane przez handlowca. */
   const confirmFact = () => {
-    const existing = mission.needs.find((need) => !need.confirmed) ?? mission.needs[0];
-    if (existing) {
-      confirmNeed(mission.id, existing.id, true);
-      return;
-    }
     const quote = discovery.quote.trim();
     const description = discovery.description.trim();
-    if (!quote && !description) return;
-    const category = (discovery.category || "off_peak") as NeedCategory;
+    if (!quote && !description) {
+      // Bez pól rozmowy nie zgadujemy, którą potrzebę potwierdzić — wybór (z kategorią) jest na mapie.
+      setFactError(
+        mission.needs.length
+          ? "Wpisz cytat albo problem z rozmowy — albo oznacz potrzebę jako „Fakt” na mapie potrzeb poniżej."
+          : "Wpisz cytat albo problem z rozmowy.",
+      );
+      return;
+    }
+    if (!discovery.category) {
+      setFactError("Wybierz kategorię potrzeby — od niej zależy rekomendacja wariantu.");
+      return;
+    }
+    const category = discovery.category as NeedCategory;
+    // Ten sam cytat / problem → aktualizacja istniejącej potrzeby (np. zmiana kategorii), nie duplikat.
+    const existing = mission.needs.find(
+      (need) => (description && need.description === description) || (quote && need.quote === quote),
+    );
     upsertNeed(mission.id, {
-      id: crypto.randomUUID(),
+      id: existing?.id ?? crypto.randomUUID(),
       category,
-      title: quote || description,
+      title: (quote || description).slice(0, 120),
       description: description || quote,
-      priority: discovery.priority,
+      priority: discovery.priority || null,
       quote: quote || undefined,
+      expectedResult: mission.decision.expectedResult.trim() || undefined,
       constraints: discovery.constraints.join(", ") || undefined,
       status: "fact",
       confirmed: true,
     });
+    setFactError(null);
   };
 
   const fillKlub = async () => {
@@ -206,10 +222,17 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Rozmowa</h2>
-      <p className={`mt-3 text-sm ${missing.length ? "text-amber-700" : "text-emerald-700"}`}>
-        {missing.length ? `Brakuje do oferty: ${missing.join(", ")}.` : "Możesz iść do oferty."}
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Rozmowa i mapa potrzeb</h2>
+        <HelpLink anchor="rozmowa">Co zebrać w rozmowie?</HelpLink>
+      </div>
+      <p className="mt-1 max-w-2xl text-sm text-muted">
+        Zapisz, co partner powiedział: problem, rezultat, ograniczenia, decydenta i termin. Potwierdzony fakt otwiera
+        ofertę.
       </p>
+      <div className="mt-4">
+        <Requirements checks={checks} title="Do oferty brakuje" doneText="Komplet — możesz iść do oferty." />
+      </div>
       {klub ? (
         <div className="mt-4">
           <button
@@ -269,6 +292,41 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
                   onChange={(event) => updateDiscovery(mission.id, { description: event.target.value })}
                 />
               </Field>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Field label="Kategoria potrzeby">
+                  <select
+                    className={inputClass}
+                    value={discovery.category}
+                    onChange={(event) =>
+                      updateDiscovery(mission.id, {
+                        category: event.target.value as NeedCategory | "",
+                        categorySource: event.target.value ? "human" : "",
+                      })
+                    }
+                  >
+                    <option value="">Wybierz kategorię</option>
+                    {NEED_CATEGORIES.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Priorytet dla partnera">
+                  <select
+                    className={inputClass}
+                    value={discovery.priority || ""}
+                    onChange={(event) => updateDiscovery(mission.id, { priority: Number(event.target.value) || 0 })}
+                  >
+                    <option value="">Wybierz</option>
+                    {PRIORITIES.map((priority) => (
+                      <option key={priority.value} value={priority.value}>
+                        {priority.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
             </div>
           );
         }
@@ -389,7 +447,12 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
         return (
           <div key={slot} className="mt-4">
             {factConfirmed ? (
-              <p className="text-sm font-semibold text-emerald-700">Potwierdzone jako fakt.</p>
+              <p className="text-sm font-semibold text-emerald-700">
+                Potwierdzone jako fakt.{" "}
+                <button type="button" onClick={confirmFact} className="font-semibold text-lutra">
+                  Zapisz fakt z pól powyżej
+                </button>
+              </p>
             ) : (
               <button
                 type="button"
@@ -400,6 +463,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
                 Potwierdź jako fakt
               </button>
             )}
+            {factError ? <p className="mt-2 text-xs text-rose-600">{factError}</p> : null}
           </div>
         );
       })}
@@ -414,6 +478,8 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
           />
         </Field>
       </div>
+
+      <NeedsMap mission={mission} partner={partner} />
     </div>
   );
 }

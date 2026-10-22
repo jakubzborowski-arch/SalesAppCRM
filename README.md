@@ -1,6 +1,6 @@
 # Lutra CRM
 
-System sprzedaży partnerskiej: misja od researchu do aktywacji lokalu.
+System sprzedaży partnerskiej: misja od researchu do aktywnego partnera (miejsce, społeczność albo firma) i opieka po aktywacji.
 
 ## Lokalnie
 
@@ -18,8 +18,9 @@ Otwórz [http://localhost:3001](http://localhost:3001) (albo 3000). Zaloguj się
 3. SQL Editor: wklej `supabase/v4-team-timeline.sql` i Run (zespół, dziennik kontaktów, historia etapów).
 4. SQL Editor: wklej `supabase/v5-company-data.sql` i Run (dane firmy partnera: nazwa, NIP, REGON, adresy).
 5. SQL Editor: wklej `supabase/v6-roles-contracts.sql` i Run (kto co edytuje, przekazywanie misji, obieg podpisu, szablon umowy).
-6. `.env.local` z URL i anon key.
-7. W CRM: **Dodaj partnera**, potem **Zajmuję się partnerem**.
+6. SQL Editor: wklej `supabase/v7-partner-types.sql` i Run (typ partnera, pojemność miejsca, szablon porozumienia mailowego).
+7. `.env.local` z URL i anon key.
+8. W CRM: **Dodaj partnera**, potem **Zajmuję się partnerem**. Przy pierwszym wejściu CRM pokazuje krótkie wprowadzenie; pełny opis jest w menu → **Pomoc**.
 
 Migracje można odpalać ponownie. Brakującą migrację CRM pokazuje na pasku u góry z przyciskiem „Kopiuj SQL”.
 Po każdym ponownym odpaleniu `v2-v3-all.sql` odpal też `v4-team-timeline.sql` (v2-v3 przywraca starsze polityki dostępu).
@@ -37,13 +38,23 @@ Po każdym ponownym odpaleniu `v2-v3-all.sql` odpal też `v4-team-timeline.sql` 
 - Karta partnera: edycja podstawowych danych i osób kontaktowych (z LinkedIn). Gdy dwie osoby zmienią ten sam kontakt, druga dostaje wersję pierwszej i komunikat zamiast cichego nadpisania.
 - Dodawanie i import partnerów ostrzegają o duplikatach (ta sama nazwa w mieście, NIP, telefon, e-mail).
 - Umowa: PDF generowany z szablonu zespołu (Ustawienia → Szablon umowy, edytuje administrator; pola `{{firma}}`, `{{nip}}`, `{{wariant}}`…). Obieg podpisu: wysłana → podpis partnera (skan PDF/JPG/PNG albo „podpisał”) → podpis Lutry. Aktywacja wymaga obu podpisów. Nowa wersja dokumentu zaczyna obieg od nowa; zastąpione pliki są kasowane ze Storage.
-- **Na dziś** na pulpicie i licznik przy Zadaniach: zaległe zadania i kroki, terminy decyzji, umowy czekające na podpis (5 dni po wysyłce), umowy kończące się w ciągu 30 dni. Powiadomienia systemowe włączasz w Ustawieniach (działają, gdy CRM jest otwarty).
+- **Na dziś** na pulpicie i licznik przy Zadaniach: zaległe zadania i kroki, terminy decyzji, maile po kontakcie, umowy i porozumienia czekające na partnera (5 dni po wysyłce), opieka nad aktywnymi partnerami, współprace kończące się w ciągu 30 dni. Powiadomienia systemowe włączasz w Ustawieniach (działają, gdy CRM jest otwarty).
 - Link „Otwórz SQL Editor” prowadzi do projektu z `NEXT_PUBLIC_SUPABASE_URL`.
+
+## Warunki, porozumienie, publikacja, opieka (v7)
+
+- **Typ partnera**: miejsce, społeczność albo firma — przy dodawaniu, na karcie, w imporcie (kolumna „Typ partnera”), w filtrach listy i raportów. Od typu zależą research, warianty A/B/C, wymagane warunki i kroki aktywacji.
+- **Mapa potrzeb** w kroku Rozmowa: kilka potrzeb z kategorią, priorytetem i statusem (fakt / obserwacja / hipoteza). Fakt wymaga wybranej kategorii — z niej liczy się rekomendacja wariantu.
+- **Oferta = konkretne warunki**: zniżka (rabat % albo gratis, dni i godziny, grupa 3+, wyłączenia), sposób realizacji (QR, kod numeryczny, hasło bez wdrożenia), miejsce na wydarzenia; dla społeczności cykl wydarzeń, dla firmy pilotaż; okres od–do. Wariantu nie da się zatwierdzić bez kompletu.
+- **Porozumienie albo umowa**: do 3 miesięcy mail z warunkami z szablonu (wysyłasz sam, zaznaczasz wysyłkę i potwierdzenie partnera, zatwierdzasz), dłużej umowa w PDF z dwoma podpisami. Zasady 7 dni wpisują się same z okresu i typu partnera. Zgoda na nazwę i logo jest wymagana dla miejsc i społeczności. Oba szablony edytuje administrator w Ustawieniach.
+- **Weryfikacja przed publikacją**: działalność, adres, pojemność, godziny, kontakt awaryjny, zniżka, kod partnera, widoczność w aplikacji, naklejka, testowa realizacja, data przeglądu.
+- **Opieka**: panel na stronie aktywnego partnera — przegląd po pierwszym cyklu (frekwencja, zgłoszenia, decyzja), kwartalne potwierdzenie warunków, comiesięczna informacja o realizacjach (miejsca), koniec okresu. Przypomnienia trafiają do „Na dziś”, także w trakcie odnowienia.
+- **Maile po kontakcie**: po telefonie follow-up, po spotkaniu mail z ustaleniami tego samego dnia — przypomnienie w misji i w „Na dziś” z przyciskiem „Mail wysłany”.
 
 ## Testy
 
-- `npm test` — testy jednostkowe (zapis, konflikty, NIP, terminy, raporty, umowy, uprawnienia, duplikaty).
-- `npm run test:sql` — migracje v2–v6 i RLS na PGlite (bez prawdziwego Supabase).
+- `npm test` — testy jednostkowe (zapis, konflikty, NIP, terminy, raporty, umowy, uprawnienia, duplikaty, warunki, porozumienie mailowe, opieka, maile po kontakcie, import typów).
+- `npm run test:sql` — migracje v2–v7 i RLS na PGlite (bez prawdziwego Supabase).
 - GitHub Actions (`.github/workflows/ci.yml`) uruchamia lint, typecheck, oba zestawy testów i build przy każdym pushu.
 
 ## Zespół

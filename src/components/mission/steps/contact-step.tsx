@@ -2,8 +2,10 @@
 
 import { CONTACT_CHANNELS } from "@/lib/playbook";
 import { cn } from "@/lib/cn";
+import { hasContactConsent } from "@/lib/gates";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
+import { HelpLink, Requirements } from "@/components/ui";
 
 export function ContactStep({ mission, partner }: { mission: Mission; partner: Partner }) {
   const { setChannel, setRecording, setConsent } = useStore();
@@ -13,11 +15,24 @@ export function ContactStep({ mission, partner }: { mission: Mission; partner: P
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Pierwszy kontakt</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Pierwszy kontakt</h2>
+        <HelpLink anchor="proces">Jak wygląda cały proces?</HelpLink>
+      </div>
       <p className="mt-1 max-w-2xl text-sm text-muted">
         Cel: umówić discovery. Oferty nie sprzedajesz na pierwszym sygnale. Zgodę na kanał
         zaznaczasz tutaj, nie w researchu.
       </p>
+      <div className="mt-4">
+        <Requirements
+          title="Do rozmowy brakuje"
+          doneText="Jest zgoda na kontakt — możesz iść do rozmowy."
+          checks={[
+            { key: "channel", label: "wybrany kanał kontaktu", done: Boolean(mission.selectedChannel) || hasContactConsent(partner) },
+            { key: "consent", label: "zgoda na kontakt (telefon, mail, LinkedIn albo wizyta)", done: hasContactConsent(partner) },
+          ]}
+        />
+      </div>
 
       <p className="mt-6 text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
         Kanał
@@ -89,9 +104,13 @@ export function ContactStep({ mission, partner }: { mission: Mission; partner: P
       )}
 
       <p className="mt-4 text-xs text-muted">
-        {/klub/i.test(partner.category)
-          ? "Kanał zostaje w CRM. Playbook klubu ma jeden skrypt kontaktu: 15 minut discovery, bez oferty."
-          : "Wybierz kanał — po prawej skrypt pod telefon, mail, LinkedIn albo wizytę. Nie ten sam tekst na każdy kanał."}
+        Cel kontaktu to krótka rozmowa (ok. 15 minut) o tym, co u partnera nie działa — bez oferty. Dopasuj wiadomość do
+        kanału: inaczej piszesz maila, inaczej dzwonisz.{" "}
+        {mission.selectedChannel === "phone"
+          ? "Po rozmowie telefonicznej wyślij krótki mail z follow-upem."
+          : mission.selectedChannel === "in_person"
+            ? "Po spotkaniu wyślij mail z ustaleniami tego samego dnia."
+            : ""}
       </p>
 
       <textarea

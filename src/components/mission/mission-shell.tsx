@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActivityLog } from "@/components/mission/activity-log";
+import { CarePanel } from "@/components/mission/care-panel";
 import { CloseMissionPanel } from "@/components/mission/close-mission";
+import { FollowUpBar } from "@/components/mission/follow-up-bar";
 import { MissionPanel } from "@/components/mission/mission-panel";
 import { TransferMission } from "@/components/mission/transfer-mission";
 import { DraftBubble } from "@/components/mission/draft-bubble";
@@ -18,8 +20,9 @@ import { OfferStep } from "@/components/mission/steps/offer-step";
 import { SkillSmokeBar } from "@/components/mission/skill-smoke-bar";
 import { ResearchStep } from "@/components/mission/steps/research-step";
 import { STAGES, type Mission, type Partner, type StageId } from "@/lib/types";
-import { MISSION_STATUS_LABEL, STAGE_BADGE, STAGE_CTA, stageLabel } from "@/lib/playbook";
+import { MISSION_STATUS_LABEL, segmentLabel, STAGE_BADGE, STAGE_CTA, stageLabel } from "@/lib/playbook";
 import { canEnterStage, nextStage } from "@/lib/gates";
+import { careMissionOf } from "@/lib/care";
 import { useStore } from "@/lib/store";
 
 function formatDate(iso?: string) {
@@ -34,6 +37,11 @@ function NoActiveMission({ partner, latest }: { partner: Partner; latest?: Missi
   const [error, setError] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const missions = store.missionsOfPartner(partner.id);
+  // Aktywny partner (najnowsza wygrana misja) — opieka i dziennik kontaktów dalej działają,
+  // także gdy późniejsza próba odnowienia skończyła się bez porozumienia.
+  const won = careMissionOf(store.state.missions, partner.id);
+  const canLog = Boolean(won && store.canEditMission(won));
+  const closedAfterCare = latest && won && latest.id !== won.id ? latest : undefined;
 
   const start = () => {
     const id = store.startMission(partner.id);
@@ -42,10 +50,37 @@ function NoActiveMission({ partner, latest }: { partner: Partner; latest?: Missi
 
   return (
     <div className="p-8">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">Misja pozyskania partnera</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
+        {won ? "Partner aktywny" : "Misja pozyskania partnera"}
+      </p>
       <h1 className="mt-1 text-[32px] font-semibold leading-none tracking-tight">{partner.name}</h1>
+      <p className="mt-2 text-sm text-muted">
+        {segmentLabel(partner.segment)}
+        {partner.city ? ` · ${partner.city}` : ""}
+      </p>
 
-      {latest ? (
+      {won ? <CarePanel mission={won} partner={partner} /> : null}
+
+      {won ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={start}
+            disabled={partner.dnc}
+            className="rounded-full border border-lutra px-5 py-2.5 text-sm font-medium text-lutra disabled:opacity-40"
+          >
+            Nowa misja (odnowienie, nowa oferta)
+          </button>
+          <span className="text-xs text-muted">Nowa misja przy zmianie warunków albo po końcu okresu.</span>
+          {closedAfterCare ? (
+            <span className="w-full text-xs text-muted">
+              Ostatnia próba odnowienia: {MISSION_STATUS_LABEL[closedAfterCare.status].toLowerCase()}
+              {closedAfterCare.lossReason ? ` (${closedAfterCare.lossReason})` : ""}
+              {closedAfterCare.closedAt ? ` · ${formatDate(closedAfterCare.closedAt)}` : ""}.
+            </span>
+          ) : null}
+        </div>
+      ) : latest ? (
         <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-6">
           <p className="text-sm font-semibold text-foreground">
             Ostatnia misja: {MISSION_STATUS_LABEL[latest.status]}
@@ -73,6 +108,7 @@ function NoActiveMission({ partner, latest }: { partner: Partner; latest?: Missi
               </div>
             ) : null}
           </dl>
+          <FollowUpBar mission={latest} />
           <div className="mt-5 flex flex-wrap gap-2">
             {latest.status !== "won" ? (
               <button
@@ -115,9 +151,10 @@ function NoActiveMission({ partner, latest }: { partner: Partner; latest?: Missi
           <ActivityLog
             partner={partner}
             missions={missions}
+            activeMission={canLog ? won : undefined}
             formOpen={logOpen}
             onFormOpenChange={setLogOpen}
-            title="Historia kontaktów"
+            title={won ? "Dziennik kontaktów" : "Historia kontaktów"}
           />
         </div>
       ) : null}
@@ -134,6 +171,7 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
   const [view, setView] = useState<{ missionId: string; stage: StageId } | null>(null);
   const [closing, setClosing] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [careOpen, setCareOpen] = useState(false);
 
   if (!partner) {
     return <div className="p-10 text-sm text-muted">Nie znaleziono partnera.</div>;
@@ -154,6 +192,8 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
   const shown: typeof mission = viewing ? { ...mission, currentStage: stage } : mission;
   // Cudza misja (z v6): podgląd bez edycji. Prowadzi właściciel albo administrator.
   const editable = store.canEditMission(mission);
+  // Odnowienie: obecna (wygrana) współpraca dalej wymaga opieki.
+  const care = careMissionOf(store.state.missions, partner.id);
 
   const show = (id: StageId) => {
     setError(null);
@@ -256,7 +296,7 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
               {partner.name}
             </h1>
             <p className="mt-2 text-sm text-muted">
-              Lokal · {partner.city} · właściciel: {owner?.name ?? "—"}
+              {segmentLabel(partner.segment)} · {partner.city || "—"} · decydent: {owner?.name ?? "—"}
               {mission.ownerUserId && store.state.team.length > 1
                 ? ` · prowadzi: ${store.memberName(mission.ownerUserId)}`
                 : ""}
@@ -296,6 +336,23 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
         {closing && editable ? (
           <CloseMissionPanel mission={mission} onCancel={() => setClosing(false)} onClosed={() => setClosing(false)} />
         ) : null}
+        <div className="max-w-3xl">
+          <FollowUpBar mission={mission} />
+        </div>
+        {care ? (
+          <div className="mt-4 max-w-4xl rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-emerald-900">
+                To odnowienie. Obecna współpraca trwa
+                {care.contract.endAt ? ` do ${formatDate(care.contract.endAt)}` : ""} — opieka nad nią dalej obowiązuje.
+              </p>
+              <button type="button" onClick={() => setCareOpen((open) => !open)} className="text-xs font-semibold text-lutra">
+                {careOpen ? "Zwiń opiekę" : "Pokaż opiekę"}
+              </button>
+            </div>
+            {careOpen ? <CarePanel mission={care} partner={partner} /> : null}
+          </div>
+        ) : null}
         <div className="mt-6 max-w-3xl">
           <MissionStepper
             current={current}
@@ -323,11 +380,11 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
           ) : null}
           <fieldset disabled={!editable} className="min-w-0">
           <SkillSmokeBar partner={partner} mission={shown} />
-          {stage === "research" ? <ResearchStep mission={shown} /> : null}
+          {stage === "research" ? <ResearchStep mission={shown} partner={partner} /> : null}
           {stage === "contact" ? <ContactStep mission={shown} partner={partner} /> : null}
           {stage === "discovery" ? <DiscoveryStep mission={shown} partner={partner} /> : null}
           {stage === "needs" ? <NeedsStep mission={shown} partner={partner} /> : null}
-          {stage === "offer" ? <OfferStep mission={shown} /> : null}
+          {stage === "offer" ? <OfferStep mission={shown} partner={partner} /> : null}
           {stage === "negotiation" ? <NegotiationStep mission={shown} partner={partner} /> : null}
           {stage === "contract" ? <ContractStep mission={shown} partner={partner} /> : null}
           {stage === "activation" ? (
