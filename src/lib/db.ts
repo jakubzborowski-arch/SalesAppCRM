@@ -1244,18 +1244,34 @@ export async function saveManualTranscript(params: {
   channel: Channel;
   text: string;
   note?: string;
-}): Promise<CallRecord> {
+  /** Kiedy była rozmowa (domyślnie teraz). */
+  occurredAt?: string;
+  /** Tytuł wpisu w dzienniku kontaktów (kolumny z v4). */
+  subject?: string;
+}): Promise<{ call: CallRecord; activity: Activity }> {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
   const conversationId = crypto.randomUUID();
-  const { error: convoError } = await sb.from("conversations").insert({
+  const when = params.occurredAt ? new Date(params.occurredAt) : new Date();
+  const startedAt = Number.isNaN(when.getTime()) ? new Date().toISOString() : when.toISOString();
+  const base = {
     id: conversationId,
     mission_id: params.missionId,
     channel: params.channel,
     recording_consent: "denied",
     summary_human: params.note?.trim() || "Transkrypt wklejony (skill / Spinach)",
-  });
-  if (convoError) throw convoError;
+    started_at: startedAt,
+  };
+  // Wpis w dzienniku jak zwykły kontakt (rozmowa się odbyła). Baza sprzed v4 nie ma tych kolumn.
+  let inserted = await sb
+    .from("conversations")
+    .insert({ ...base, direction: "outbound", outcome: "connected", subject: params.subject?.trim() || null })
+    .select("*")
+    .single();
+  if (inserted.error && isMissingColumn(inserted.error)) {
+    inserted = await sb.from("conversations").insert(base).select("*").single();
+  }
+  if (inserted.error) throw inserted.error;
 
   const { error: transcriptError } = await sb.from("transcripts").insert({
     conversation_id: conversationId,
@@ -1265,27 +1281,66 @@ export async function saveManualTranscript(params: {
     full_text: params.text.trim(),
     segments: [],
   });
-  if (transcriptError) throw transcriptError;
+  if (transcriptError) {
+    // Bez transkryptu wpis w dzienniku nie ma sensu — sprzątamy, żeby nie został pusty kontakt.
+    await sb.from("conversations").delete().eq("id", conversationId);
+    throw transcriptError;
+  }
 
+  const row = (inserted.data ?? base) as Record<string, unknown>;
   return {
-    id: conversationId,
-    channel: params.channel,
-    recordingConsent: "denied",
-    durationSec: 0,
-    transcriptStatus: "ready",
-    transcriptText: params.text.trim(),
-    createdAt: new Date().toISOString(),
+    call: {
+      id: conversationId,
+      channel: params.channel,
+      recordingConsent: "denied",
+      durationSec: 0,
+      transcriptStatus: "ready",
+      transcriptText: params.text.trim(),
+      createdAt: String(row.started_at ?? startedAt),
+    },
+    activity: activityFromRow({ ...base, ...row }, { hasRecording: false, hasTranscript: true }),
   };
+}
+
+/** Transkrypt do istniejącego wpisu w dzienniku (np. spotkanie zapisane wcześniej). */
+export async function attachTranscript(conversationId: string, text: string, hasRow: boolean) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  if (hasRow) {
+    await updateTranscriptText(conversationId, text.trim());
+    return;
+  }
+  const { error } = await sb.from("transcripts").insert({
+    conversation_id: conversationId,
+    provider: "manual",
+    language: "pl",
+    status: "ready",
+    full_text: text.trim(),
+    segments: [],
+  });
+  if (error) throw error;
+}
+
+/** Usuwa transkrypt (wpis w dzienniku i nagranie zostają). */
+export async function deleteTranscript(conversationId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.from("transcripts").delete().eq("conversation_id", conversationId).select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("Ten transkrypt usuwa osoba, która prowadzi misję, albo administrator.");
 }
 
 export async function updateTranscriptText(conversationId: string, text: string) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
-  const { error } = await sb
+  const { data, error } = await sb
     .from("transcripts")
     .update({ full_text: text, status: "ready", provider: "manual" })
-    .eq("conversation_id", conversationId);
+    .eq("conversation_id", conversationId)
+    .select("conversation_id");
   if (error) throw error;
+  // RLS nie zwraca błędu, tylko nic nie zmienia — wtedy nie udajemy, że zapisano.
+  if (!data?.length) throw new Error("Nie zapisano — transkrypt poprawia osoba, która prowadzi misję, albo administrator.");
 }
 
 export async function saveRecording(params: {

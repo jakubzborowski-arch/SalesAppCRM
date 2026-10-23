@@ -40,10 +40,20 @@ export function uniqueSentences(text: string) {
   return kept.join(" ");
 }
 
-export async function completeDraftText(
-  request: Request,
-  input: { system: string; user: string; source: string; maxTokens?: number; timeoutMs?: number; minLength?: number },
-): Promise<{ ok: true; text: string; place: "mac" | "zen" } | { ok: false; error: string; status: number }> {
+type RawInput = {
+  system: string;
+  user: string;
+  maxTokens?: number;
+  timeoutMs?: number;
+  /** Ollama: wymuś JSON w odpowiedzi. */
+  json?: boolean;
+  /** Ollama: okno kontekstu w tokenach (domyślne bywa za małe na transkrypt). */
+  numCtx?: number;
+};
+type RawResult = { ok: true; text: string; place: "mac" | "zen" } | { ok: false; error: string; status: number };
+
+/** Surowa odpowiedź lokalnego Qwena (Ollama) albo OpenCode Zen — bez obróbki szkicu. */
+export async function completeRaw(request: Request, input: RawInput): Promise<RawResult> {
   const backend = resolveDraftBackend(request);
   if (!backend) return { ok: false, error: "Szkice są wyłączone na tym hoście.", status: 404 };
 
@@ -61,11 +71,12 @@ export async function completeDraftText(
               model: backend.local.model,
               stream: false,
               think: false,
+              ...(input.json ? { format: "json" } : {}),
               messages: [
                 { role: "system", content: input.system },
                 { role: "user", content: input.user },
               ],
-              options: { temperature: 0.2, num_predict: maxTokens },
+              options: { temperature: 0.2, num_predict: maxTokens, ...(input.numCtx ? { num_ctx: input.numCtx } : {}) },
             }),
           })
         : await fetch(backend.hosted.url, {
@@ -121,7 +132,16 @@ export async function completeDraftText(
 
   const payload = (await response.json()) as { message?: { content?: string } };
   const raw = backend.place === "mac" ? (payload.message?.content ?? "") : readDraft(payload, backend.hosted.wire);
-  const text = uniqueSentences(redactPrivate(stripModelNoise(raw)));
+  return { ok: true, text: raw, place: backend.place };
+}
+
+export async function completeDraftText(
+  request: Request,
+  input: { system: string; user: string; source: string; maxTokens?: number; timeoutMs?: number; minLength?: number },
+): Promise<{ ok: true; text: string; place: "mac" | "zen" } | { ok: false; error: string; status: number }> {
+  const done = await completeRaw(request, input);
+  if (!done.ok) return done;
+  const text = uniqueSentences(redactPrivate(stripModelNoise(done.text)));
   if (text.length < (input.minLength ?? 40)) {
     return { ok: false, error: "Model oddał pusty szkic. Spróbuj jeszcze raz.", status: 502 };
   }
@@ -132,5 +152,5 @@ export async function completeDraftText(
       status: 422,
     };
   }
-  return { ok: true, text, place: backend.place };
+  return { ok: true, text, place: done.place };
 }

@@ -6,6 +6,7 @@ import { hasContactConsent } from "@/lib/gates";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
 import { HelpLink, Requirements } from "@/components/ui";
+import { openTalk } from "@/components/mission/talk-bubble";
 
 export function ContactStep({ mission, partner }: { mission: Mission; partner: Partner }) {
   const { setChannel, setRecording, setConsent } = useStore();
@@ -122,7 +123,11 @@ export function ContactStep({ mission, partner }: { mission: Mission; partner: P
       />
       <p className="mt-2 text-xs text-muted">
         To jedna wspólna notatka misji. Każdą próbę kontaktu (nie odebrał, mail wysłany, oddzwonić) zapisz
-        osobno w Dzienniku kontaktów pod spodem.
+        osobno w Dzienniku kontaktów pod spodem. Transkrypt ze Spinach wklejasz w{" "}
+        <button type="button" onClick={() => openTalk("transcript")} className="font-semibold text-lutra">
+          Notatce z rozmowy
+        </button>{" "}
+        (bąbelek w prawym dolnym rogu) — z niego AI wypełni potem Discovery.
       </p>
     </div>
   );

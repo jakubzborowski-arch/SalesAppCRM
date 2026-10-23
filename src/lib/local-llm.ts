@@ -1,22 +1,12 @@
 import { constraintText } from "./gates";
 import { offerName, segmentLabel } from "./playbook";
+import { redactPrivate } from "./redact";
 import { termsLines } from "./terms";
 import type { Mission, Partner } from "./types";
 
-export type LocalDraftMode = "wniosek" | "umowa" | "mail" | "pola";
+export { redactPrivate };
 
-export type FactFields = {
-  quote: string;
-  problem: string;
-  result: string;
-  constraints: string[];
-  makerName: string;
-  makerRole: string;
-  deadline: string;
-  attempts: string;
-  nextStep: string;
-  nextStepAt: string;
-};
+export type LocalDraftMode = "wniosek" | "umowa" | "mail";
 
 const PROMISE = [
   /wyłączno/i,
@@ -84,31 +74,11 @@ export function resolveHostedLlm(): HostedLlm | null {
   return { url: `https://opencode.ai${path}`, model, apiKey, wire: path === ZEN_MESSAGES ? "anthropic" : "openai" };
 }
 
-/** Zdejmuje telefon, mail i NIP. Zostawia daty i krótkie liczby z faktów. */
-export function redactPrivate(text: string) {
-  return text
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[usunieto]")
-    .replace(/(?:\+|00)?\d[\d\s().-]{7,}\d/g, (match) =>
-      match.replace(/\D/g, "").length >= 9 ? "[usunieto]" : match,
-    )
-    .replace(/\b\d{10}\b/g, "[usunieto]")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
-}
-
 function clipField(text: string) {
   return redactPrivate(text).slice(0, 360);
 }
 
-const FACT_EXTRACT_TASK =
-  "Z notatki wypisz pola, które da się w niej wskazać. Jedna linia na pole. Gdy czegoś nie powiedziano, napisz BRAK. Nie dopisuj dni, godzin ani liczb spoza notatki.\nCYTAT: jedno zdanie rozmówcy, dosłownie\nPROBLEM:\nREZULTAT:\nOGRANICZENIA: krótkie hasła rozdzielone |\nDECYDENT:\nROLA:\nTERMIN:\nPROBY:\nKROK:\nDATA: RRRR-MM-DD albo BRAK";
-
 export function briefForModel(partner: Partner, mission: Mission, mode: LocalDraftMode) {
-  if (mode === "pola") {
-    const clean = redactPrivate(mission.conversationNote ?? "").slice(0, 2800);
-    return { source: clean, task: FACT_EXTRACT_TASK, hasFact: clean.length >= 40 };
-  }
   const facts = mission.needs
     .filter((need) => need.confirmed && need.status === "fact")
     .slice(0, 6)
@@ -201,60 +171,8 @@ function decisionMakerLine(partner: Partner, decisionMakerId: string) {
 export function systemForDraft(mode: LocalDraftMode) {
   const base =
     "Jesteś analitykiem rozmów handlowych B2B dla Lutry. Rozmowa jest w bloku „Notatka z dzwonienia”, jeśli tam jest. Cytat bierz tylko stamtąd, dosłownie. Nie masz telefonu, maila, NIP-u ani pliku nagrania i nie prosisz o nie. Czego nie ma w notatce ani w polach, nie dopisuj. Szkic nie jest umową i nie wolno go wysłać partnerowi bez człowieka.";
-  if (mode === "umowa" || mode === "pola") {
-    return mode === "pola" ? `${base} Wypisujesz tylko linie pól. Nie piszesz maila ani wniosku.` : base;
-  }
+  if (mode === "umowa") return base;
   return `${base} Oferta A/B/C jest zablokowana, dopóki w polach nie ma razem: problemu, rezultatu, ograniczenia, decydenta, terminu decyzji, wcześniejszych prób i następnego kroku z datą. Nie obiecuj liczby gości, wyłączności, VIP, Premium ani darmowego wstępu. Zniżkę podawaj wyłącznie z linii „Ustalone warunki” — innych rabatów nie proponuj.`;
-}
-
-function blank(value: string) {
-  const text = value.trim();
-  return !text || /^brak\.?$/i.test(text);
-}
-
-function grounded(value: string, note: string) {
-  const hay = note.toLocaleLowerCase("pl");
-  const needle = value.toLocaleLowerCase("pl").replace(/\s+/g, " ").replace(/[„”"»«]/g, "").trim();
-  if (needle.length >= 12 && hay.includes(needle)) return true;
-  const words = needle.split(/[^\p{L}\p{N}]+/u).filter((word) => word.length >= 4);
-  if (!words.length) return false;
-  const hits = words.filter((word) => hay.includes(word)).length;
-  return hits >= Math.min(2, words.length);
-}
-
-function keep(value: string, note: string) {
-  const text = value.trim().slice(0, 360);
-  if (blank(text) || !grounded(text, note)) return "";
-  return text;
-}
-
-export function parseFactFields(draft: string, note: string): FactFields {
-  const lines = new Map<string, string>();
-  for (const raw of draft.split("\n")) {
-    const match = raw.match(/^\**\s*([A-Za-ząćęłńóśźżĄĆĘŁŃÓŚŹŻ]+)\**\s*:\s*(.*)$/);
-    if (!match) continue;
-    lines.set(match[1].toLocaleUpperCase("pl"), match[2].trim());
-  }
-  const read = (key: string) => lines.get(key) ?? "";
-  const constraints = read("OGRANICZENIA")
-    .split(/[|;]/)
-    .map((item) => keep(item, note))
-    .filter(Boolean)
-    .slice(0, 6);
-  const date = read("DATA").trim();
-  const nextStepAt = /^\d{4}-\d{2}-\d{2}$/.test(date) && note.includes(date) ? date : "";
-  return {
-    quote: keep(read("CYTAT"), note),
-    problem: keep(read("PROBLEM"), note),
-    result: keep(read("REZULTAT"), note),
-    constraints,
-    makerName: keep(read("DECYDENT"), note),
-    makerRole: keep(read("ROLA"), note),
-    deadline: keep(read("TERMIN"), note),
-    attempts: keep(read("PROBY") || read("PRÓBY"), note),
-    nextStep: keep(read("KROK"), note),
-    nextStepAt,
-  };
 }
 
 export function draftBreaksRules(draft: string, source: string) {

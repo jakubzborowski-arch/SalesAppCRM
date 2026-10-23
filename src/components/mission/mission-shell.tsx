@@ -9,6 +9,7 @@ import { FollowUpBar } from "@/components/mission/follow-up-bar";
 import { MissionPanel } from "@/components/mission/mission-panel";
 import { TransferMission } from "@/components/mission/transfer-mission";
 import { DraftBubble } from "@/components/mission/draft-bubble";
+import { TalkBubble } from "@/components/mission/talk-bubble";
 import { MissionStepper } from "@/components/mission/stepper";
 import { ActivationStep } from "@/components/mission/steps/activation-step";
 import { ContactStep } from "@/components/mission/steps/contact-step";
@@ -431,6 +432,7 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
         />
       </div>
       <DraftBubble partner={partner} mission={shown} stage={stage} />
+      <TalkBubble partner={partner} mission={shown} stage={stage} editable={editable} />
     </div>
   );
 }

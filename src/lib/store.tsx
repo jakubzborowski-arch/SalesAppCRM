@@ -56,7 +56,10 @@ import {
   saveManualTranscript,
   saveRecording,
   updateTranscriptText,
+  attachTranscript,
+  deleteTranscript,
 } from "./db";
+import { MAX_TRANSCRIPT_CHARS } from "./transcript";
 import { SKILL_SMOKE_TRANSCRIPT, skillSmokeEnabled, skillSmokeFullMission } from "./skill-smoke-test";
 import {
   generatePartnerCode,
@@ -72,6 +75,7 @@ import type {
   AgreementForm,
   Activity,
   AppState,
+  CallRecord,
   Channel,
   CloseStatus,
   InvitePeek,
@@ -189,6 +193,13 @@ type Store = {
     transcriptText?: string,
   ) => Promise<{ ok: boolean; error?: string }>;
   saveTranscript: (conversationId: string, text: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Transkrypt rozmowy (np. ze Spinach): nowy wpis w dzienniku albo do istniejącego kontaktu. */
+  addTranscript: (
+    missionId: string,
+    input: { text: string; channel: Channel; occurredAt: string; attachTo?: string | null; note?: string },
+  ) => Promise<{ ok: boolean; id?: string; error?: string }>;
+  /** Usuwa transkrypt (wpis w dzienniku i nagranie zostają). */
+  removeTranscript: (missionId: string, conversationId: string) => Promise<Result>;
   applySkillSmokeTest: (
     missionId: string,
     partnerId: string,
@@ -452,6 +463,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const lastLoadAt = useRef(0);
   /** Najnowszy stan dla zapisu w tle. */
   const latest = useRef<AppState>(seedState);
+  /** Tryb demo: localStorage pełny (komunikat pokazujemy raz, do udanego zapisu). */
+  const storageFullRef = useRef(false);
   /** Ostatnio zapisane obiekty. Inny obiekt w stanie = zmiana do zapisania. */
   const savedMissions = useRef(new Map<string, Mission>());
   const savedPartners = useRef(new Map<string, Partner>());
@@ -849,8 +862,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!ready || isSupabaseConfigured()) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      storageFullRef.current = false;
     } catch {
-      /* pełny albo zablokowany localStorage */
+      // Pełny albo zablokowany localStorage (np. duże transkrypty w trybie demo) — mówimy o tym raz.
+      if (!storageFullRef.current) {
+        storageFullRef.current = true;
+        setNotice({
+          kind: "error",
+          text: "Tryb demo: przeglądarka nie ma miejsca na zapis. Ostatnie zmiany znikną po odświeżeniu — usuń duże transkrypty albo podłącz Supabase.",
+        });
+      }
     }
   }, [ready, state]);
 
@@ -1359,12 +1380,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
           let call;
           try {
-            call = await saveManualTranscript({
-              missionId,
-              channel: "phone",
-              text: SKILL_SMOKE_TRANSCRIPT,
-              note: "Smoke test skilla — przykładowa rozmowa discovery",
-            });
+            call = (
+              await saveManualTranscript({
+                missionId,
+                channel: "phone",
+                text: SKILL_SMOKE_TRANSCRIPT,
+                note: "Smoke test skilla — przykładowa rozmowa discovery",
+              })
+            ).call;
           } catch (err) {
             const error = err as { message?: string };
             call = {
@@ -1404,7 +1427,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       saveTranscript: async (conversationId, text) => {
         try {
-          await updateTranscriptText(conversationId, text);
+          if (isSupabaseConfigured()) await updateTranscriptText(conversationId, text);
           const owner = state.missions.find((m) => (m.calls ?? []).some((call) => call.id === conversationId));
           if (owner) {
             patchMissionQuiet(owner.id, (m) => ({
@@ -1414,12 +1437,130 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   ? { ...call, transcriptText: text, transcriptStatus: "ready" as const }
                   : call,
               ),
+              activities: m.activities.map((activity) =>
+                activity.id === conversationId ? { ...activity, hasTranscript: Boolean(text.trim()) } : activity,
+              ),
             }));
           }
           return { ok: true };
         } catch (err) {
           const error = err as { message?: string };
           return { ok: false, error: error.message ?? "Nie udało się zapisać transkryptu." };
+        }
+      },
+      addTranscript: async (missionId, input) => {
+        const mission = latest.current.missions.find((m) => m.id === missionId);
+        if (!mission) return { ok: false, error: "Brak misji." };
+        if (!canEditMissionIn(latest.current, mission, enforceRef.current)) {
+          return { ok: false, error: "Tę misję edytuje jej właściciel albo administrator." };
+        }
+        const text = input.text.trim();
+        if (text.length < 20) return { ok: false, error: "Transkrypt jest pusty albo za krótki." };
+        if (text.length > MAX_TRANSCRIPT_CHARS) {
+          return { ok: false, error: "Transkrypt jest za długi (ponad 200 tys. znaków). Podziel go na części." };
+        }
+        const newestFirst = (a: CallRecord, b: CallRecord) => b.createdAt.localeCompare(a.createdAt);
+        try {
+          if (input.attachTo) {
+            const activity = mission.activities.find((item) => item.id === input.attachTo);
+            if (!activity || (activity.channel !== "phone" && activity.channel !== "in_person")) {
+              return { ok: false, error: "Nie ma takiej rozmowy w dzienniku." };
+            }
+            if (activity.hasTranscript) {
+              return { ok: false, error: "Ta rozmowa ma już transkrypt — popraw go na liście albo dodaj nowy wpis." };
+            }
+            // Każdy wpis dziennika ma swój CallRecord; „idle” = jeszcze bez wiersza w transcripts.
+            const existing = (mission.calls ?? []).find((call) => call.id === activity.id);
+            const hasRow = Boolean(existing && existing.transcriptStatus !== "idle");
+            if (isSupabaseConfigured()) await attachTranscript(activity.id, text, hasRow);
+            const call: CallRecord = existing
+              ? { ...existing, transcriptText: text, transcriptStatus: "ready" }
+              : {
+                  id: activity.id,
+                  channel: activity.channel,
+                  recordingConsent: "denied",
+                  durationSec: 0,
+                  transcriptStatus: "ready",
+                  transcriptText: text,
+                  createdAt: activity.occurredAt,
+                };
+            patchMissionQuiet(missionId, (m) => ({
+              ...m,
+              calls: [call, ...(m.calls ?? []).filter((item) => item.id !== call.id)].sort(newestFirst),
+              activities: m.activities.map((item) => (item.id === activity.id ? { ...item, hasTranscript: true } : item)),
+            }));
+            return { ok: true, id: activity.id };
+          }
+
+          const when = new Date(input.occurredAt);
+          const occurredAt = Number.isNaN(when.getTime()) ? new Date().toISOString() : when.toISOString();
+          const note = input.note?.trim() || "Transkrypt rozmowy (Spinach)";
+          const saved = isSupabaseConfigured()
+            ? await saveManualTranscript({
+                missionId,
+                channel: input.channel,
+                text,
+                note,
+                occurredAt,
+                subject: "Rozmowa — transkrypt",
+              })
+            : (() => {
+                const id = crypto.randomUUID();
+                const call: CallRecord = {
+                  id,
+                  channel: input.channel,
+                  recordingConsent: "denied",
+                  durationSec: 0,
+                  transcriptStatus: "ready",
+                  transcriptText: text,
+                  createdAt: occurredAt,
+                };
+                const activity: Activity = {
+                  id,
+                  missionId,
+                  channel: input.channel,
+                  direction: "outbound",
+                  outcome: "connected",
+                  subject: "Rozmowa — transkrypt",
+                  summary: note,
+                  contactId: null,
+                  occurredAt,
+                  durationMin: null,
+                  createdBy: userIdRef.current,
+                  hasRecording: false,
+                  hasTranscript: true,
+                };
+                return { call, activity };
+              })();
+          patchMissionQuiet(missionId, (m) => ({
+            ...m,
+            calls: [saved.call, ...(m.calls ?? []).filter((item) => item.id !== saved.call.id)].sort(newestFirst),
+            activities: [saved.activity, ...m.activities.filter((item) => item.id !== saved.activity.id)].sort(byNewest),
+          }));
+          return { ok: true, id: saved.call.id };
+        } catch (err) {
+          return { ok: false, error: errorText(err, "Nie udało się zapisać transkryptu.") };
+        }
+      },
+      removeTranscript: async (missionId, conversationId) => {
+        const mission = latest.current.missions.find((m) => m.id === missionId);
+        if (!mission) return { ok: false, error: "Brak misji." };
+        if (!canEditMissionIn(latest.current, mission, enforceRef.current)) {
+          return { ok: false, error: "Tę misję edytuje jej właściciel albo administrator." };
+        }
+        try {
+          if (isSupabaseConfigured()) await deleteTranscript(conversationId);
+          patchMissionQuiet(missionId, (m) => ({
+            ...m,
+            // Wpis (i ewentualne nagranie) zostaje, tylko bez tekstu — tak samo, jak po ponownym wczytaniu.
+            calls: (m.calls ?? []).map((call) =>
+              call.id === conversationId ? { ...call, transcriptText: undefined, transcriptStatus: "idle" as const } : call,
+            ),
+            activities: m.activities.map((item) => (item.id === conversationId ? { ...item, hasTranscript: false } : item)),
+          }));
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: errorText(err, "Nie udało się usunąć transkryptu.") };
         }
       },
       partnerById,

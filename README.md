@@ -76,6 +76,15 @@ Po każdym ponownym odpaleniu `v2-v3-all.sql` odpal też `v4-team-timeline.sql` 
 - Misję zamykasz jako przegraną, „wrócić później”, brak dopasowania albo pauzę — z powodem z listy. Można ją wznowić.
 - Klik w poprzedni krok steppera tylko pokazuje krok. Etap misji cofa jawny przycisk „Cofnij misję do tego kroku”.
 
+## Rozmowa ze Spinach → Discovery
+
+- W misji (od kroku Kontakt) w prawym dolnym rogu jest bąbelek **Notatka z rozmowy**: notatka z kroku Kontakt, transkrypty rozmów i przycisk **Wypełnij pola z rozmowy**.
+- Transkrypt wklejasz albo wczytujesz z pliku (.txt, .md, .vtt, .srt). Zapisuje się w `conversations` + `transcripts` — jako nowy wpis w dzienniku albo dopięty do istniejącej rozmowy.
+- Z kluczem `ANTHROPIC_API_KEY` w `.env.local` (albo w Vercel → Environment Variables) CRM pyta Claude API (structured output, domyślnie `claude-sonnet-5-5`). Telefony, maile i NIP-y są wycinane przed wysyłką. Bez klucza: „Przez Claude” — kopiujesz polecenie do claude.ai / Cowork i wklejasz odpowiedź (JSON).
+- Wynik to podgląd z checkboxami: puste pola są zaznaczone, wypełnione — nie (nadpisujesz świadomie). Cytat, którego nie ma dosłownie w transkrypcie, jest oznaczony. Potrzeby trafiają na mapę jako **hipotezy**, fakt potwierdza handlowiec.
+- Lokalny Qwen (Ollama) albo OpenCode Zen też działają jako silnik, jeśli są skonfigurowane, a klucza Claude nie ma.
+- Klucz chroni logowanie do CRM, opcjonalna lista `AI_ALLOWED_EMAILS` i limit 30 odczytów na godzinę na osobę. Bardzo długie rozmowy idą do AI jako początek i koniec (limit 150 tys. znaków), co podgląd wyraźnie zaznacza.
+
 ## Flagi
 
 - `NEXT_PUBLIC_SKILL_SMOKE=1` — włącza smoke test skilla dla partnera o nazwie „Test” (dopisuje przykładowe dane). Domyślnie wyłączony.

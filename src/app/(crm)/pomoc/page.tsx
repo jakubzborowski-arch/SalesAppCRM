@@ -75,6 +75,10 @@ const FAQ: [string, ReactNode][] = [
     "Administrator kopiuje SQL z paska, wkleja w Supabase → SQL Editor i klika Run. Migracje można uruchamiać wielokrotnie.",
   ],
   [
+    "Jak wypełnić Discovery z transkryptu Spinach bez klucza API?",
+    "W „Notatce z rozmowy” rozwiń „Przez Claude (bez klucza API)”, skopiuj polecenie z rozmową i wklej je w Claude (claude.ai albo Cowork). Odpowiedź (JSON) wklej z powrotem w CRM i obejrzyj podgląd. Z kluczem ANTHROPIC_API_KEY na serwerze CRM robi to jednym kliknięciem.",
+  ],
+  [
     "Jak dodać wielu partnerów naraz?",
     <>
       Partnerzy → <Link href="/partners/import" className="font-semibold text-lutra">Import Excel / CSV</Link>. Przeciągasz
@@ -202,6 +206,12 @@ export default function HelpPage() {
                 wariantu liczy się tylko z faktów.
               </p>
               <p className="text-xs text-muted">Kategorie: {NEED_CATEGORIES.map((c) => c.label).join(", ")}.</p>
+              <p>
+                <strong>Rozmowa nagrana w Spinach?</strong> Otwórz bąbelek „Notatka z rozmowy” w prawym dolnym rogu misji,
+                wklej transkrypt (albo wczytaj plik .txt / .vtt / .srt) i kliknij „Wypełnij pola z rozmowy”. AI proponuje
+                cytat, problem, ograniczenia, decydenta, terminy i potrzeby — każdą pozycję zaznaczasz sam, a fakt
+                potwierdzasz przyciskiem. Cytat, którego nie ma dosłownie w transkrypcie, jest oznaczony do sprawdzenia.
+              </p>
             </Block>
 
             <Block id="oferta" title="Oferta i warunki">
