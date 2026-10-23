@@ -1,22 +1,16 @@
+import { CONTRACT_STATUS_LABEL } from "@/components/mission/contract-flow";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   CONTACT_CHANNELS,
+  MISSION_STATUS_LABEL as MISSION_STATUS,
   NEED_CATEGORIES,
   OBJECTION_KEYS,
-  OFFER_VARIANTS,
-  RESEARCH_ITEMS,
+  offerName,
+  RESEARCH_ITEMS_BY_SEGMENT,
 } from "@/lib/playbook";
+import { termsLines } from "@/lib/terms";
 import { STAGES, type Mission, type Partner } from "@/lib/types";
-
-const MISSION_STATUS: Record<Mission["status"], string> = {
-  active: "W toku",
-  won: "Wygrana",
-  lost: "Przegrana",
-  nurture: "Wracamy później",
-  no_fit: "Brak dopasowania",
-  paused: "Pauza",
-};
 
 const NEED_STATUS: Record<Mission["needs"][number]["status"], string> = {
   fact: "fakt",
@@ -102,9 +96,9 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
             <div className="sm:col-span-2">
               <dt className="text-muted">Research</dt>
               <dd className="mt-1">
-                {RESEARCH_ITEMS.map(
-                  (item) => `${item.label}: ${mission.checklist[`research:${item.key}`] ? "tak" : "nie"}`,
-                ).join(" · ")}
+                {(RESEARCH_ITEMS_BY_SEGMENT[partner.segment] ?? RESEARCH_ITEMS_BY_SEGMENT.venue)
+                  .map((item) => `${item.label}: ${mission.checklist[`research:${item.key}`] ? "tak" : "nie"}`)
+                  .join(" · ")}
               </dd>
             </div>
           </Block>
@@ -138,13 +132,18 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
               label="Wariant"
               value={
                 mission.selectedVariant
-                  ? `${mission.selectedVariant}. ${OFFER_VARIANTS.find((item) => item.variant === mission.selectedVariant)?.name ?? ""}`
+                  ? `${mission.selectedVariant}. ${offerName(mission.selectedVariant, partner.segment)}`
                   : "—"
               }
             />
             <Row label="Oferta zatwierdzona" value={mission.offerApproved ? "tak" : "nie"} />
+            <Row label="Warunki" value={termsLines(mission, partner.segment).join(" · ") || "—"} />
             <Row label="Wynik" value={mission.outcome ? (MISSION_STATUS[mission.outcome] ?? mission.outcome) : "—"} />
-            <Row label="Powód przegranej" value={text(mission.lossReason)} />
+            <Row label="Powód zamknięcia" value={text(mission.lossReason)} />
+            {mission.closeNote ? <Row label="Notatka do zamknięcia" value={mission.closeNote} /> : null}
+            {mission.closedAt ? (
+              <Row label="Zamknięta" value={new Date(mission.closedAt).toLocaleDateString("pl-PL")} />
+            ) : null}
           </Block>
 
           <Block title="Obiekcje">
@@ -171,19 +170,16 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
             <Row label="Koniec" value={text(mission.contract?.endAt)} />
             <Row label="Zasady zmian" value={text(mission.contract?.changeRules)} />
             <Row label="Plik PDF" value={text(mission.contract?.documentPath?.split("/").pop())} />
-            <Row label="Podpis handlowca" value={mission.contract?.signedByHuman ? "tak" : "nie"} />
             <Row
-              label="Status"
+              label="Podpis partnera"
               value={
-                mission.contract?.status === "signed"
-                  ? "podpisana"
-                  : mission.contract?.status === "ready"
-                    ? "gotowa"
-                    : mission.contract?.status === "draft"
-                      ? "szkic"
-                      : "—"
+                mission.contract?.partnerSignedAt
+                  ? new Date(mission.contract.partnerSignedAt).toLocaleDateString("pl-PL")
+                  : "nie"
               }
             />
+            <Row label="Podpis Lutry" value={mission.contract?.signedByHuman ? "tak" : "nie"} />
+            <Row label="Status" value={mission.contract ? CONTRACT_STATUS_LABEL[mission.contract.status] : "—"} />
           </Block>
 
           <Block title="Aktywacja">

@@ -1,5 +1,5 @@
 import { completeDraftText, resolveDraftBackend } from "@/lib/draft-complete";
-import { briefForModel, parseFactFields, systemForDraft, type LocalDraftMode } from "@/lib/local-llm";
+import { briefForModel, systemForDraft, type LocalDraftMode } from "@/lib/local-llm";
 import { loggedInSalesUser } from "@/lib/sales-session";
 import type { Mission, Partner } from "@/lib/types";
 
@@ -34,13 +34,13 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as Body;
   } catch {
-    return Response.json({ error: "Niepoprawne JSON." }, { status: 400 });
+    return Response.json({ error: "Niepoprawny JSON." }, { status: 400 });
   }
 
   if (!body.partner?.id || !body.mission?.id || !body.mission.decision || !Array.isArray(body.mission.needs)) {
     return Response.json({ error: "Brak partnera lub misji." }, { status: 400 });
   }
-  if (body.mode !== "wniosek" && body.mode !== "umowa" && body.mode !== "mail" && body.mode !== "pola") {
+  if (body.mode !== "wniosek" && body.mode !== "umowa" && body.mode !== "mail") {
     return Response.json({ error: "Nieznany tryb." }, { status: 400 });
   }
   if (body.mode === "umowa" && !body.mission.selectedVariant) {
@@ -59,18 +59,7 @@ export async function POST(request: Request) {
     system: systemForDraft(body.mode),
     user: `${brief.task}\n\n${brief.source}`,
     source: brief.source,
-    ...(body.mode === "pola" ? { maxTokens: 360, minLength: 24 } : {}),
   });
   if (!done.ok) return Response.json({ error: done.error }, { status: done.status });
-  if (body.mode === "pola") {
-    const fields = parseFactFields(done.text, brief.source);
-    if (!fields.problem && !fields.quote) {
-      return Response.json(
-        { error: "Z notatki nie dało się wziąć problemu ani cytatu. Dopisz rozmowę albo wypełnij pola ręcznie." },
-        { status: 422 },
-      );
-    }
-    return Response.json({ ok: true, fields });
-  }
   return Response.json({ ok: true, draft: done.text });
 }

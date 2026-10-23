@@ -1,24 +1,40 @@
+import { isValidNip, normalizeNip } from "./company";
 import { loadMissionCore, syncMissionCore } from "./mission-core";
+import { mergeCare, mergeTerms } from "./terms";
 import { nextPriorityForDb, normalizePartnerPriority, priorityForDb } from "./partner-priority";
 import { OBJECTION_KEYS } from "./playbook";
+import { fetchAll, groupBy, selectIn } from "./fetch-all";
 import { emptyMission } from "./seed";
 import { dateOrNull, uuidOrNull } from "./sql-coerce";
 import { getSupabase, isMissingCrmTable } from "./supabase";
 import type {
+  Activity,
+  ActivityDirection,
+  ActivityOutcome,
   CallRecord,
   Channel,
   ConsentStatus,
   Mission,
+  MissionEvent,
+  NewActivityInput,
   NewPartnerInput,
   Partner,
   PartnerContact,
   StageId,
+  InvitePeek,
+  TaskItem,
+  TeamInvite,
+  TeamMember,
 } from "./types";
 
 export type WorkspaceContext = {
   workspaceId: string;
   workspaceName: string;
   fullName: string;
+  /** Szablon umowy zespołu (migracja v6). `null` = szablon domyślny. */
+  contractTemplate: string | null;
+  /** Szablon porozumienia mailowego (migracja v7). `null` = domyślny. */
+  agreementTemplate: string | null;
 };
 
 type MissionDetails = {
@@ -38,6 +54,10 @@ type MissionDetails = {
   objections?: Mission["objections"];
   contract?: Mission["contract"];
   activation?: Mission["activation"];
+  closeNote?: string;
+  terms?: Partial<Mission["terms"]>;
+  agreementForm?: Mission["agreementForm"];
+  care?: Partial<Mission["care"]>;
 };
 
 function uiDetailsOf(mission: Mission): MissionDetails {
@@ -49,6 +69,10 @@ function uiDetailsOf(mission: Mission): MissionDetails {
     disclosureShown: mission.disclosureShown,
     discovery: mission.discovery,
     recommendedVariant: mission.recommendedVariant,
+    closeNote: mission.closeNote,
+    terms: mission.terms,
+    agreementForm: mission.agreementForm,
+    care: mission.care,
   };
 }
 
@@ -67,14 +91,11 @@ function detailsOf(mission: Mission): MissionDetails {
   };
 }
 
-function filled(value?: string) {
-  return Boolean(value?.trim());
-}
-
 function missionFromRow(
   row: {
     id: string;
     partner_id: string;
+    owner_user_id?: string | null;
     status: Mission["status"];
     current_stage: StageId;
     next_step_label: string | null;
@@ -82,8 +103,12 @@ function missionFromRow(
     outcome: Mission["outcome"];
     loss_reason: string | null;
     details: MissionDetails | null;
+    started_at?: string | null;
+    closed_at?: string | null;
   },
   calls: CallRecord[],
+  activities: Activity[],
+  events: MissionEvent[],
 ): Mission {
   const base = emptyMission(row.partner_id, row.id);
   const d = row.details ?? {};
@@ -92,6 +117,12 @@ function missionFromRow(
     ...d,
     id: row.id,
     partnerId: row.partner_id,
+    ownerUserId: row.owner_user_id ?? undefined,
+    startedAt: row.started_at ?? undefined,
+    closedAt: row.closed_at ?? undefined,
+    closeNote: d.closeNote ?? "",
+    activities,
+    events,
     status: row.status,
     currentStage: row.current_stage,
     nextStepLabel: row.next_step_label ?? base.nextStepLabel,
@@ -100,6 +131,9 @@ function missionFromRow(
     lossReason: row.loss_reason ?? "",
     contract: { ...base.contract, ...(d.contract ?? {}) },
     activation: { ...base.activation, ...(d.activation ?? {}) },
+    terms: mergeTerms(d.terms),
+    agreementForm: d.agreementForm ?? null,
+    care: mergeCare(d.care),
     objections: d.objections?.length
       ? d.objections
       : OBJECTION_KEYS.map((item) => ({
@@ -130,14 +164,24 @@ function mapPartner(
     dnc_status: string;
     hours: string | null;
     notes: string | null;
+    owner_user_id?: string | null;
+    capacity?: number | null;
+    legal_name?: string | null;
+    nip?: string | null;
+    regon?: string | null;
+    legal_address?: string | null;
+    mailing_address?: string | null;
+    billing_email?: string | null;
   },
   contacts: PartnerContact[],
   consents: Partner["consents"],
 ): Partner {
   return {
     id: row.id,
+    ownerUserId: row.owner_user_id ?? undefined,
     name: row.name,
-    segment: row.segment,
+    segment: row.segment === "company" || row.segment === "community" ? row.segment : "venue",
+    capacity: typeof row.capacity === "number" && row.capacity > 0 ? row.capacity : null,
     city: row.city ?? "",
     address: row.address ?? "",
     category: row.category ?? "",
@@ -152,6 +196,14 @@ function mapPartner(
     dnc: row.dnc_status === "do_not_contact",
     hours: row.hours ?? undefined,
     notes: row.notes ?? undefined,
+    company: {
+      legalName: row.legal_name ?? "",
+      nip: row.nip ?? "",
+      regon: row.regon ?? "",
+      legalAddress: row.legal_address ?? "",
+      mailingAddress: row.mailing_address ?? "",
+      billingEmail: row.billing_email ?? "",
+    },
     contacts,
     consents,
   };
@@ -163,7 +215,7 @@ export async function ensureWorkspace(): Promise<WorkspaceContext> {
   const { data: wsId, error } = await sb.rpc("ensure_workspace");
   if (error) throw error;
   const workspaceId = wsId as string;
-  const { data: workspace } = await sb.from("workspaces").select("name").eq("id", workspaceId).maybeSingle();
+  const { data: workspace } = await sb.from("workspaces").select("*").eq("id", workspaceId).maybeSingle();
   const { data: userData } = await sb.auth.getUser();
   const { data: profile } = await sb
     .from("profiles")
@@ -174,78 +226,114 @@ export async function ensureWorkspace(): Promise<WorkspaceContext> {
     workspaceId,
     workspaceName: workspace?.name ?? "Lutra",
     fullName: profile?.full_name ?? "Handlowiec",
+    contractTemplate: (workspace?.contract_template as string | null | undefined) ?? null,
+    agreementTemplate: (workspace?.agreement_template as string | null | undefined) ?? null,
   };
+}
+
+function contactFromRow(c: Record<string, unknown>): PartnerContact {
+  return {
+    id: c.id as string,
+    name: String(c.name ?? c.contact_person ?? "").trim(),
+    role: (c.role as string) ?? "",
+    isDecisionMaker: Boolean(c.is_decision_maker),
+    phone: (c.phone as string) ?? undefined,
+    email: (c.email as string) ?? undefined,
+    linkedin: (c.linkedin as string) ?? undefined,
+  };
+}
+
+function partnerFromRows(
+  row: Record<string, unknown>,
+  contactRows: Record<string, unknown>[],
+  consentRows: Record<string, unknown>[],
+) {
+  return mapPartner(
+    row as Parameters<typeof mapPartner>[0],
+    contactRows.map(contactFromRow),
+    consentRows.map((c) => ({
+      channel: c.channel as Channel,
+      purpose: c.purpose as Partner["consents"][number]["purpose"],
+      status: c.status as ConsentStatus,
+    })),
+  );
+}
+
+/** Świeża wersja jednego partnera z bazy (np. po konflikcie zapisu kontaktu). */
+export async function loadPartner(partnerId: string): Promise<Partner | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data: row, error } = await sb.from("partners").select("*").eq("id", partnerId).maybeSingle();
+  if (error) throw error;
+  if (!row) return null;
+  const [{ data: contacts }, { data: consents }] = await Promise.all([
+    sb.from("partner_contacts").select("*").eq("partner_id", partnerId),
+    sb.from("consents").select("*").eq("partner_id", partnerId),
+  ]);
+  return partnerFromRows(row, contacts ?? [], consents ?? []);
 }
 
 export async function loadCrm(workspaceId: string): Promise<{
   partners: Partner[];
   missions: Mission[];
   tasks: import("./types").TaskItem[];
+  /** Wersje misji z bazy (`updated_at`). Ustawia je ten, kto podmienia misje w widoku. */
+  versions: Map<string, string>;
 }> {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
 
-  const { data: partnerRows, error: partnerError } = await sb
-    .from("partners")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: true });
+  const { data: partnerRows, error: partnerError } = await fetchAll((from, to) =>
+    sb
+      .from("partners")
+      .select("*", { count: "exact" })
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (partnerError) throw partnerError;
 
-  const partnerIds = (partnerRows ?? []).map((p) => p.id as string);
-  const { data: contactRows } = partnerIds.length
-    ? await sb.from("partner_contacts").select("*").in("partner_id", partnerIds)
-    : { data: [] };
-  const { data: consentRows } = partnerIds.length
-    ? await sb.from("consents").select("*").in("partner_id", partnerIds)
-    : { data: [] };
+  const partnerIds = partnerRows.map((p) => p.id as string);
+  const { data: contactRows } = await selectIn(sb, "partner_contacts", "partner_id", partnerIds);
+  const { data: consentRows } = await selectIn(sb, "consents", "partner_id", partnerIds);
+  const contactsByPartner = groupBy(contactRows, "partner_id");
+  const consentsByPartner = groupBy(consentRows, "partner_id");
 
-  const partners = (partnerRows ?? []).map((row) =>
-    mapPartner(
-      row,
-      (contactRows ?? [])
-        .filter((c) => c.partner_id === row.id)
-        .map((c) => ({
-          id: c.id as string,
-          name: String(c.name ?? c.contact_person ?? "").trim(),
-          role: (c.role as string) ?? "",
-          isDecisionMaker: Boolean(c.is_decision_maker),
-          phone: (c.phone as string) ?? undefined,
-          email: (c.email as string) ?? undefined,
-          linkedin: (c.linkedin as string) ?? undefined,
-        })),
-      (consentRows ?? [])
-        .filter((c) => c.partner_id === row.id)
-        .map((c) => ({
-          channel: c.channel as Channel,
-          purpose: c.purpose as Partner["consents"][number]["purpose"],
-          status: c.status as ConsentStatus,
-        })),
-    ),
+  const partners = partnerRows.map((row) =>
+    partnerFromRows(row, contactsByPartner.get(row.id as string) ?? [], consentsByPartner.get(row.id as string) ?? []),
   );
 
-  const { data: missionRows, error: missionError } = await sb
-    .from("missions")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .order("started_at", { ascending: false });
+  const { data: missionRows, error: missionError } = await fetchAll((from, to) =>
+    sb
+      .from("missions")
+      .select("*", { count: "exact" })
+      .eq("workspace_id", workspaceId)
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (missionError) throw missionError;
+  const versions = new Map<string, string>();
+  for (const row of missionRows) {
+    if (row.updated_at) versions.set(row.id as string, String(row.updated_at));
+  }
 
-  const missionIds = (missionRows ?? []).map((m) => m.id as string);
+  const missionIds = missionRows.map((m) => m.id as string);
   const callsByMission = new Map<string, CallRecord[]>();
+  const activitiesByMission = new Map<string, Activity[]>();
+  const eventsByMission = new Map<string, MissionEvent[]>();
   if (missionIds.length) {
-    const { data: convos } = await sb.from("conversations").select("*").in("mission_id", missionIds);
-    const convoIds = (convos ?? []).map((c) => c.id as string);
-    const { data: recs } = convoIds.length
-      ? await sb.from("recordings").select("*").in("conversation_id", convoIds)
-      : { data: [] };
-    const { data: trs } = convoIds.length
-      ? await sb.from("transcripts").select("*").in("conversation_id", convoIds)
-      : { data: [] };
+    const { data: convos } = await selectIn(sb, "conversations", "mission_id", missionIds);
+    const convoIds = convos.map((c) => c.id as string);
+    const { data: recs } = await selectIn(sb, "recordings", "conversation_id", convoIds);
+    const { data: trs } = await selectIn(sb, "transcripts", "conversation_id", convoIds);
+    const recByConvo = new Map(recs.map((r) => [r.conversation_id as string, r]));
+    const trByConvo = new Map(trs.map((t) => [t.conversation_id as string, t]));
 
-    for (const convo of convos ?? []) {
-      const rec = (recs ?? []).find((r) => r.conversation_id === convo.id);
-      const tr = (trs ?? []).find((t) => t.conversation_id === convo.id);
+    for (const convo of convos) {
+      const rec = recByConvo.get(convo.id as string);
+      const tr = trByConvo.get(convo.id as string);
       const call: CallRecord = {
         id: convo.id as string,
         channel: convo.channel as Channel,
@@ -267,39 +355,50 @@ export async function loadCrm(workspaceId: string): Promise<{
       const list = callsByMission.get(convo.mission_id as string) ?? [];
       list.push(call);
       callsByMission.set(convo.mission_id as string, list);
+
+      const activity = activityFromRow(convo, {
+        hasRecording: Boolean(rec),
+        hasTranscript: Boolean(tr?.status === "ready" && String(tr.full_text ?? "").trim()),
+      });
+      const acts = activitiesByMission.get(activity.missionId) ?? [];
+      acts.push(activity);
+      activitiesByMission.set(activity.missionId, acts);
+    }
+    for (const list of callsByMission.values()) list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    for (const list of activitiesByMission.values()) list.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+
+    const { data: eventRows, error: eventsError } = await selectIn(sb, "mission_events", "mission_id", missionIds);
+    if (!eventsError) {
+      for (const row of eventRows) {
+        const event = eventFromRow(row);
+        const list = eventsByMission.get(event.missionId) ?? [];
+        list.push(event);
+        eventsByMission.set(event.missionId, list);
+      }
+      for (const list of eventsByMission.values()) list.sort((a, b) => a.at.localeCompare(b.at));
     }
   }
 
-  const missions = (missionRows ?? []).map((row) =>
-    missionFromRow(row, callsByMission.get(row.id as string) ?? []),
+  const missions = missionRows.map((row) =>
+    missionFromRow(
+      row as Parameters<typeof missionFromRow>[0],
+      callsByMission.get(row.id as string) ?? [],
+      activitiesByMission.get(row.id as string) ?? [],
+      eventsByMission.get(row.id as string) ?? [],
+    ),
   );
 
   const { byMission, tasks } = await loadMissionCore(missionIds);
   const merged = missions.map((mission) => {
     const core = byMission.get(mission.id);
     if (!core) return mission;
-    const decisionFromCore =
-      core.decision &&
-      (filled(core.decision.problem) ||
-        filled(core.decision.expectedResult) ||
-        filled(core.decision.decisionMakerId) ||
-        filled(core.decision.nextStep));
-    const contractFromCore =
-      core.contract &&
-      (filled(core.contract.companyName) ||
-        filled(core.contract.nip) ||
-        core.contract.documentPath ||
-        core.contract.signedByHuman);
-    const activationFromCore =
-      core.activation &&
-      (filled(core.activation.partnerCode) ||
-        core.activation.hoursConfirmed ||
-        core.activation.testPassed ||
-        filled(core.activation.opsContactName));
     return {
       ...mission,
       needs: core.needs?.length ? core.needs : mission.needs,
-      decision: decisionFromCore ? core.decision! : mission.decision,
+      // Wiersz z tabel misji wygrywa pole po polu. Puste pole w wierszu nie kasuje danych ze starszego
+      // zapisu w `details`. Wcześniej cały wiersz liczył się tylko z nazwą firmy, NIP-em albo PDF-em,
+      // więc okres ustalony w ofercie (bez danych firmy) znikał po odświeżeniu.
+      decision: core.decision ? preferFilled(mission.decision, core.decision) : mission.decision,
       checklist: { ...mission.checklist, ...core.checklist },
       objections: core.objections?.length
         ? mission.objections.map((item) => core.objections?.find((o) => o.key === item.key) ?? item)
@@ -307,14 +406,23 @@ export async function loadCrm(workspaceId: string): Promise<{
       selectedVariant: core.selectedVariant ?? mission.selectedVariant,
       offerApproved: core.offerApproved ?? mission.offerApproved,
       offerSentAt: core.offerSentAt ?? mission.offerSentAt,
-      contract: contractFromCore ? { ...mission.contract, ...core.contract } : mission.contract,
-      activation: activationFromCore
-        ? { ...mission.activation, ...core.activation }
-        : mission.activation,
+      contract: core.contract ? preferFilled(mission.contract, core.contract) : mission.contract,
+      activation: core.activation ? preferFilled(mission.activation, core.activation) : mission.activation,
     };
   });
 
-  return { partners, missions: merged, tasks };
+  return { partners, missions: merged, tasks, versions };
+}
+
+/** Pola z `core`, które mają wartość (niepusty tekst, `true`, liczba), nadpisują `base`. */
+export function preferFilled<T extends object>(base: T, core: Partial<T>): T {
+  const out = { ...base } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(core)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    out[key] = value;
+  }
+  return out as T;
 }
 
 export async function insertPartner(
@@ -333,6 +441,8 @@ export async function insertPartner(
     input.instagram.trim() && `Instagram: ${input.instagram.trim()}`,
     input.facebook.trim() && `Facebook: ${input.facebook.trim()}`,
     input.socialOther.trim() && `Inne social: ${input.socialOther.trim()}`,
+    input.legalName?.trim() && `Firma: ${input.legalName.trim()}`,
+    input.nip?.trim() && `NIP: ${input.nip.trim()}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -358,6 +468,14 @@ export async function insertPartner(
     dnc_status: "ok",
   };
   if (!payload.priority) delete payload.priority;
+  if (input.segment === "company" || input.segment === "community") payload.segment = input.segment;
+  if (input.capacity && input.capacity > 0) payload.capacity = Math.round(input.capacity);
+  if (input.legalName?.trim()) payload.legal_name = input.legalName.trim();
+  if (input.nip && isValidNip(input.nip)) payload.nip = normalizeNip(input.nip);
+  else if (input.nip?.trim()) {
+    // Błędny NIP z importu nie blokuje zapisu partnera — ląduje w notatce do sprawdzenia.
+    payload.notes = [payload.notes, `NIP do sprawdzenia: ${input.nip.trim()}`].filter(Boolean).join("\n");
+  }
 
   let partner: Parameters<typeof mapPartner>[0] | null = null;
   let lastError: { message?: string; code?: string } | null = null;
@@ -391,7 +509,7 @@ export async function insertPartner(
     if (missing && missing in payload) {
       delete payload[missing];
       if (
-        ["subcategory", "website", "instagram", "facebook", "social_other", "priority", "priority_reason"].includes(
+        ["subcategory", "website", "instagram", "facebook", "social_other", "priority", "priority_reason", "legal_name", "nip"].includes(
           missing,
         ) &&
         extraNote
@@ -450,7 +568,23 @@ function contactWritePayload(partnerId: string, contact: PartnerContact) {
     is_decision_maker: contact.isDecisionMaker,
     phone: contact.phone ?? null,
     email: contact.email ?? null,
+    linkedin: contact.linkedin ?? null,
   } satisfies Record<string, unknown>;
+}
+
+const blank = (value: unknown) => (value == null ? "" : String(value).trim());
+
+/** Czy wiersz w bazie to dalej ta wersja kontaktu, którą znamy (nikt jej w międzyczasie nie zmienił). */
+function contactRowMatches(row: Record<string, unknown>, known: PartnerContact) {
+  const current = contactFromRow(row);
+  return (
+    blank(current.name) === blank(known.name) &&
+    blank(current.role) === blank(known.role) &&
+    blank(current.phone) === blank(known.phone) &&
+    blank(current.email) === blank(known.email) &&
+    ("linkedin" in row ? blank(current.linkedin) === blank(known.linkedin) : true) &&
+    current.isDecisionMaker === known.isDecisionMaker
+  );
 }
 
 function adaptContactPayload(payload: Record<string, unknown>, message: string) {
@@ -518,34 +652,115 @@ async function upsertPartnerContactRow(partnerId: string, contact: PartnerContac
   }
 }
 
-export async function persistPartner(partner: Partner) {
+function partnerColumns(partner: Partner): Record<string, unknown> {
+  const c = partner.company;
+  return {
+    name: partner.name,
+    city: partner.city,
+    address: partner.address,
+    category: partner.category,
+    subcategory: partner.subcategory || null,
+    website: partner.website || null,
+    instagram: partner.instagram || null,
+    facebook: partner.facebook || null,
+    social_other: partner.socialOther || null,
+    priority: priorityForDb(partner.priority) || partner.priority || null,
+    priority_reason: partner.priorityReason || null,
+    source: partner.source,
+    hours: partner.hours ?? null,
+    notes: partner.notes ?? null,
+    dnc_status: partner.dnc ? "do_not_contact" : "ok",
+    legal_name: c.legalName || null,
+    nip: normalizeNip(c.nip) || null,
+    regon: c.regon.replace(/\D/g, "") || null,
+    legal_address: c.legalAddress || null,
+    mailing_address: c.mailingAddress || null,
+    billing_email: c.billingEmail || null,
+    segment: partner.segment,
+    capacity: partner.capacity && partner.capacity > 0 ? Math.round(partner.capacity) : null,
+  };
+}
+
+const COMPANY_COLUMNS = ["legal_name", "nip", "regon", "legal_address", "mailing_address", "billing_email"];
+/** Kolumny z migracji v7 (typ partnera i pojemność). */
+const V7_PARTNER_COLUMNS = ["segment", "capacity"];
+
+/** Zabrakło kolumn typu partnera / pojemności — trzeba uruchomić migrację v7. */
+export const V7_MISSING = "Baza nie ma jeszcze pól typu partnera i pojemności. Uruchom migrację v7 z paska u góry strony.";
+
+/** Zabrakło kolumn danych firmy — trzeba uruchomić migrację v5. */
+export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrację v5 z paska u góry strony.";
+
+/**
+ * Zapisuje partnera. Z `before` (wersja ostatnio zapisana) wysyła tylko pola, które się zmieniły —
+ * dwie osoby edytujące różne pola karty nie nadpisują sobie nawzajem pracy.
+ */
+export async function persistPartner(
+  partner: Partner,
+  before?: Partner,
+): Promise<{ dropped: ("company" | "priority" | "v7")[]; conflicts: string[] }> {
+  const dropped: ("company" | "priority" | "v7")[] = [];
+  /** Kontakty zmienione w międzyczasie przez kogoś innego — ich nie zapisujemy. */
+  const conflicts: string[] = [];
   const sb = getSupabase();
-  if (!sb) return;
+  if (!sb) throw new Error("Brak klienta Supabase.");
   for (const contact of partner.contacts) {
+    const old = before?.contacts.find((c) => c.id === contact.id);
+    if (old && JSON.stringify(old) === JSON.stringify(contact)) continue;
+    if (old) {
+      // Edycja istniejącego kontaktu: zapisujemy tylko, jeśli nikt go w międzyczasie nie zmienił.
+      const { data: row } = await sb.from("partner_contacts").select("*").eq("id", contact.id).maybeSingle();
+      if (!row || !contactRowMatches(row, old)) {
+        conflicts.push(contact.id);
+        continue;
+      }
+    }
     await upsertPartnerContactRow(partner.id, contact);
   }
-  await sb
-    .from("partners")
-    .update({
-      name: partner.name,
-      city: partner.city,
-      address: partner.address,
-      category: partner.category,
-      subcategory: partner.subcategory || null,
-      website: partner.website || null,
-      instagram: partner.instagram || null,
-      facebook: partner.facebook || null,
-      social_other: partner.socialOther || null,
-      priority: priorityForDb(partner.priority) || partner.priority || null,
-      priority_reason: partner.priorityReason || null,
-      source: partner.source,
-      hours: partner.hours ?? null,
-      notes: partner.notes ?? null,
-      dnc_status: partner.dnc ? "do_not_contact" : "ok",
-    })
-    .eq("id", partner.id);
+
+  const next = partnerColumns(partner);
+  const prev = before ? partnerColumns(before) : null;
+  const changed = Object.fromEntries(
+    Object.entries(next).filter(([key, value]) => {
+      if (!prev) return !([...COMPANY_COLUMNS, "capacity"].includes(key) && value === null);
+      return JSON.stringify(prev[key]) !== JSON.stringify(value);
+    }),
+  );
+  if (Object.keys(changed).length) {
+    const send = async () =>
+      Object.keys(changed).length
+        ? (await sb.from("partners").update(changed).eq("id", partner.id)).error
+        : null;
+    let error = await send();
+    for (let attempt = 0; error && attempt < 5; attempt++) {
+      const missing = missingColumnName(error);
+      if ("priority" in changed && /partner_priority/i.test(error.message ?? "")) {
+        // Starsza baza ma inny zestaw priorytetów — reszta zmian i tak ma się zapisać.
+        delete changed.priority;
+        dropped.push("priority");
+      } else if (
+        isMissingColumn(error) &&
+        Object.keys(changed).some((key) => V7_PARTNER_COLUMNS.includes(key)) &&
+        (!missing || V7_PARTNER_COLUMNS.includes(missing))
+      ) {
+        // Bez migracji v7 brakuje kolumny typu albo pojemności — pomijamy tylko brakującą, reszta karty się zapisuje.
+        // (Starsze bazy mają już typ partnera; zmiana typu nie może przepaść razem z pojemnością.)
+        const drop = missing && V7_PARTNER_COLUMNS.includes(missing) ? [missing] : V7_PARTNER_COLUMNS;
+        for (const key of drop) delete changed[key];
+        if (!dropped.includes("v7")) dropped.push("v7");
+      } else if (isMissingColumn(error) && Object.keys(changed).some((key) => COMPANY_COLUMNS.includes(key))) {
+        // Bez migracji v5 dane firmy nie mają gdzie się zapisać — reszta karty tak.
+        for (const key of COMPANY_COLUMNS) delete changed[key];
+        dropped.push("company");
+      } else break;
+      error = await send();
+    }
+    if (error) throw error;
+  }
 
   for (const consent of partner.consents) {
+    const old = before?.consents.find((c) => c.channel === consent.channel && c.purpose === consent.purpose);
+    if (old && old.status === consent.status) continue;
     const { data: existing } = await sb
       .from("consents")
       .select("id")
@@ -554,104 +769,474 @@ export async function persistPartner(partner: Partner) {
       .eq("purpose", consent.purpose)
       .maybeSingle();
     if (existing?.id) {
-      await sb
+      const { error } = await sb
         .from("consents")
         .update({
           status: consent.status,
           granted_at: consent.status === "granted" ? new Date().toISOString() : null,
         })
         .eq("id", existing.id);
+      if (error) throw error;
     } else {
-      await sb.from("consents").insert({
+      const { error } = await sb.from("consents").insert({
         partner_id: partner.id,
         channel: consent.channel,
         purpose: consent.purpose,
         status: consent.status,
       });
+      if (error) throw error;
     }
   }
+  return { dropped, conflicts };
+}
+
+/** Czy baza ma kolumny danych firmy (migracja v5). */
+export async function detectSchemaV5(): Promise<boolean | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { error } = await sb.from("partners").select("legal_name, nip, regon, legal_address").limit(1);
+  if (!error) return true;
+  if (isMissingColumn(error) || isMissingCrmTable(error)) return false;
+  return null;
+}
+
+/** Pliki umów i nagrań misji partnera. Kasujemy je razem z partnerem, żeby nie zostały sieroty. */
+async function partnerFiles(partnerId: string) {
+  const sb = getSupabase();
+  if (!sb) return { contracts: [] as string[], recordings: [] as string[] };
+  const { data: missionRows } = await sb.from("missions").select("id").eq("partner_id", partnerId);
+  const missionIds = (missionRows ?? []).map((row) => row.id as string);
+  if (!missionIds.length) return { contracts: [], recordings: [] };
+  const { data: contractRows } = await selectIn(sb, "contracts", "mission_id", missionIds);
+  const { data: convoRows } = await selectIn(sb, "conversations", "mission_id", missionIds);
+  const { data: recordingRows } = await selectIn(
+    sb,
+    "recordings",
+    "conversation_id",
+    convoRows.map((row) => row.id as string),
+  );
+  return {
+    contracts: contractRows.map((row) => row.document_path as string).filter(Boolean),
+    recordings: recordingRows.map((row) => row.storage_path as string).filter(Boolean),
+  };
 }
 
 export async function deletePartner(partnerId: string) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
+  // Najpierw pliki (póki misje je wskazują i RLS wie, że są zespołu), potem wiersze.
+  try {
+    const files = await partnerFiles(partnerId);
+    if (files.contracts.length) await sb.storage.from("contracts").remove(files.contracts);
+    if (files.recordings.length) await sb.storage.from("recordings").remove(files.recordings);
+  } catch {
+    /* plik, którego nie da się skasować, nie blokuje usunięcia partnera */
+  }
   const { error: missionError } = await sb.from("missions").delete().eq("partner_id", partnerId);
   if (missionError && !isMissingCrmTable(missionError)) throw missionError;
-  const { error } = await sb.from("partners").delete().eq("id", partnerId);
+  const { data: removed, error } = await sb.from("partners").delete().eq("id", partnerId).select("id");
   if (error) throw error;
+  if (!removed?.length) {
+    throw new Error("Tego partnera usuwa jego opiekun albo administrator (i tylko bez cudzych misji).");
+  }
+}
+
+/**
+ * Czy tabele misji (v3) są w bazie. Po pierwszym udanym zapisie wiemy, że tak,
+ * i od razu zapisujemy szczupłe `details` (bez przepisywania pełnego JSON-a tam i z powrotem).
+ */
+let coreTablesAvailable: boolean | null = null;
+
+/**
+ * Wersja misji z bazy (`missions.updated_at`, migracja v4), na której opiera się misja w widoku.
+ * Zapis przechodzi tylko, gdy w bazie jest wciąż ta wersja — inaczej ktoś z zespołu był szybszy.
+ * Wersję ustawia ten, kto podmienia treść misji (wczytanie, odświeżenie, własny zapis).
+ */
+const missionVersions = new Map<string, string>();
+
+export function setMissionVersion(missionId: string, version: string | undefined) {
+  if (version) missionVersions.set(missionId, version);
+  else missionVersions.delete(missionId);
+}
+
+export function replaceMissionVersions(versions: Map<string, string>) {
+  missionVersions.clear();
+  for (const [id, version] of versions) missionVersions.set(id, version);
+}
+
+/** Po wylogowaniu wersje z poprzedniej sesji nie są już nic warte. */
+export function clearMissionVersions() {
+  missionVersions.clear();
+}
+
+export class MissionConflictError extends Error {
+  missionId: string;
+  constructor(missionId: string) {
+    super("Ktoś z zespołu zmienił tę misję w tym samym czasie.");
+    this.name = "MissionConflictError";
+    this.missionId = missionId;
+  }
 }
 
 export async function persistMission(
   mission: Mission,
   workspaceId: string,
   userId: string,
-) {
+  segment: Partner["segment"] = "venue",
+): Promise<{ nextStepTask: TaskItem | null }> {
   const sb = getSupabase();
-  if (!sb) return;
-  const { error } = await sb.from("missions").upsert({
-    id: mission.id,
+  if (!sb) return { nextStepTask: null };
+  const slim = coreTablesAvailable === true;
+  const changes = {
     workspace_id: workspaceId,
     partner_id: mission.partnerId,
-    owner_user_id: userId,
+    // Właściciel zostaje ten sam, nawet gdy misję zapisuje ktoś inny z zespołu.
+    owner_user_id: uuidOrNull(mission.ownerUserId) ?? userId,
     status: mission.status,
     current_stage: mission.currentStage,
     next_step_label: mission.nextStepLabel,
     next_step_at: dateOrNull(mission.nextStepAt),
     outcome: mission.outcome,
     loss_reason: mission.lossReason || null,
-    details: detailsOf(mission),
-    closed_at: mission.status === "won" || mission.status === "lost" ? new Date().toISOString() : null,
-  });
-  if (error) throw error;
-  await syncConversationMeta(mission);
-  const coreStatus = await syncMissionCore(mission, workspaceId, userId);
-  if (coreStatus === "synced") {
-    const { error: slimError } = await sb
-      .from("missions")
-      .update({ details: uiDetailsOf(mission) })
-      .eq("id", mission.id);
-    if (slimError) throw slimError;
-  }
-}
-
-async function syncConversationMeta(mission: Mission) {
-  const sb = getSupabase();
-  if (!sb) return;
-  const hasContact =
-    Boolean(mission.selectedChannel) ||
-    mission.recordingConsent !== "pending" ||
-    Boolean(mission.conversationNote.trim()) ||
-    Boolean(mission.disclosureShown);
-  if (!hasContact) return;
-
-  const { data: existing, error } = await sb
-    .from("conversations")
-    .select("id, disclosure_shown_at")
-    .eq("mission_id", mission.id)
-    .order("started_at", { ascending: false })
-    .limit(1);
-  if (error) throw error;
-
-  const payload = {
-    channel: mission.selectedChannel ?? "phone",
-    recording_consent: mission.recordingConsent,
-    disclosure_shown_at: mission.disclosureShown
-      ? ((existing?.[0]?.disclosure_shown_at as string | null) ?? new Date().toISOString())
-      : null,
-    summary_human: mission.conversationNote.trim() || null,
+    details: slim ? uiDetailsOf(mission) : detailsOf(mission),
+    closed_at: mission.status === "active" ? null : (mission.closedAt ?? null),
   };
 
-  if (existing?.[0]?.id) {
-    const { error: updateError } = await sb.from("conversations").update(payload).eq("id", existing[0].id);
-    if (updateError) throw updateError;
-    return;
+  const version = missionVersions.get(mission.id);
+  let claimed: string | undefined;
+  if (version) {
+    const { data, error } = await sb
+      .from("missions")
+      .update(changes)
+      .eq("id", mission.id)
+      .eq("updated_at", version)
+      .select("*");
+    if (error) throw error;
+    if (!data?.length) throw new MissionConflictError(mission.id);
+    claimed = data[0].updated_at ? String(data[0].updated_at) : undefined;
+  } else {
+    const { data, error } = await sb
+      .from("missions")
+      .upsert({ id: mission.id, ...changes })
+      .select("*")
+      .single();
+    if (error) throw error;
+    claimed = data?.updated_at ? String(data.updated_at) : undefined;
   }
+  setMissionVersion(mission.id, claimed);
 
-  const { error: insertError } = await sb.from("conversations").insert({
-    mission_id: mission.id,
-    ...payload,
-  });
-  if (insertError) throw insertError;
+  const core = await syncMissionCore(mission, workspaceId, userId, segment);
+  if (core.status === "synced") {
+    if (claimed) {
+      // Domknięcie zapisu: nowa wersja dopiero po zapisaniu tabel misji. Kto wczytał misję
+      // w trakcie naszego zapisu, ma starszą wersję i jego zapis skończy się konfliktem,
+      // zamiast wgrać z powrotem połowiczny stan.
+      const { data, error: sealError } = await sb
+        .from("missions")
+        .update({ details: uiDetailsOf(mission) })
+        .eq("id", mission.id)
+        .eq("updated_at", claimed)
+        .select("*");
+      if (sealError) throw sealError;
+      if (!data?.length) throw new MissionConflictError(mission.id);
+      setMissionVersion(mission.id, data[0].updated_at ? String(data[0].updated_at) : undefined);
+    } else if (!slim) {
+      const { error: slimError } = await sb
+        .from("missions")
+        .update({ details: uiDetailsOf(mission) })
+        .eq("id", mission.id);
+      if (slimError) throw slimError;
+    }
+    coreTablesAvailable = true;
+  } else {
+    coreTablesAvailable = false;
+  }
+  return { nextStepTask: core.nextStepTask };
+}
+
+/** Nazwa brakującej kolumny z komunikatu PostgREST/Postgres (jeśli da się ją odczytać). */
+function missingColumnName(error: { message?: string } | null) {
+  const message = error?.message ?? "";
+  return (
+    message.match(/Could not find the '([a-z_]+)' column/i)?.[1] ??
+    message.match(/column (?:[a-z_]+\.)?([a-z_]+) does not exist/i)?.[1] ??
+    message.match(/column "([a-z_]+)" (?:of relation|does not exist)/i)?.[1] ??
+    null
+  );
+}
+
+function isMissingColumn(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    /column .* does not exist|could not find the .* column/i.test(error.message ?? "")
+  );
+}
+
+function isMissingFunction(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return error.code === "PGRST202" || error.code === "42883" || /could not find the function/i.test(error.message ?? "");
+}
+
+export const V4_MISSING =
+  "Brakuje migracji v4 w bazie. Otwórz SQL Editor w Supabase, wklej supabase/v4-team-timeline.sql i kliknij Run.";
+
+/** `true` gdy w bazie są kolumny dziennika kontaktów z migracji v4. `null` gdy nie wiadomo. */
+export async function detectSchemaV4(): Promise<boolean | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { error } = await sb.from("conversations").select("direction, outcome").limit(1);
+  if (!error) return true;
+  if (isMissingColumn(error) || isMissingCrmTable(error)) return false;
+  return null;
+}
+
+const OUTCOMES: ActivityOutcome[] = [
+  "connected",
+  "no_answer",
+  "callback",
+  "refused",
+  "sent",
+  "replied",
+  "meeting_booked",
+  "other",
+];
+
+function activityFromRow(
+  row: Record<string, unknown>,
+  flags: { hasRecording: boolean; hasTranscript: boolean },
+): Activity {
+  const outcome = OUTCOMES.includes(row.outcome as ActivityOutcome) ? (row.outcome as ActivityOutcome) : null;
+  const channel = String(row.channel ?? "phone");
+  return {
+    id: String(row.id),
+    missionId: String(row.mission_id),
+    channel: (["phone", "email", "linkedin", "in_person"].includes(channel) ? channel : "other") as Activity["channel"],
+    direction: (row.direction === "inbound" ? "inbound" : "outbound") as ActivityDirection,
+    outcome,
+    subject: String(row.subject ?? ""),
+    summary: String(row.summary_human ?? ""),
+    contactId: (row.contact_id as string | null) ?? null,
+    occurredAt: String(row.started_at ?? new Date().toISOString()),
+    durationMin: typeof row.duration_min === "number" ? row.duration_min : null,
+    createdBy: (row.created_by as string | null) ?? null,
+    hasRecording: flags.hasRecording,
+    hasTranscript: flags.hasTranscript,
+  };
+}
+
+function eventFromRow(row: Record<string, unknown>): MissionEvent {
+  const kind = row.kind === "stage" || row.kind === "status" ? row.kind : "created";
+  return {
+    id: String(row.id),
+    missionId: String(row.mission_id),
+    kind,
+    fromValue: (row.from_value as string | null) ?? null,
+    toValue: (row.to_value as string | null) ?? null,
+    note: (row.note as string | null) ?? null,
+    actorId: (row.actor_id as string | null) ?? null,
+    at: String(row.created_at ?? new Date().toISOString()),
+  };
+}
+
+export async function insertActivity(input: NewActivityInput): Promise<Activity> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const occurred = new Date(input.occurredAt);
+  const { data, error } = await sb
+    .from("conversations")
+    .insert({
+      mission_id: input.missionId,
+      channel: input.channel,
+      direction: input.direction,
+      outcome: input.outcome,
+      subject: input.subject.trim() || null,
+      summary_human: input.summary.trim() || null,
+      contact_id: uuidOrNull(input.contactId),
+      started_at: Number.isNaN(occurred.getTime()) ? new Date().toISOString() : occurred.toISOString(),
+      duration_min: input.durationMin,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    if (isMissingColumn(error) || (error.message ?? "").includes("schema cache")) throw new Error(V4_MISSING);
+    throw error;
+  }
+  return activityFromRow(data, { hasRecording: false, hasTranscript: false });
+}
+
+export async function deleteActivity(activityId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.from("conversations").delete().eq("id", activityId).select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("Ten wpis usuwa jego autor albo administrator workspace.");
+}
+
+export async function loadMissionEvents(missionId: string): Promise<MissionEvent[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from("mission_events")
+    .select("*")
+    .eq("mission_id", missionId)
+    .order("created_at", { ascending: true });
+  if (error) return [];
+  return (data ?? []).map(eventFromRow);
+}
+
+export const V6_MISSING = "Brakuje migracji v6 w bazie (uprawnienia, obieg podpisu, szablon umowy). Skopiuj SQL z paska u góry strony.";
+
+function rpcError(error: { code?: string; message?: string }, fallback: string, missing = V4_MISSING) {
+  if (isMissingFunction(error)) return new Error(missing);
+  return new Error(error.message || fallback);
+}
+
+/** Członkowie workspace. `null`, gdy w bazie nie ma jeszcze migracji v4. */
+export async function loadTeam(): Promise<TeamMember[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc("workspace_members");
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw rpcError(error, "Nie udało się wczytać zespołu.");
+  }
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id),
+    fullName: String(row.full_name ?? "").trim() || String(row.email ?? "Handlowiec"),
+    role: row.role === "admin" ? "admin" : "seller",
+    email: String(row.email ?? ""),
+    isMe: Boolean(row.is_me),
+  }));
+}
+
+export async function peekInvite(token: string): Promise<InvitePeek> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.rpc("peek_workspace_invite", { p_token: token.trim() });
+  if (error) throw rpcError(error, "Nie udało się sprawdzić zaproszenia.");
+  const row = ((data ?? []) as Array<Record<string, unknown>>)[0] ?? { status: "missing" };
+  const statuses: InvitePeek["status"][] = [
+    "ok",
+    "missing",
+    "revoked",
+    "accepted",
+    "used",
+    "expired",
+    "email_mismatch",
+    "same_workspace",
+  ];
+  const status = statuses.includes(row.status as InvitePeek["status"]) ? (row.status as InvitePeek["status"]) : "missing";
+  return {
+    status,
+    workspaceName: (row.workspace_name as string | null) ?? null,
+    invitedBy: (row.invited_by as string | null) ?? null,
+    inviteEmail: (row.invite_email as string | null) ?? null,
+    alone: Boolean(row.alone),
+    ownPartners: Number(row.own_partners ?? 0),
+    ownMissions: Number(row.own_missions ?? 0),
+  };
+}
+
+export async function listInvites(): Promise<TeamInvite[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb.rpc("list_workspace_invites");
+  if (error) throw rpcError(error, "Nie udało się wczytać zaproszeń.");
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id),
+    email: (row.email as string | null) ?? null,
+    createdAt: String(row.created_at ?? ""),
+    expiresAt: String(row.expires_at ?? ""),
+    createdByName: (row.created_by_name as string | null) ?? null,
+  }));
+}
+
+export async function createInvite(email: string): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.rpc("create_workspace_invite", { p_email: email.trim() || null });
+  if (error) throw rpcError(error, "Nie udało się utworzyć zaproszenia.");
+  return String(data);
+}
+
+export async function acceptInviteToken(token: string): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.rpc("accept_workspace_invite", { p_token: token.trim() });
+  if (error) throw rpcError(error, "Nie udało się dołączyć do zespołu.");
+  return String(data);
+}
+
+export async function revokeInvite(inviteId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("revoke_workspace_invite", { p_invite: inviteId });
+  if (error) throw rpcError(error, "Nie udało się cofnąć zaproszenia.");
+}
+
+export async function removeMember(memberId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("remove_workspace_member", { p_user: memberId });
+  if (error) throw rpcError(error, "Nie udało się usunąć osoby z zespołu.");
+}
+
+/** Czy baza ma uprawnienia per właściciel i obieg podpisu (migracja v6). */
+export async function detectSchemaV6(): Promise<boolean | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { error } = await sb.from("contracts").select("sent_at, partner_signed_at").limit(1);
+  if (!error) return true;
+  if (isMissingColumn(error) || isMissingCrmTable(error)) return false;
+  return null;
+}
+
+/** Przekazuje misję. Zwraca nową wersję misji (updated_at) do zapisu warunkowego. */
+export async function transferMission(missionId: string, userId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.rpc("transfer_mission", { p_mission: missionId, p_user: userId });
+  if (error) throw rpcError(error, "Nie udało się przekazać misji.", V6_MISSING);
+  return typeof data === "string" ? data : undefined;
+}
+
+/** Czy baza ma typ partnera, pojemność i szablon porozumienia mailowego (migracja v7). */
+export async function detectSchemaV7(): Promise<boolean | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { error } = await sb.from("partners").select("segment, capacity").limit(1);
+  if (error) {
+    if (isMissingColumn(error) || isMissingCrmTable(error)) return false;
+    return null;
+  }
+  const { error: wsError } = await sb.from("workspaces").select("agreement_template").limit(1);
+  if (!wsError) return true;
+  if (isMissingColumn(wsError)) return false;
+  return null;
+}
+
+/** Szablon porozumienia mailowego zespołu (admin, migracja v7). */
+export async function saveAgreementTemplate(template: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("set_agreement_template", { p_template: template });
+  if (error) throw rpcError(error, "Nie udało się zapisać szablonu.", V7_MISSING);
+}
+
+export async function saveContractTemplate(template: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("set_contract_template", { p_template: template });
+  if (error) throw rpcError(error, "Nie udało się zapisać szablonu.", V6_MISSING);
+}
+
+export async function renameWorkspace(name: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { error } = await sb.rpc("rename_workspace", { p_name: name });
+  if (error) throw rpcError(error, "Nie udało się zmienić nazwy.");
 }
 
 export async function saveManualTranscript(params: {
@@ -659,18 +1244,34 @@ export async function saveManualTranscript(params: {
   channel: Channel;
   text: string;
   note?: string;
-}): Promise<CallRecord> {
+  /** Kiedy była rozmowa (domyślnie teraz). */
+  occurredAt?: string;
+  /** Tytuł wpisu w dzienniku kontaktów (kolumny z v4). */
+  subject?: string;
+}): Promise<{ call: CallRecord; activity: Activity }> {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
   const conversationId = crypto.randomUUID();
-  const { error: convoError } = await sb.from("conversations").insert({
+  const when = params.occurredAt ? new Date(params.occurredAt) : new Date();
+  const startedAt = Number.isNaN(when.getTime()) ? new Date().toISOString() : when.toISOString();
+  const base = {
     id: conversationId,
     mission_id: params.missionId,
     channel: params.channel,
     recording_consent: "denied",
     summary_human: params.note?.trim() || "Transkrypt wklejony (skill / Spinach)",
-  });
-  if (convoError) throw convoError;
+    started_at: startedAt,
+  };
+  // Wpis w dzienniku jak zwykły kontakt (rozmowa się odbyła). Baza sprzed v4 nie ma tych kolumn.
+  let inserted = await sb
+    .from("conversations")
+    .insert({ ...base, direction: "outbound", outcome: "connected", subject: params.subject?.trim() || null })
+    .select("*")
+    .single();
+  if (inserted.error && isMissingColumn(inserted.error)) {
+    inserted = await sb.from("conversations").insert(base).select("*").single();
+  }
+  if (inserted.error) throw inserted.error;
 
   const { error: transcriptError } = await sb.from("transcripts").insert({
     conversation_id: conversationId,
@@ -680,27 +1281,66 @@ export async function saveManualTranscript(params: {
     full_text: params.text.trim(),
     segments: [],
   });
-  if (transcriptError) throw transcriptError;
+  if (transcriptError) {
+    // Bez transkryptu wpis w dzienniku nie ma sensu — sprzątamy, żeby nie został pusty kontakt.
+    await sb.from("conversations").delete().eq("id", conversationId);
+    throw transcriptError;
+  }
 
+  const row = (inserted.data ?? base) as Record<string, unknown>;
   return {
-    id: conversationId,
-    channel: params.channel,
-    recordingConsent: "denied",
-    durationSec: 0,
-    transcriptStatus: "ready",
-    transcriptText: params.text.trim(),
-    createdAt: new Date().toISOString(),
+    call: {
+      id: conversationId,
+      channel: params.channel,
+      recordingConsent: "denied",
+      durationSec: 0,
+      transcriptStatus: "ready",
+      transcriptText: params.text.trim(),
+      createdAt: String(row.started_at ?? startedAt),
+    },
+    activity: activityFromRow({ ...base, ...row }, { hasRecording: false, hasTranscript: true }),
   };
+}
+
+/** Transkrypt do istniejącego wpisu w dzienniku (np. spotkanie zapisane wcześniej). */
+export async function attachTranscript(conversationId: string, text: string, hasRow: boolean) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  if (hasRow) {
+    await updateTranscriptText(conversationId, text.trim());
+    return;
+  }
+  const { error } = await sb.from("transcripts").insert({
+    conversation_id: conversationId,
+    provider: "manual",
+    language: "pl",
+    status: "ready",
+    full_text: text.trim(),
+    segments: [],
+  });
+  if (error) throw error;
+}
+
+/** Usuwa transkrypt (wpis w dzienniku i nagranie zostają). */
+export async function deleteTranscript(conversationId: string) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  const { data, error } = await sb.from("transcripts").delete().eq("conversation_id", conversationId).select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("Ten transkrypt usuwa osoba, która prowadzi misję, albo administrator.");
 }
 
 export async function updateTranscriptText(conversationId: string, text: string) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
-  const { error } = await sb
+  const { data, error } = await sb
     .from("transcripts")
     .update({ full_text: text, status: "ready", provider: "manual" })
-    .eq("conversation_id", conversationId);
+    .eq("conversation_id", conversationId)
+    .select("conversation_id");
   if (error) throw error;
+  // RLS nie zwraca błędu, tylko nic nie zmienia — wtedy nie udajemy, że zapisano.
+  if (!data?.length) throw new Error("Nie zapisano — transkrypt poprawia osoba, która prowadzi misję, albo administrator.");
 }
 
 export async function saveRecording(params: {
@@ -716,43 +1356,17 @@ export async function saveRecording(params: {
   if (!sb) throw new Error("Brak klienta Supabase.");
   const ext = params.blob.type.includes("mp4") ? "mp4" : "webm";
 
-  const { data: convos, error: listError } = await sb
-    .from("conversations")
-    .select("id")
-    .eq("mission_id", params.missionId)
-    .order("started_at", { ascending: false });
-  if (listError) throw listError;
-
-  const convoIds = (convos ?? []).map((row) => row.id as string);
-  const { data: recs } = convoIds.length
-    ? await sb.from("recordings").select("conversation_id").in("conversation_id", convoIds)
-    : { data: [] };
-  const used = new Set((recs ?? []).map((row) => row.conversation_id as string));
-  let conversationId = convoIds.find((id) => !used.has(id));
-
-  if (!conversationId) {
-    conversationId = crypto.randomUUID();
-    const { error: convoError } = await sb.from("conversations").insert({
-      id: conversationId,
-      mission_id: params.missionId,
-      channel: params.channel,
-      recording_consent: "granted",
-      disclosure_shown_at: new Date().toISOString(),
-      summary_human: params.note?.trim() || null,
-    });
-    if (convoError) throw convoError;
-  } else {
-    const { error: updateError } = await sb
-      .from("conversations")
-      .update({
-        channel: params.channel,
-        recording_consent: "granted",
-        disclosure_shown_at: new Date().toISOString(),
-        summary_human: params.note?.trim() || null,
-      })
-      .eq("id", conversationId);
-    if (updateError) throw updateError;
-  }
+  // Każde nagranie to osobny wpis w dzienniku. Nie doklejamy go do wcześniejszego kontaktu.
+  const conversationId = crypto.randomUUID();
+  const { error: convoError } = await sb.from("conversations").insert({
+    id: conversationId,
+    mission_id: params.missionId,
+    channel: params.channel,
+    recording_consent: "granted",
+    disclosure_shown_at: new Date().toISOString(),
+    summary_human: params.note?.trim() || null,
+  });
+  if (convoError) throw convoError;
 
   const storagePath = `${params.userId}/${conversationId}.${ext}`;
 

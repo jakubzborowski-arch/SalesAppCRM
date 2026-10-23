@@ -1,6 +1,10 @@
 "use client";
 
 import { useMemo, useRef, useState, type DragEvent } from "react";
+import { duplicateIndex, duplicateKeys, type DuplicateProbe } from "@/lib/duplicates";
+import type { NewPartnerInput, PartnerSegment } from "@/lib/types";
+import { SEGMENTS, segmentLabel } from "@/lib/playbook";
+import { Pills } from "@/components/ui";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileSpreadsheet, GripVertical, Upload, X } from "lucide-react";
@@ -26,6 +30,17 @@ type ImportResult = {
   failed: { name: string; error: string }[];
 };
 
+
+function inputProbe(input: NewPartnerInput): DuplicateProbe {
+  return {
+    name: input.name,
+    city: input.city,
+    nip: input.nip,
+    phones: [input.contactPhone],
+    emails: [input.contactEmail],
+  };
+}
+
 function sampleFor(table: CsvTable, column: number) {
   return table.rows.map((row) => row[column] ?? "").find((value) => value.trim()) ?? "";
 }
@@ -50,6 +65,7 @@ export function CsvImport() {
   const [picked, setPicked] = useState<number | null>(null);
   const [overField, setOverField] = useState<PartnerImportField | "tray" | null>(null);
   const [skipDup, setSkipDup] = useState(true);
+  const [defaultSegment, setDefaultSegment] = useState<PartnerSegment>("venue");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -62,18 +78,30 @@ export function CsvImport() {
 
   const preview = useMemo(() => {
     if (!table) return [];
-    return table.rows.slice(0, 6).map((row) => rowToPartnerInput(row, mapping));
-  }, [table, mapping]);
+    return table.rows.slice(0, 6).map((row) => rowToPartnerInput(row, mapping, defaultSegment));
+  }, [table, mapping, defaultSegment]);
 
   const readyCount = useMemo(() => {
     if (!table) return 0;
     return table.rows.filter((row) => rowToPartnerInput(row, mapping)).length;
   }, [table, mapping]);
 
-  const existingNames = useMemo(
-    () => new Set(state.partners.map((p) => p.name.trim().toLowerCase())),
-    [state.partners],
-  );
+  const existingKeys = useMemo(() => new Set(duplicateIndex(state.partners).keys()), [state.partners]);
+
+  /** Wiersze, które wyglądają na partnera już zapisanego albo powtórzonego w pliku. */
+  const duplicateRows = useMemo(() => {
+    if (!table) return 0;
+    const seen = new Set(existingKeys);
+    let count = 0;
+    for (const row of table.rows) {
+      const input = rowToPartnerInput(row, mapping, defaultSegment);
+      if (!input) continue;
+      const keys = duplicateKeys(inputProbe(input)).map((k) => k.key);
+      if (keys.some((k) => seen.has(k))) count += 1;
+      keys.forEach((k) => seen.add(k));
+    }
+    return count;
+  }, [table, mapping, existingKeys, defaultSegment]);
 
   const assign = (field: PartnerImportField, column: number) => {
     setMapping((prev) => {
@@ -159,7 +187,7 @@ export function CsvImport() {
 
   const importRows = async () => {
     if (!table || mapping.name == null) {
-      setError("Przeciągnij kolumnę z nazwą lokalu na pole Nazwa.");
+      setError("Przeciągnij kolumnę z nazwą partnera na pole Nazwa.");
       return;
     }
     setPending(true);
@@ -169,20 +197,20 @@ export function CsvImport() {
     const inputs = [];
     let skippedEmpty = 0;
     let skippedDup = 0;
-    const seen = new Set(existingNames);
+    const seen = new Set(existingKeys);
 
     for (const row of table.rows) {
-      const input = rowToPartnerInput(row, mapping);
+      const input = rowToPartnerInput(row, mapping, defaultSegment);
       if (!input) {
         skippedEmpty += 1;
         continue;
       }
-      const key = input.name.trim().toLowerCase();
-      if (skipDup && seen.has(key)) {
+      const keys = duplicateKeys(inputProbe(input)).map((k) => k.key);
+      if (skipDup && keys.some((k) => seen.has(k))) {
         skippedDup += 1;
         continue;
       }
-      seen.add(key);
+      keys.forEach((k) => seen.add(k));
       inputs.push(input);
     }
 
@@ -391,6 +419,22 @@ export function CsvImport() {
           </section>
 
           <section className="rounded-[28px] border border-line bg-white p-5">
+            <h2 className="font-semibold">Typ partnerów w pliku</h2>
+            <p className="mt-1 text-sm text-muted">
+              {mapping.segment != null
+                ? "Typ bierzemy z kolumny. Wiersze z pustym albo nieznanym typem dostaną ten poniżej."
+                : "Plik nie ma kolumny z typem — wszyscy dostaną ten poniżej. Zmienisz go potem na karcie."}
+            </p>
+            <div className="mt-3">
+              <Pills
+                value={defaultSegment}
+                onChange={setDefaultSegment}
+                options={SEGMENTS.map((item) => ({ id: item.id, label: item.label, hint: item.who }))}
+              />
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-line bg-white p-5">
             <h2 className="font-semibold">Pola partnera</h2>
             <p className="mt-1 text-sm text-muted">
               Upuść kolumnę z pliku na kartę. Możesz przerzucać między polami.
@@ -481,6 +525,7 @@ export function CsvImport() {
                 <thead className="bg-surface text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
                   <tr>
                     <th className="px-5 py-3">Nazwa</th>
+                    <th className="px-5 py-3">Typ</th>
                     <th className="px-5 py-3">Adres</th>
                     <th className="px-5 py-3">Priorytet</th>
                     <th className="px-5 py-3">www</th>
@@ -493,6 +538,7 @@ export function CsvImport() {
                       <td className="px-5 py-3 font-medium text-foreground">
                         {row?.name ?? <span className="font-normal text-rose-400">brak nazwy</span>}
                       </td>
+                      <td className="px-5 py-3 text-muted">{row ? segmentLabel(row.segment) : "—"}</td>
                       <td className="px-5 py-3 text-muted">{row?.address || row?.city || "—"}</td>
                       <td className="px-5 py-3 text-muted">{row?.priority || "—"}</td>
                       <td className="px-5 py-3 text-muted">{row?.website || "—"}</td>
@@ -516,7 +562,8 @@ export function CsvImport() {
                 onChange={(event) => setSkipDup(event.target.checked)}
                 className="h-4 w-4 accent-blue"
               />
-              Pomiń partnerów o tej samej nazwie
+              Pomiń duplikaty — ta sama nazwa w mieście, NIP, telefon albo e-mail
+              {duplicateRows ? ` (${duplicateRows})` : ""}
             </label>
             <button
               type="button"

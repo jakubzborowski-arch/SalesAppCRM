@@ -66,11 +66,14 @@ body {
   font-weight: 700;
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+/* W warstwie base, żeby klasy rozmiaru (text-xs, text-sm) na przyciskach i polach działały. */
+@layer base {
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
 }
 
 ::selection {

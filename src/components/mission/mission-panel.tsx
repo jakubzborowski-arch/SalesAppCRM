@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { categoryLabel, CONTACT_CHANNELS } from "@/lib/playbook";
-import { infeldDesk } from "@/lib/infeld";
-import { readableInfeldCards } from "@/lib/infeld-suggest";
-import { useInfeldHints } from "@/lib/use-infeld-hints";
+import { daysUntil, formatPlDate, isIsoDate, relativeDeadline } from "@/lib/dates";
+import { missionDesk } from "@/lib/mission-desk";
 import { STAGES } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
@@ -15,16 +14,16 @@ function clip(text: string, n = 160) {
   return t.length > n ? `${t.slice(0, n)}…` : t;
 }
 
-export function CopilotPanel({ partner, mission }: { partner: Partner; mission: Mission }) {
+/** Prawy panel misji: stan zapisu, fakty, bramka kroku i cytat z transkryptu. Bez zewnętrznego AI. */
+export function MissionPanel({ partner, mission }: { partner: Partner; mission: Mission }) {
   const { saveState, dbError, upsertNeed } = useStore();
-  const desk = infeldDesk(partner, mission);
-  const { loading: infeldLoading, result: infeld } = useInfeldHints(partner, mission);
-  const hints = readableInfeldCards(infeld?.hints ?? []);
-  const klub = /klub/i.test(partner.category);
+  const desk = missionDesk(partner, mission);
   const stageLabel = STAGES.find((s) => s.id === mission.currentStage)?.label ?? mission.currentStage;
   const channelLabel = CONTACT_CHANNELS.find((c) => c.id === mission.selectedChannel)?.label;
   const place = [partner.category, partner.city].filter(Boolean).join(" · ") || "lokal";
   const [quote, setQuote] = useState("");
+  const deadline = mission.decision.decisionDeadline || mission.discovery.decisionDeadline;
+  const deadlineLate = (daysUntil(deadline) ?? 0) < 0 && mission.status === "active";
 
   const saveLabel =
     saveState === "saving"
@@ -55,58 +54,14 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
   return (
     <aside className="flex w-[320px] shrink-0 flex-col gap-3">
       <div className="rounded-[28px] bg-chip p-5">
-        <h2 className="font-brand text-lg font-semibold text-navy">Infeld</h2>
+        <h2 className="font-brand text-lg font-semibold text-navy">Ta misja</h2>
         <p className="mt-1 text-xs leading-4 text-muted">
-          {infeld?.composer === "mcp"
-            ? `Z Infelda, krok ${stageLabel}${channelLabel ? ` · ${channelLabel}` : ""} · ${place}.`
-            : `Krok ${stageLabel}${channelLabel ? ` · ${channelLabel}` : ""} · ${place}.`}
+          Krok {stageLabel}
+          {channelLabel ? ` · ${channelLabel}` : ""} · {place}.
         </p>
-        <p
-          className={`mt-3 text-[11px] font-medium ${
-            saveState === "error" || infeld?.error ? "text-rose-600" : "text-lutra"
-          }`}
-        >
-          {infeldLoading
-            ? "Układam zdanie na ten krok…"
-            : infeld?.error && !infeld.voice
-              ? infeld.error
-              : infeld?.voice
-                ? infeld.label
-                : hints.length
-                  ? `${hints.length} podpowiedzi z Infelda`
-                  : saveLabel}
+        <p className={`mt-3 text-[11px] font-medium ${saveState === "error" ? "text-rose-600" : "text-lutra"}`}>
+          {saveLabel}
         </p>
-
-        <div className={`mt-4 space-y-4 ${klub ? "max-h-[32rem] overflow-y-auto pr-1" : ""}`}>
-          {infeld?.voice ? (
-            <p className="whitespace-pre-wrap text-[13px] leading-5 text-foreground">{infeld.voice}</p>
-          ) : null}
-          {infeld?.voiceError ? (
-            <p className="text-[12px] leading-5 text-rose-600">{infeld.voiceError}</p>
-          ) : null}
-          {infeld?.voice && hints.length ? (
-            <details className="text-[12px] text-muted">
-              <summary className="cursor-pointer font-medium text-foreground">Sekcja playbooka</summary>
-              <div className="mt-3 space-y-4">
-                {hints.map((hint) => (
-                  <div key={hint.title}>
-                    <p className="text-[13px] font-semibold text-foreground">{hint.title}</p>
-                    <p className="mt-1 whitespace-pre-wrap leading-5">{hint.body}</p>
-                  </div>
-                ))}
-              </div>
-            </details>
-          ) : (
-            hints.map((hint) => (
-              <div key={hint.title}>
-                <p className="text-[13px] font-semibold text-foreground">{hint.title}</p>
-                <p className={`mt-1 text-[12px] leading-5 text-muted ${klub ? "whitespace-pre-wrap" : ""}`}>
-                  {hint.body}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
 
         <dl className="mt-4 space-y-2 border-t border-white/60 pt-3 text-[12px] leading-5 text-muted">
           <div>
@@ -114,7 +69,17 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
             <dd>
               {desk.facts.length
                 ? desk.facts.map((n) => n.title || n.description).join(" · ")
-                : "Brak potwierdzonego faktu — Infeld nie zrobi z tego oferty"}
+                : "Brak potwierdzonego faktu — bez tego nie ma oferty"}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-foreground">Termin decyzji</dt>
+            <dd className={deadlineLate ? "font-semibold text-rose-600" : ""}>
+              {isIsoDate(deadline)
+                ? `${formatPlDate(deadline)} · ${deadlineLate ? `minął ${relativeDeadline(deadline)}` : relativeDeadline(deadline)}`
+                : deadline.trim()
+                  ? `„${deadline.trim()}” — ustaw datę w kroku Rozmowa`
+                  : "Nie ustalony"}
             </dd>
           </div>
           <div>
@@ -125,13 +90,9 @@ export function CopilotPanel({ partner, mission }: { partner: Partner; mission: 
       </div>
 
       <div className="rounded-[28px] border border-chip-mid bg-white p-5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
-          Z transkryptu
-        </p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">Z transkryptu</p>
         <p className="mt-2 text-[12px] leading-5 text-muted">
-          {desk.latestTranscript
-            ? clip(desk.latestTranscript)
-            : "Brak gotowego transkryptu. Infeld nie zgaduje z nagrania."}
+          {desk.latestTranscript ? clip(desk.latestTranscript) : "Brak gotowego transkryptu."}
         </p>
         {desk.latestTranscript ? (
           <>

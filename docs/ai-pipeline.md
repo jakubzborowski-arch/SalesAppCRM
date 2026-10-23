@@ -70,6 +70,17 @@ Twarde reguły promptu:
 
 ---
 
+### Discovery z transkryptu (wdrożone)
+
+Transkrypt ze Spinach AI (albo Zoom / Meet / Teams, także .vtt / .srt) + notatka misji → pola ekranu „Rozmowa i mapa potrzeb”.
+
+- Kod: `src/lib/discovery-extract.ts` (kontekst, polecenie, schemat JSON, walidacja, podgląd), `src/app/api/discovery-extract/route.ts`, UI w `src/components/mission/talk-bubble.tsx`.
+- Silnik: Claude API z `output_config.format` (JSON Schema, wszystkie pola wymagane, `additionalProperties: false`). Bez klucza: lokalny Qwen / Zen (JSON z tekstu) albo ręcznie przez Claude (polecenie do skopiowania, odpowiedź wklejana do CRM).
+- Przed wysyłką: `redactPrivate` (telefon, mail, NIP), limit 150 tys. znaków rozmów. Transkrypt i notatka są w znacznikach jako dane, nie polecenia.
+- Po odpowiedzi: cytat sprawdzany dosłownie w transkrypcie, pozostałe pola — czy dotyczą rozmowy; terminy liczone od dnia rozmowy (`parseDeadline`), daty spoza okna odrzucane; decydent dopasowany do karty partnera albo dopisany jako nowa osoba.
+- Nic nie zapisuje się samo: podgląd z checkboxami, potrzeby jako `ai_hypothesis`, „Potwierdź jako fakt” robi handlowiec.
+- Zakres to cała misja (`src/lib/mission-extract.ts`): warunki dla typu partnera, obiekcje z biblioteki (tylko które padły), dane do porozumienia i aktywacji. Zgody na markę nigdy nie są zaznaczone domyślnie; telefonów kontaktu awaryjnego AI nie widzi.
+
 ## 4. Zatwierdzenie człowieka
 
 Ekran po rozmowie:

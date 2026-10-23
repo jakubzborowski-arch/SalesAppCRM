@@ -2,11 +2,15 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useStore } from "@/lib/store";
+import { parseInviteToken, rememberInvite, useStore } from "@/lib/store";
 
 export default function LoginPage() {
   const router = useRouter();
   const { dbStatus, signIn, signUp } = useStore();
+  // Kod z linku zaproszenia (`/login?invite=…`). Pokazujemy go dopiero po zamontowaniu.
+  const [invite] = useState(() =>
+    typeof window === "undefined" ? "" : parseInviteToken(window.location.search),
+  );
   const [mode, setMode] = useState<"login" | "signup">("signup");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -17,11 +21,14 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Zaproszenie czeka w tej karcie do zalogowania — przyjmie je wczytanie workspace.
+    if (invite) rememberInvite(invite);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- form after mount avoids password-manager hydration mismatch
     setMounted(true);
-  }, []);
+  }, [invite]);
 
   useEffect(() => {
+    // Zaproszenie czeka w tej karcie. Po zalogowaniu CRM pokaże je do potwierdzenia.
     if (dbStatus === "ok" || dbStatus === "need-sql") router.replace("/pulpit");
   }, [dbStatus, router]);
 
@@ -47,6 +54,11 @@ export default function LoginPage() {
             ? "Załóż konto handlowca. Misje zapiszą się w Twoim projekcie Supabase."
             : "Zaloguj się, żeby wrócić do misji."}
         </p>
+        {mounted && invite ? (
+          <p className="mt-4 rounded-2xl bg-chip px-4 py-3 text-sm text-navy">
+            Masz zaproszenie do zespołu. Załóż konto albo zaloguj się — potem potwierdzisz dołączenie.
+          </p>
+        ) : null}
 
         {mounted ? (
         <form className="mt-6 space-y-3" onSubmit={submit}>

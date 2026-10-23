@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { daysSince, daysUntil, formatPlDate, relativeDay, relativeDeadline } from "@/lib/dates";
+import { MISSION_STATUS_LABEL, activityChannelLabel, activityOutcomeLabel, segmentLabel } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 import { STAGES, type Mission, type MissionStatus, type Partner } from "@/lib/types";
 
@@ -20,23 +22,52 @@ type Card = {
   title: string;
   meta: string;
   note?: string;
+  last?: string;
+  stale?: string;
+  deadline?: { text: string; late: boolean };
   warn?: string;
 };
 
+/** Ile dni bez kontaktu uznajemy za „stygnie”. */
+const STALE_DAYS = 7;
+
 function partnerMeta(partner: Partner) {
-  return [partner.city, partner.category].filter(Boolean).join(" · ") || "Lokal";
+  return [segmentLabel(partner.segment), partner.city, partner.category].filter(Boolean).join(" · ");
 }
 
 function missionCard(partner: Partner, mission: Mission): Card {
   const next = [mission.nextStepLabel, mission.nextStepAt].filter(Boolean).join(" · ");
+  const closed = mission.status !== "active";
+  const last = mission.activities[0];
+  const quiet = daysSince(last?.occurredAt ?? mission.startedAt);
+  const reason = [MISSION_STATUS_LABEL[mission.status], mission.lossReason].filter(Boolean).join(": ");
   return {
     key: mission.id,
     href: `/partners/${partner.id}/mission`,
     title: partner.name,
     meta: partnerMeta(partner),
-    note: next || undefined,
+    note: (closed ? reason : next) || undefined,
+    last: last
+      ? `Ostatni kontakt ${relativeDay(last.occurredAt)}: ${activityChannelLabel(last.channel).toLowerCase()}, ${activityOutcomeLabel(last.channel, last.outcome).toLowerCase()}`
+      : "Brak zapisanych kontaktów",
+    stale:
+      !closed && quiet !== null && quiet >= STALE_DAYS
+        ? `Bez kontaktu od ${quiet} dni`
+        : undefined,
+    deadline: deadlineBadge(mission),
     warn: partner.dnc ? "Nie kontaktować" : undefined,
   };
+}
+
+/** Termin decyzji partnera na karcie: od tygodnia przed terminem albo gdy minął. */
+function deadlineBadge(mission: Mission): Card["deadline"] {
+  if (mission.status !== "active") return undefined;
+  const iso = mission.decision.decisionDeadline;
+  const days = daysUntil(iso);
+  if (days === null || days > 7) return undefined;
+  return days < 0
+    ? { text: `Termin decyzji minął ${relativeDeadline(iso)} (${formatPlDate(iso)})`, late: true }
+    : { text: `Decyzja ${relativeDeadline(iso)} (${formatPlDate(iso)})`, late: false };
 }
 
 export default function BoardPage() {
@@ -151,6 +182,20 @@ export default function BoardPage() {
                       <p className="font-semibold text-foreground">{card.title}</p>
                       <p className="mt-1 text-xs text-muted">{card.meta}</p>
                       {card.note ? <p className="mt-2 text-xs leading-5 text-foreground">{card.note}</p> : null}
+                      {card.last ? <p className="mt-1 text-[11px] leading-4 text-muted">{card.last}</p> : null}
+                      {card.stale ? (
+                        <p className="mt-1 text-[11px] font-medium text-amber-700">{card.stale}</p>
+                      ) : null}
+                      {card.deadline ? (
+                        <p
+                          className={cn(
+                            "mt-1 text-[11px] font-medium",
+                            card.deadline.late ? "text-rose-600" : "text-navy",
+                          )}
+                        >
+                          {card.deadline.text}
+                        </p>
+                      ) : null}
                       {card.warn ? (
                         <p className="mt-2 text-[11px] font-medium text-rose-600">{card.warn}</p>
                       ) : null}

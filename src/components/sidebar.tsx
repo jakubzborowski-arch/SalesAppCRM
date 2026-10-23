@@ -3,14 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   BriefcaseBusiness,
   Columns3,
   FileText,
   LayoutDashboard,
+  LifeBuoy,
   Settings,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useMemo } from "react";
+import { agenda, agendaCount } from "@/lib/agenda";
 import { useStore } from "@/lib/store";
 
 const NAV = [
@@ -19,12 +23,15 @@ const NAV = [
   { href: "/tablica", label: "Tablica", icon: Columns3 },
   { href: "/zadania", label: "Zadania", icon: BriefcaseBusiness },
   { href: "/oferty", label: "Oferty", icon: FileText },
+  { href: "/raporty", label: "Raporty", icon: BarChart3 },
   { href: "/ustawienia", label: "Ustawienia", icon: Settings },
+  { href: "/pomoc", label: "Pomoc", icon: LifeBuoy },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { state, authEmail } = useStore();
+  const dueCount = useMemo(() => agendaCount(agenda(state)), [state]);
 
   return (
     <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-line bg-white">
@@ -55,13 +62,24 @@ export function Sidebar() {
             >
               <Icon size={18} />
               {item.label}
+              {item.href === "/zadania" && dueCount ? (
+                <span
+                  className="ml-auto rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white"
+                  aria-label={`${dueCount} na dziś`}
+                >
+                  {dueCount}
+                </span>
+              ) : null}
             </Link>
           );
         })}
       </nav>
 
       <div className="mx-4 mt-8 rounded-2xl border border-line bg-surface px-4 py-4 text-[12px] leading-5 text-muted">
-        Tryb prowadzenia CRM pomaga handlowcowi prowadzić tylko jedną najpilniejszą misję naraz.
+        Prowadź jedną najpilniejszą misję naraz. Każdy krok pokazuje, czego jeszcze brakuje.
+        <Link href="/pomoc" className="mt-2 block font-semibold text-lutra">
+          Jak to działa →
+        </Link>
       </div>
 
       <div className="mt-auto border-t border-line px-5 py-4 text-xs text-muted">

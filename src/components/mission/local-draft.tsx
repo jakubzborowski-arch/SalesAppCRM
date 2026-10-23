@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { FactFields, LocalDraftMode } from "@/lib/local-llm";
-import { getSupabase } from "@/lib/supabase";
+import { authHeaders } from "@/lib/api-auth";
+import type { LocalDraftMode } from "@/lib/local-llm";
 import type { Mission, Partner, PartnerContact } from "@/lib/types";
 
 function draftBody(partner: Partner, mission: Mission, mode: LocalDraftMode) {
@@ -35,17 +35,6 @@ function draftBody(partner: Partner, mission: Mission, mode: LocalDraftMode) {
   };
 }
 
-export async function requestFactFill(partner: Partner, mission: Mission) {
-  const res = await fetch("/api/local-llm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify(draftBody(partner, mission, "pola")),
-  });
-  const data = (await res.json()) as { fields?: FactFields; error?: string };
-  if (!res.ok || !data.fields) throw new Error(data.error ?? "Nie udało się odczytać rozmowy.");
-  return data.fields;
-}
-
 export async function requestLocalDraft(partner: Partner, mission: Mission, mode: LocalDraftMode) {
   const res = await fetch("/api/local-llm", {
     method: "POST",
@@ -55,12 +44,6 @@ export async function requestLocalDraft(partner: Partner, mission: Mission, mode
   const data = (await res.json()) as { draft?: string; error?: string };
   if (!res.ok || !data.draft) throw new Error(data.error ?? "Nie udało się ułożyć szkicu.");
   return data.draft;
-}
-
-async function authHeaders(): Promise<Record<string, string>> {
-  const sb = getSupabase();
-  const session = sb ? (await sb.auth.getSession()).data.session : null;
-  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
 }
 
 export function LocalDraft({

@@ -1,66 +1,105 @@
 "use client";
 
+import { useState } from "react";
 import { OBJECTION_KEYS } from "@/lib/playbook";
-import { readableInfeldCards } from "@/lib/infeld-suggest";
-import { useInfeldHints } from "@/lib/use-infeld-hints";
+import { termsChecks } from "@/lib/terms";
 import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
-import { CheckRow } from "@/components/ui";
-
-const MATCH: Record<string, RegExp> = {
-  other_apps: /inne aplikacje|inne apki|kuponem na weekend/i,
-  how_many: /ile osób|przyprowadz/i,
-  margin: /zniżka mi się nie|zepsuję bar|nie opłaca/i,
-  no_time: /nie mam czasu|ochrona nie|pilnować/i,
-  ask_owner: /zapytać właściciela|recap z oknem/i,
-  come_back: /wróćcie|więcej użytkowników/i,
-};
+import { CheckRow, HelpLink, Note, Requirements, Section } from "@/components/ui";
+import { PeriodFields, TermsFields } from "@/components/mission/terms-editor";
+import { TermsSummary } from "@/components/mission/steps/offer-step";
+import { FromTalkButton } from "@/components/mission/talk-bubble";
 
 export function NegotiationStep({ mission, partner }: { mission: Mission; partner: Partner }) {
-  const { toggleObjection } = useStore();
-  const { result: infeld } = useInfeldHints(partner, mission);
-  const hints = readableInfeldCards(infeld?.hints ?? []);
+  const { toggleObjection, setChecklistItem } = useStore();
+  const [editTerms, setEditTerms] = useState(false);
+  const missingTerms = termsChecks(mission, partner.segment).filter((check) => !check.done);
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Negocjacje i obiekcje</h2>
-      <p className="mt-1 max-w-2xl text-sm text-muted">
-        Oznacz obiekcję z rozmowy. Pod spodem odpowiedź i dopytanie z playbooka — nie ogólny blok o zniżce.
-      </p>
-      <div className="mt-5 space-y-2.5">
-        {OBJECTION_KEYS.map((item) => {
-          const state = mission.objections.find((o) => o.key === item.key);
-          const hint = hints.find((h) => MATCH[item.key]?.test(`${h.title} ${h.body}`));
-          return (
-            <div key={item.key}>
-              <CheckRow
-                checked={Boolean(state?.checked)}
-                label={item.label}
-                onChange={() => toggleObjection(mission.id, item.key, "checked")}
-              />
-              {state?.checked ? (
-                <div className="ml-4 mt-2 rounded-2xl bg-surface px-4 py-3 text-xs leading-5 text-muted">
-                  {hint ? (
-                    <>
-                      <p className="font-semibold text-foreground">{hint.title}</p>
-                      <p className="mt-1">{hint.body}</p>
-                    </>
-                  ) : (
-                    <p>Szukam odpowiedzi w Infeldzie…</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => toggleObjection(mission.id, item.key, "argumentWorked")}
-                    className="mt-2 font-semibold text-lutra"
-                  >
-                    {state.argumentWorked ? "Argument zadziałał ✓" : "Oznacz: argument zadziałał"}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Negocjacje i obiekcje</h2>
+        <span className="flex flex-wrap items-center gap-3">
+          <FromTalkButton mission={mission} />
+          <HelpLink anchor="oferta">Co z warunkami?</HelpLink>
+        </span>
       </div>
+      <p className="mt-1 max-w-2xl text-sm text-muted">
+        Zapisz, co partner zgłosił i czy argument zadziałał. Jeśli w rozmowie zmieniły się warunki — popraw je tutaj, żeby
+        porozumienie albo umowa miały aktualną wersję.
+      </p>
+
+      <div className="mt-4">
+        <Requirements
+          title="Do umowy brakuje"
+          doneText="Oferta zatwierdzona, warunki kompletne — możesz iść do porozumienia albo umowy."
+          checks={[
+            { key: "offer", label: "zatwierdzona oferta", done: mission.offerApproved },
+            ...termsChecks(mission, partner.segment),
+          ]}
+        />
+      </div>
+
+      {partner.segment === "venue" ? (
+        <Section
+          title="Pokaz na telefonie"
+          hint="Przy wizycie pokaż, jak gość tworzy wydarzenie i jak obsługa realizuje zniżkę (QR, kod albo hasło)."
+        >
+          <CheckRow
+            checked={Boolean(mission.checklist["negotiation:demo"])}
+            label="Pokazałem działanie zniżki na telefonie"
+            onChange={() => setChecklistItem(mission.id, "negotiation:demo", !mission.checklist["negotiation:demo"])}
+          />
+        </Section>
+      ) : null}
+
+      <Section title="Obiekcje z rozmowy">
+        <div className="space-y-2.5">
+          {OBJECTION_KEYS.map((item) => {
+            const state = mission.objections.find((o) => o.key === item.key);
+            return (
+              <div key={item.key}>
+                <CheckRow
+                  checked={Boolean(state?.checked)}
+                  label={item.label}
+                  onChange={() => toggleObjection(mission.id, item.key, "checked")}
+                />
+                {state?.checked ? (
+                  <div className="ml-4 mt-2 rounded-2xl bg-surface px-4 py-3 text-xs leading-5 text-muted">
+                    <button
+                      type="button"
+                      onClick={() => toggleObjection(mission.id, item.key, "argumentWorked")}
+                      className="font-semibold text-lutra"
+                    >
+                      {state.argumentWorked ? "Argument zadziałał ✓" : "Oznacz: argument zadziałał"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      <Section
+        title="Warunki po negocjacjach"
+        aside={
+          <button type="button" onClick={() => setEditTerms((open) => !open)} className="text-xs font-semibold text-lutra">
+            {editTerms ? "Zwiń" : "Zmień warunki"}
+          </button>
+        }
+      >
+        {missingTerms.length ? (
+          <Note tone="warn">Brakuje: {missingTerms.map((check) => check.label).join(", ")}.</Note>
+        ) : null}
+        <TermsSummary mission={mission} partner={partner} />
+        {editTerms ? (
+          <div className="mt-4 space-y-5">
+            <TermsFields mission={mission} segment={partner.segment} />
+            <PeriodFields mission={mission} />
+          </div>
+        ) : null}
+      </Section>
     </div>
   );
 }

@@ -1,11 +1,15 @@
+import { selectIn } from "./fetch-all";
 import { dateOrNull, persistNeedId, uuidOrNull } from "./sql-coerce";
-import { ACTIVATION_ITEMS, CONTRACT_ITEMS, RESEARCH_ITEMS } from "./playbook";
+import { ACTIVATION_ITEMS, CONTRACT_ITEMS, RESEARCH_ITEMS_BY_SEGMENT, ROLLOUT_ITEMS } from "./playbook";
 import { getSupabase, isMissingCrmTable } from "./supabase";
+import { agreementFormOf } from "./terms";
 import type {
   ActivationRecord,
+  AgreementForm,
   ContractRecord,
   Mission,
   Need,
+  PartnerSegment,
   TaskItem,
 } from "./types";
 
@@ -14,7 +18,12 @@ function optionalTable(error: { code?: string; message?: string } | null) {
 }
 
 const CHECKLIST_LABELS: Record<string, string> = {
-  ...Object.fromEntries(RESEARCH_ITEMS.map((i) => [`research:${i.key}`, i.label])),
+  ...Object.fromEntries(
+    Object.values(RESEARCH_ITEMS_BY_SEGMENT)
+      .flat()
+      .map((i) => [`research:${i.key}`, i.label]),
+  ),
+  ...Object.fromEntries(ROLLOUT_ITEMS.map((i) => [i.key, i.label])),
   ...Object.fromEntries(CONTRACT_ITEMS.map((i) => [`contract:${i.key}`, i.label])),
   ...Object.fromEntries(ACTIVATION_ITEMS.map((i) => [`activation:${i.key}`, i.label])),
 };
@@ -42,15 +51,16 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
 
   const [needsRes, decisionRes, checklistRes, objectionsRes, offersRes, contractsRes, activationsRes, tasksRes] =
     await Promise.all([
-      sb.from("needs").select("*").in("mission_id", missionIds),
-      sb.from("decision_context").select("*").in("mission_id", missionIds),
-      sb.from("mission_checklist_items").select("*").in("mission_id", missionIds),
-      sb.from("mission_objections").select("*").in("mission_id", missionIds),
-      sb.from("offers").select("*").in("mission_id", missionIds),
-      sb.from("contracts").select("*").in("mission_id", missionIds),
-      sb.from("activations").select("*").in("mission_id", missionIds),
-      sb.from("tasks").select("*").in("mission_id", missionIds).order("due_at", { ascending: true }),
+      selectIn(sb, "needs", "mission_id", missionIds),
+      selectIn(sb, "decision_context", "mission_id", missionIds, "mission_id"),
+      selectIn(sb, "mission_checklist_items", "mission_id", missionIds),
+      selectIn(sb, "mission_objections", "mission_id", missionIds),
+      selectIn(sb, "offers", "mission_id", missionIds),
+      selectIn(sb, "contracts", "mission_id", missionIds),
+      selectIn(sb, "activations", "mission_id", missionIds),
+      selectIn(sb, "tasks", "mission_id", missionIds),
     ]);
+  tasksRes.data.sort((a, b) => String(a.due_at ?? "").localeCompare(String(b.due_at ?? "")));
 
   const skip =
     optionalTable(needsRes.error) ||
@@ -76,14 +86,14 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
     const slot = ensure(row.mission_id as string);
     const need: Need = {
       id: row.id as string,
-      category: row.category,
+      category: row.category as Need["category"],
       title: (row.title as string) || "",
       description: (row.description as string) ?? "",
       priority: (row.priority as number | null) ?? null,
       quote: (row.quote as string) ?? undefined,
       expectedResult: (row.expected_result as string) ?? undefined,
       constraints: (row.constraints as string) ?? undefined,
-      status: row.status,
+      status: row.status as Need["status"],
       confirmed: row.status === "fact" && Boolean(row.confirmed_at),
     };
     slot.needs = [...(slot.needs ?? []), need];
@@ -121,7 +131,7 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
 
   for (const row of offersRes.data ?? []) {
     const slot = ensure(row.mission_id as string);
-    slot.selectedVariant = row.variant;
+    slot.selectedVariant = row.variant as Mission["selectedVariant"];
     slot.offerApproved = row.status === "approved" || row.status === "sent" || Boolean(row.approved_at);
     slot.offerSentAt = (row.sent_at as string) ?? undefined;
   }
@@ -137,6 +147,12 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
       signedByHuman: Boolean(row.signed_by_human),
       documentPath: (row.document_path as string) ?? undefined,
       signedAt: (row.signed_at as string) ?? undefined,
+      sentAt: (row.sent_at as string) ?? undefined,
+      // Przed v6 „podpisana” znaczyło podpis handlowca po rozmowie z partnerem.
+      partnerSignedAt:
+        (row.partner_signed_at as string) ??
+        (row.status === "signed" && !("partner_signed_at" in row) ? ((row.signed_at as string) ?? undefined) : undefined),
+      signedDocumentPath: (row.signed_document_path as string) ?? undefined,
       status: (row.status as ContractRecord["status"]) ?? "draft",
     };
   }
@@ -154,25 +170,34 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
     };
   }
 
-  const tasks: TaskItem[] = (tasksRes.data ?? []).map((row) => ({
+  const tasks: TaskItem[] = (tasksRes.data ?? []).map(taskFromRow);
+
+  return { byMission, tasks };
+}
+
+export type CoreSyncResult = { status: "synced" | "skipped"; nextStepTask: TaskItem | null };
+
+function taskFromRow(row: Record<string, unknown>): TaskItem {
+  return {
     id: row.id as string,
     missionId: row.mission_id as string,
     title: row.title as string,
     dueAt: (row.due_at as string) ?? "",
     doneAt: (row.done_at as string) ?? undefined,
     source: row.source as TaskItem["source"],
-  }));
-
-  return { byMission, tasks };
+  };
 }
 
 export async function syncMissionCore(
   mission: Mission,
   workspaceId: string,
   userId: string,
-): Promise<"synced" | "skipped"> {
+  segment: PartnerSegment = "venue",
+): Promise<CoreSyncResult> {
   const sb = getSupabase();
-  if (!sb) return "skipped";
+  if (!sb) return { status: "skipped", nextStepTask: null };
+  const ownerId = uuidOrNull(mission.ownerUserId) ?? userId;
+  const now = new Date().toISOString();
   const d = mission.decision;
   const makerId = uuidOrNull(d.decisionMakerId);
   let decisionMakerId: string | null = null;
@@ -195,39 +220,58 @@ export async function syncMissionCore(
     next_step: d.nextStep || null,
   });
   if (decisionError) {
-    if (optionalTable(decisionError)) return "skipped";
+    if (optionalTable(decisionError)) return { status: "skipped", nextStepTask: null };
     throw decisionError;
   }
 
   const { data: existingNeeds, error: listNeedsError } = await sb
     .from("needs")
-    .select("id")
+    .select("id, confirmed_at, confirmed_by")
     .eq("mission_id", mission.id);
   if (listNeedsError) throw listNeedsError;
+  // Kto i kiedy potwierdził fakt — zostaje przy kolejnych zapisach, nie przeskakuje na „teraz”.
+  const confirmedBefore = new Map(
+    (existingNeeds ?? [])
+      .filter((n) => n.confirmed_at)
+      .map((n) => [n.id as string, { at: n.confirmed_at as string, by: (n.confirmed_by as string | null) ?? null }]),
+  );
   const keep = new Set(mission.needs.map((n) => persistNeedId(n.id)));
   const stale = (existingNeeds ?? []).map((n) => n.id as string).filter((id) => !keep.has(id));
   if (stale.length) await sb.from("needs").delete().in("id", stale);
   if (mission.needs.length) {
     const { error } = await sb.from("needs").upsert(
-      mission.needs.map((need) => ({
-        id: persistNeedId(need.id),
-        mission_id: mission.id,
-        category: need.category,
-        title: need.title || null,
-        description: need.description || null,
-        priority: need.priority,
-        expected_result: need.expectedResult || null,
-        constraints: need.constraints || null,
-        quote: need.quote || null,
-        status: need.confirmed ? "fact" : need.status,
-        confirmed_by: need.confirmed ? userId : null,
-        confirmed_at: need.confirmed ? new Date().toISOString() : null,
-        source: "manual",
-      })),
+      mission.needs.map((need) => {
+        const id = persistNeedId(need.id);
+        const before = confirmedBefore.get(id);
+        return {
+          id,
+          mission_id: mission.id,
+          category: need.category,
+          title: need.title || null,
+          description: need.description || null,
+          priority: need.priority,
+          expected_result: need.expectedResult || null,
+          constraints: need.constraints || null,
+          quote: need.quote || null,
+          status: need.confirmed ? "fact" : need.status,
+          confirmed_by: need.confirmed ? (before ? before.by : userId) : null,
+          confirmed_at: need.confirmed ? (before?.at ?? now) : null,
+          source: "manual",
+        };
+      }),
     );
     if (error) throw error;
   }
 
+  const { data: existingChecklist } = await sb
+    .from("mission_checklist_items")
+    .select("stage, item_key, done_at")
+    .eq("mission_id", mission.id);
+  const doneBefore = new Map(
+    (existingChecklist ?? [])
+      .filter((row) => row.done_at)
+      .map((row) => [`${row.stage}:${row.item_key}`, row.done_at as string]),
+  );
   const checklistRows = Object.entries(mission.checklist).map(([fullKey, isDone]) => {
     const [stage, ...rest] = fullKey.split(":");
     const itemKey = rest.join(":");
@@ -237,7 +281,7 @@ export async function syncMissionCore(
       item_key: itemKey,
       label: CHECKLIST_LABELS[fullKey] ?? itemKey,
       is_done: isDone,
-      done_at: isDone ? new Date().toISOString() : null,
+      done_at: isDone ? (doneBefore.get(fullKey) ?? now) : null,
     };
   });
   if (checklistRows.length) {
@@ -262,9 +306,17 @@ export async function syncMissionCore(
     const { data: library } = await sb
       .from("offer_library")
       .select("id")
-      .eq("segment", "venue")
+      .eq("segment", segment)
       .eq("variant", mission.selectedVariant)
       .maybeSingle();
+    const { data: existingOffer } = await sb
+      .from("offers")
+      .select("variant, approved_at, approved_by")
+      .eq("mission_id", mission.id)
+      .maybeSingle();
+    // Zatwierdzenie tego samego wariantu zachowuje pierwotną datę i osobę.
+    const keepApproval =
+      mission.offerApproved && existingOffer?.approved_at && existingOffer.variant === mission.selectedVariant;
     const status = mission.offerSentAt ? "sent" : mission.offerApproved ? "approved" : "draft";
     const { error } = await sb.from("offers").upsert(
       {
@@ -274,10 +326,19 @@ export async function syncMissionCore(
         custom_terms: {
           constraints: mission.decision.constraintSummary,
           nextStep: mission.decision.nextStep,
+          // Ustalone warunki (zniżka, miejsce, cykl, pilotaż) — do odczytu także poza CRM.
+          segment,
+          terms: mission.terms,
+          period: { from: mission.contract.startAt || null, to: mission.contract.endAt || null },
+          agreementForm: agreementFormOf(mission),
         },
         recommended_by: "human",
-        approved_by: mission.offerApproved ? userId : null,
-        approved_at: mission.offerApproved ? new Date().toISOString() : null,
+        approved_by: mission.offerApproved
+          ? keepApproval
+            ? ((existingOffer?.approved_by as string | null) ?? null)
+            : userId
+          : null,
+        approved_at: mission.offerApproved ? (keepApproval ? (existingOffer?.approved_at as string) : now) : null,
         sent_at: mission.offerSentAt || null,
         status,
       },
@@ -286,31 +347,7 @@ export async function syncMissionCore(
     if (error) throw error;
   }
 
-  if (mission.nextStepLabel.trim()) {
-    const { data: rows } = await sb
-      .from("tasks")
-      .select("id, done_at")
-      .eq("mission_id", mission.id)
-      .eq("source", "next_step")
-      .limit(1);
-    const existing = rows?.[0];
-    const payload = {
-      workspace_id: workspaceId,
-      mission_id: mission.id,
-      owner_user_id: userId,
-      title: mission.nextStepLabel.trim(),
-      due_at: dateOrNull(mission.nextStepAt),
-      source: "next_step",
-      done_at: existing?.done_at ?? null,
-    };
-    if (existing?.id) {
-      const { error } = await sb.from("tasks").update(payload).eq("id", existing.id);
-      if (error) throw error;
-    } else {
-      const { error } = await sb.from("tasks").insert(payload);
-      if (error) throw error;
-    }
-  }
+  const nextStepTask = await syncNextStepTask(mission, workspaceId, ownerId);
 
   const c = mission.contract;
   const hasContract =
@@ -319,28 +356,59 @@ export async function syncMissionCore(
     c.signedByHuman ||
     c.documentPath ||
     c.startAt ||
-    c.endAt;
+    c.endAt ||
+    c.sentAt ||
+    c.partnerSignedAt;
   if (hasContract) {
     const { data: offer } = await sb.from("offers").select("id").eq("mission_id", mission.id).maybeSingle();
-    const status = c.signedByHuman ? "signed" : c.companyName.trim() ? "ready" : "draft";
-    const { error } = await sb.from("contracts").upsert(
+    const { data: previous } = await sb.from("contracts").select("*").eq("mission_id", mission.id).maybeSingle();
+    const status = contractStatus(c, agreementFormOf(mission));
+    const base = {
+      mission_id: mission.id,
+      offer_id: offer?.id ?? null,
+      company_name: c.companyName.trim() || null,
+      nip: c.nip.trim() || null,
+      address: c.address.trim() || null,
+      start_at: c.startAt || null,
+      end_at: c.endAt || null,
+      change_rules: c.changeRules.trim() || null,
+      signed_by_human: c.signedByHuman,
+      document_path: c.documentPath || null,
+      signed_at: c.signedByHuman ? (c.signedAt ?? new Date().toISOString()) : null,
+    };
+    let { error } = await sb.from("contracts").upsert(
       {
-        mission_id: mission.id,
-        offer_id: offer?.id ?? null,
-        company_name: c.companyName.trim() || null,
-        nip: c.nip.trim() || null,
-        address: c.address.trim() || null,
-        start_at: c.startAt || null,
-        end_at: c.endAt || null,
-        change_rules: c.changeRules.trim() || null,
-        signed_by_human: c.signedByHuman,
-        document_path: c.documentPath || null,
-        signed_at: c.signedByHuman ? (c.signedAt ?? new Date().toISOString()) : null,
+        ...base,
+        sent_at: c.sentAt ?? null,
+        partner_signed_at: c.partnerSignedAt ?? null,
+        signed_document_path: c.signedDocumentPath ?? null,
         status,
       },
       { onConflict: "mission_id" },
     );
+    if (error && /sent_at|partner_signed_at|signed_document_path|contracts_status_check/.test(error.message ?? "")) {
+      // Baza bez v6: zapisujemy po staremu (bez etapów podpisu).
+      ({ error } = await sb.from("contracts").upsert(
+        { ...base, status: status === "signed" ? "signed" : c.documentPath ? "ready" : "draft" },
+        { onConflict: "mission_id" },
+      ));
+    }
     if (error) throw error;
+    // Zastąpione pliki PDF nie zostają w Storage jako sieroty.
+    const stale = [previous?.document_path, previous?.signed_document_path].filter(
+      (path): path is string =>
+        typeof path === "string" &&
+        !path.startsWith("local/") &&
+        path !== c.documentPath &&
+        path !== c.signedDocumentPath,
+    );
+    if (stale.length) {
+      try {
+        await sb.storage.from("contracts").remove(stale);
+      } catch {
+        // Sprzątanie jest najlepszym wysiłkiem — zapis umowy już się udał.
+      }
+    }
   }
 
   const a = mission.activation;
@@ -377,7 +445,84 @@ export async function syncMissionCore(
     if (error) throw error;
   }
 
-  return "synced";
+  return { status: "synced", nextStepTask };
+}
+
+/**
+ * Zadanie „następny krok” misji. Gdy poprzedni krok jest już odhaczony, a w misji
+ * pojawia się nowy, dopisujemy nowe zadanie (historia kroków zostaje).
+ * Przegrana albo brak dopasowania zamyka otwarte kroki.
+ */
+async function syncNextStepTask(
+  mission: Mission,
+  workspaceId: string,
+  ownerId: string,
+): Promise<TaskItem | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const title = mission.nextStepLabel.trim();
+  // Przegrana, brak dopasowania albo pauza bez terminu powrotu: otwarte kroki się zamykają.
+  const closing =
+    mission.status === "lost" ||
+    mission.status === "no_fit" ||
+    (mission.status !== "active" && mission.status !== "won" && !title);
+
+  const { data: rows, error: listError } = await sb
+    .from("tasks")
+    .select("*")
+    .eq("mission_id", mission.id)
+    .eq("source", "next_step")
+    .order("done_at", { ascending: false, nullsFirst: true });
+  if (listError) throw listError;
+  const open = (rows ?? []).filter((row) => !row.done_at);
+
+  if (closing) {
+    if (open.length) {
+      const { error } = await sb
+        .from("tasks")
+        .update({ done_at: new Date().toISOString() })
+        .in(
+          "id",
+          open.map((row) => row.id as string),
+        );
+      if (error) throw error;
+    }
+    return null;
+  }
+
+  if (!title) return null;
+  const dueAt = dateOrNull(mission.nextStepAt);
+  const current = open[0];
+
+  if (current) {
+    if (current.title === title && (current.due_at ?? null) === dueAt) return taskFromRow(current);
+    const { data, error } = await sb
+      .from("tasks")
+      .update({ title, due_at: dueAt })
+      .eq("id", current.id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return taskFromRow(data);
+  }
+
+  const alreadyDone = (rows ?? []).some((row) => row.title === title && (row.due_at ?? null) === dueAt);
+  if (alreadyDone) return null;
+
+  const { data, error } = await sb
+    .from("tasks")
+    .insert({
+      workspace_id: workspaceId,
+      mission_id: mission.id,
+      owner_user_id: ownerId,
+      title,
+      due_at: dueAt,
+      source: "next_step",
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return taskFromRow(data);
 }
 
 export async function insertTask(
@@ -419,13 +564,29 @@ export async function setTaskDone(taskId: string, done: boolean) {
   if (error && !optionalTable(error)) throw error;
 }
 
+/**
+ * Status umowy wynika z faktów: dokument (albo mail z warunkami), wysyłka, potwierdzenie obu stron.
+ * Porozumienie mailowe nie ma PDF — „wysłana” to mail z warunkami, „podpis partnera” to jego odpowiedź.
+ */
+export function contractStatus(c: ContractRecord, form: AgreementForm = "contract"): ContractRecord["status"] {
+  if (c.signedByHuman && c.partnerSignedAt) return "signed";
+  if (c.partnerSignedAt) return "partner_signed";
+  if (c.sentAt) return "sent";
+  if (form === "contract" && c.documentPath) return "ready";
+  return "draft";
+}
+
 export async function uploadContractPdf(userId: string, missionId: string, file: File) {
   const sb = getSupabase();
   if (!sb) throw new Error("Brak klienta Supabase.");
-  const path = `${userId}/${missionId}.pdf`;
+  // Każda wersja PDF ma własną nazwę: nowy plik nigdy nie nadpisuje starego (także cudzego
+  // albo starego, niepodpiętego pliku, którego RLS już nie pozwala ruszyć).
+  const type = file.type === "image/png" || file.type === "image/jpeg" ? file.type : "application/pdf";
+  const ext = type === "image/png" ? "png" : type === "image/jpeg" ? "jpg" : "pdf";
+  const path = `${userId}/${missionId}/${crypto.randomUUID()}.${ext}`;
   const { error } = await sb.storage.from("contracts").upload(path, file, {
-    contentType: "application/pdf",
-    upsert: true,
+    contentType: type,
+    upsert: false,
   });
   if (error) throw error;
   return path;

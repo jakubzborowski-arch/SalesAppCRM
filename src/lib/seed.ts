@@ -1,3 +1,5 @@
+import { emptyCompany } from "./company";
+import { emptyCare, emptyTerms } from "./terms";
 import { OBJECTION_KEYS } from "./playbook";
 import type { AppState, Mission, Partner } from "./types";
 
@@ -23,6 +25,8 @@ export const nova: Partner = {
   instagram: "",
   facebook: "",
   socialOther: "",
+  company: emptyCompany(),
+  capacity: null,
   priority: "",
   priorityReason: "",
   source: "publiczny research / mapa",
@@ -50,6 +54,8 @@ const zielone: Partner = {
   instagram: "",
   facebook: "",
   socialOther: "",
+  company: emptyCompany(),
+  capacity: null,
   priority: "",
   priorityReason: "",
   source: "polecenie",
@@ -83,6 +89,8 @@ const etna: Partner = {
   instagram: "",
   facebook: "",
   socialOther: "",
+  company: emptyCompany(),
+  capacity: null,
   priority: "",
   priorityReason: "",
   source: "event branżowy",
@@ -105,9 +113,15 @@ export function emptyMission(partnerId: string, id = crypto.randomUUID()): Missi
   return {
     id,
     partnerId,
+    closeNote: "",
+    activities: [],
+    events: [],
     status: "active",
     currentStage: "research",
     completedStages: [],
+    terms: emptyTerms(),
+    agreementForm: null,
+    care: emptyCare(),
     nextStepLabel: "Dokończ research i umów discovery",
     nextStepAt: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
     checklist: {},
@@ -153,7 +167,7 @@ export function emptyMission(partnerId: string, id = crypto.randomUUID()): Missi
       address: "",
       startAt: "",
       endAt: "",
-      changeRules: "Zmiany warunków tylko pisemnie. Potwierdzenie kwartalne.",
+      changeRules: "",
       signedByHuman: false,
       status: "draft",
     },
@@ -193,4 +207,5 @@ export const seedState: AppState = {
       source: "next_step",
     },
   ],
+  team: [],
 };

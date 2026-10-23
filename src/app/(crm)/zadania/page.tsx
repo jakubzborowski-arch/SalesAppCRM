@@ -6,11 +6,30 @@ import { STAGES } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import { Field, inputClass } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { isIsoDate } from "@/lib/dates";
+import { agenda } from "@/lib/agenda";
+
+const SOURCE_LABEL: Record<string, string> = {
+  human: "ręczne",
+  next_step: "następny krok",
+  ai_draft: "szkic",
+  deadline: "termin decyzji",
+  signature: "podpis / potwierdzenie",
+  contract_end: "koniec współpracy",
+  follow_up: "mail po kontakcie",
+  review: "przegląd po cyklu",
+  terms: "potwierdzenie warunków",
+  report: "informacja o realizacjach",
+};
+
+/** Pozycje z „Na dziś” wyliczane z misji (nie ma ich w tabeli zadań). */
+const DERIVED_KINDS = new Set(["signature", "contract_end", "follow_up", "review", "terms", "report"]);
+type DerivedSource = "signature" | "contract_end" | "follow_up" | "review" | "terms" | "report";
 
 type Filter = "open" | "done" | "all";
 
 export default function TasksPage() {
-  const { state, partnerById, addTask, completeTask } = useStore();
+  const { state, partnerById, addTask, completeTask, canEditMission } = useStore();
   const [filter, setFilter] = useState<Filter>("open");
   const [title, setTitle] = useState("");
   const [dueAt, setDueAt] = useState(new Date().toISOString().slice(0, 10));
@@ -19,6 +38,10 @@ export default function TasksPage() {
   const [saving, setSaving] = useState(false);
 
   const activeMissions = state.missions.filter((m) => m.status === "active");
+  // „Wrócić później” i pauza też mają termin powrotu — ma być widoczny w zadaniach.
+  const followUpMissions = state.missions.filter(
+    (m) => m.status === "active" || m.status === "nurture" || m.status === "paused",
+  );
 
   const rows = useMemo(() => {
     const fromTable = state.tasks.map((task) => {
@@ -34,26 +57,58 @@ export default function TasksPage() {
       };
     });
 
+    // Następny krok z misji, którego baza jeszcze nie ma jako zadania (np. zmieniony przed chwilą).
+    const stepKey = (missionId: string, title: string, dueAt?: string) =>
+      `${missionId}|${title.trim()}|${(dueAt ?? "").slice(0, 10)}`;
     const covered = new Set(
-      state.tasks.filter((t) => t.source === "next_step").map((t) => t.missionId),
+      state.tasks.filter((t) => t.source === "next_step").map((t) => stepKey(t.missionId, t.title, t.dueAt)),
     );
-    const fallback = activeMissions
-      .filter((m) => m.nextStepLabel.trim() && !covered.has(m.id))
+    const fallback = followUpMissions
+      .filter((m) => m.nextStepLabel.trim() && !covered.has(stepKey(m.id, m.nextStepLabel, m.nextStepAt)))
       .map((m) => ({
         id: `next:${m.id}`,
         title: m.nextStepLabel,
         dueAt: m.nextStepAt,
         doneAt: undefined as string | undefined,
-        source: "next_step" as const,
+        source: "next_step" as "next_step" | "deadline" | DerivedSource,
         mission: m,
         partner: partnerById(m.partnerId),
       }));
 
-    const all = [...fromTable, ...fallback].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+    // Termin decyzji partnera — przypomnienie wyliczane z misji, nie zadanie w bazie.
+    const deadlines = activeMissions
+      .filter((m) => isIsoDate(m.decision.decisionDeadline))
+      .map((m) => ({
+        id: `deadline:${m.id}`,
+        title: "Termin decyzji partnera",
+        dueAt: m.decision.decisionDeadline,
+        doneAt: undefined as string | undefined,
+        source: "deadline" as const,
+        mission: m,
+        partner: partnerById(m.partnerId),
+      }));
+
+    // Podpisy, maile po kontakcie, opieka i końce umów (z „Na dziś”).
+    const contracts = agenda(state, false)
+      .filter((item) => DERIVED_KINDS.has(item.kind))
+      .map((item) => {
+        const mission = state.missions.find((m) => m.id === item.missionId);
+        return {
+          id: item.key,
+          title: item.title,
+          dueAt: item.due,
+          doneAt: undefined as string | undefined,
+          source: item.kind as DerivedSource,
+          mission,
+          partner: partnerById(item.partnerId),
+        };
+      });
+
+    const all = [...fromTable, ...fallback, ...deadlines, ...contracts].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     if (filter === "open") return all.filter((row) => !row.doneAt);
     if (filter === "done") return all.filter((row) => row.doneAt);
     return all;
-  }, [state.tasks, state.missions, activeMissions, filter, partnerById]);
+  }, [state, followUpMissions, activeMissions, filter, partnerById]);
 
   return (
     <div>
@@ -63,7 +118,8 @@ export default function TasksPage() {
       <div className="px-8 pb-10">
         <h1 className="text-3xl font-semibold tracking-tight">Zadania</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Następny krok z misji plus zadania, które dodajesz sam. Jedna lista, nie tablica 30 follow-upów.
+          Następny krok z misji, zadania dodane ręcznie i przypomnienia z CRM (maile po kontakcie, podpisy, opieka). Jedna
+          lista, nie tablica 30 follow-upów.
         </p>
 
         <form
@@ -163,7 +219,7 @@ export default function TasksPage() {
                   type="checkbox"
                   className="mt-1"
                   checked={Boolean(row.doneAt)}
-                  disabled={row.id.startsWith("next:")}
+                  disabled={(row.source !== "human" && row.id.includes(":")) || (row.mission ? !canEditMission(row.mission) : false)}
                   onChange={(e) => completeTask(row.id, e.target.checked)}
                 />
                 <span>
@@ -172,9 +228,11 @@ export default function TasksPage() {
                   </span>
                   <span className="mt-1 block text-sm text-muted">
                     {row.title} · {row.dueAt || "bez daty"} ·{" "}
-                    {row.source === "human" ? "ręczne" : "następny krok"}
+                    {SOURCE_LABEL[row.source]}
                     {row.mission
-                      ? ` · ${STAGES.find((s) => s.id === row.mission?.currentStage)?.label}`
+                      ? row.mission.status === "won"
+                        ? " · opieka"
+                        : ` · ${STAGES.find((s) => s.id === row.mission?.currentStage)?.label}`
                       : ""}
                   </span>
                 </span>

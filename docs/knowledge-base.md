@@ -21,7 +21,7 @@ Handlowiec nie improwizuje oferty. CRM wymusza discovery, mapę potrzeb, bramki 
 | Rola | Co robi | Czego nie robi |
 |---|---|---|
 | Handlowiec | Prowadzi misję, potwierdza fakty, zatwierdza AI, wysyła ofertę i umowę | Nie obiecuje liczb, rabatów i funkcji spoza biblioteki |
-| Infeld AI Copilot | Brief, hipotezy, braki, pytania, recap, warianty A/B/C, obiekcje | Nie ocenia osobowości, nie manipuluje, nie ustala rabatów, nie odrzuca partnerów, nie wysyła wiążących dokumentów |
+| Asystent AI | Brief, hipotezy, braki, pytania, recap, warianty A/B/C, obiekcje | Nie ocenia osobowości, nie manipuluje, nie ustala rabatów, nie odrzuca partnerów, nie wysyła wiążących dokumentów |
 | Partner / decydent | Potwierdza potrzeby, warunki, umowę, kwartalne odnowienie | — |
 | System CRM | Bramki, zgody, audyt, historia zmian, status fakt/hipoteza | Nie traktuje hipotezy AI jako faktu |
 
@@ -282,7 +282,7 @@ Dopytaj: Jaki sygnał skłoni Państwa do powrotu?
 
 ---
 
-## 8. Infeld AI — kontrakt
+## 8. Asystent AI — kontrakt
 
 ### Przed rozmową
 
@@ -409,7 +409,7 @@ Z mocków:
 - header misji: „Misja pozyskania partnera”, nazwa, lokalizacja, właściciel
 - poziomy stepper 1–8
 - główna karta kroku
-- prawy panel Infeld AI Copilot (podpowiedzi + ostrzeżenie bezpieczeństwa)
+- prawy panel misji (fakty, bramka kroku, cytat z transkryptu); miejsce na asystenta AI
 - stopka: „Krok X z 8”, Wstecz, główny CTA
 
 Pilot UI i copy: partner „Kawiarnia Nova”, lokal Kraków, właścicielka Anna Kowalska.
