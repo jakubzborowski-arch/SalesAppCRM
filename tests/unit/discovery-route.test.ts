@@ -19,7 +19,7 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 
 const { GET, POST } = await import("@/app/api/discovery-extract/route");
-const { resolveClaude, supportsEffort } = await import("@/lib/claude-api");
+const { claudeKeyProblem, resolveClaude, supportsEffort } = await import("@/lib/claude-api");
 
 const KEY = "sk-ant-test-0123456789abcdefghij";
 const ENV_KEYS = [
@@ -30,6 +30,7 @@ const ENV_KEYS = [
   "HOSTED_LLM_API_KEY",
   "AI_ALLOW_WITHOUT_LOGIN",
   "AI_ALLOWED_EMAILS",
+  "ANTHROPIC_WORKSPACE_ID",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
 ] as const;
@@ -240,6 +241,46 @@ describe("/api/discovery-extract", () => {
     process.env.AI_ALLOW_WITHOUT_LOGIN = "1";
     const res = await POST(request("POST", { context: CONTEXT }, "127.0.0.1:3000", { "content-length": "900000" }));
     expect(res.status).toBe(413);
+  });
+
+  it("token z „claude setup-token” zamiast klucza API: wyłączone z jasnym powodem, bez zapytania do Claude", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz0123456789";
+    process.env.AI_ALLOW_WITHOUT_LOGIN = "1";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(claudeKeyProblem()).toBe("oauth_token");
+    expect(resolveClaude()).toBeNull();
+    expect(await (await GET(request("GET"))).json()).toEqual({ enabled: false, reason: "oauth_token" });
+    const res = await POST(request("POST", { context: CONTEXT }));
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toMatch(/setup-token.*Claude Console/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(claudeKeyProblem({ ANTHROPIC_API_KEY: "sk-ant-admin01-xyz" })).toBe("admin_key");
+    expect(claudeKeyProblem({ ANTHROPIC_API_KEY: KEY })).toBeNull();
+  });
+
+  it("klucz bez workspace'u: nagłówek anthropic-workspace-id z env, czytelny błąd, gdy go brakuje", async () => {
+    process.env.ANTHROPIC_API_KEY = KEY;
+    process.env.AI_ALLOW_WITHOUT_LOGIN = "1";
+    process.env.ANTHROPIC_WORKSPACE_ID = "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ";
+    const fetchMock = vi.fn(async () =>
+      claudeReply({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(ANSWER) }], usage: {} }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await POST(request("POST", { context: CONTEXT }))).status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["anthropic-workspace-id"]).toBe("wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ");
+
+    delete process.env.ANTHROPIC_WORKSPACE_ID;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        claudeReply({ type: "error", error: { type: "invalid_request_error", message: "anthropic-workspace-id header is required for this API key" } }, 400),
+      ),
+    );
+    const res = await POST(request("POST", { context: CONTEXT }));
+    expect(((await res.json()) as { error: string }).error).toMatch(/ANTHROPIC_WORKSPACE_ID/);
+    expect(resolveClaude({ ANTHROPIC_API_KEY: KEY, ANTHROPIC_WORKSPACE_ID: "zly id" })?.workspaceId).toBeUndefined();
   });
 
   it("konfiguracja: model i effort z env, starsze modele bez effort, śmieci w kluczu odrzucone", () => {

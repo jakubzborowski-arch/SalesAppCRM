@@ -1,4 +1,4 @@
-import { claudeStructured, resolveClaude } from "@/lib/claude-api";
+import { claudeKeyProblem, claudeStructured, resolveClaude } from "@/lib/claude-api";
 import {
   EXTRACTION_SCHEMA,
   EXTRACTION_SYSTEM,
@@ -72,9 +72,17 @@ const DENIED: Record<Exclude<Access, { ok: true }>["reason"], string> = {
   local_only: "AI działa tu tylko z logowaniem do CRM.",
 };
 
+/** Zamiast ogólnego „brak klucza” mówimy wprost, że w .env.local jest nie ten token. */
+const KEY_PROBLEM: Record<NonNullable<ReturnType<typeof claudeKeyProblem>>, string> = {
+  oauth_token:
+    "W ANTHROPIC_API_KEY jest token z „claude setup-token” (sk-ant-oat…). To token Claude Code w ramach subskrypcji — Claude API go nie przyjmie. Utwórz klucz API w Claude Console (sk-ant-api…).",
+  admin_key: "W ANTHROPIC_API_KEY jest klucz administracyjny (sk-ant-admin…). Do odczytu rozmów potrzebny jest zwykły klucz API.",
+};
+
 export async function GET(request: Request) {
   const engine = engineFor(request);
-  if (!engine) return Response.json({ enabled: false, reason: "no_engine" });
+  const problem = claudeKeyProblem();
+  if (!engine) return Response.json({ enabled: false, reason: problem ?? "no_engine" });
   const allowed = await access(request, engine);
   if (!allowed.ok) return Response.json({ enabled: false, reason: allowed.reason });
   return Response.json({
@@ -88,8 +96,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const engine = engineFor(request);
   if (!engine) {
+    const problem = claudeKeyProblem();
     return Response.json(
-      { error: "AI nie jest podłączone na tym serwerze. Dodaj ANTHROPIC_API_KEY albo użyj ścieżki przez Claude." },
+      {
+        error: problem
+          ? KEY_PROBLEM[problem]
+          : "AI nie jest podłączone na tym serwerze. Dodaj ANTHROPIC_API_KEY albo użyj ścieżki przez Claude.",
+      },
       { status: 404 },
     );
   }

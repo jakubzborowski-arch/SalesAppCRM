@@ -634,6 +634,19 @@ function engineLabel(info: EngineInfo) {
   return "";
 }
 
+/** Dlaczego automat jest wyłączony — po ludzku, z podpowiedzią, co zrobić. */
+const DISABLED_TEXT: Record<string, string> = {
+  oauth_token:
+    "W .env.local jest token z „claude setup-token” (sk-ant-oat…) — to dostęp do Claude Code w ramach subskrypcji, CRM go nie użyje. Utwórz klucz API w Claude Console (sk-ant-api…) albo zrób to przez Claude poniżej.",
+  admin_key:
+    "W .env.local jest klucz administracyjny (sk-ant-admin…). Potrzebny jest zwykły klucz API z Claude Console — albo zrób to przez Claude poniżej.",
+  login: "Automat jest wyłączony — sesja wygasła. Zaloguj się ponownie albo zrób to przez Claude poniżej.",
+  not_allowed: "Twoje konto nie ma dostępu do automatu (AI_ALLOWED_EMAILS). Możesz to zrobić przez Claude poniżej.",
+  offline: "Nie mogę sprawdzić serwera CRM. Możesz to zrobić przez Claude poniżej.",
+  no_engine:
+    "Automat jest wyłączony — na serwerze CRM nie ma klucza Claude API. Możesz to zrobić przez Claude poniżej (bez dodatkowych kosztów w ramach Twojego planu) albo dodać ANTHROPIC_API_KEY do .env.local i uruchomić CRM ponownie.",
+};
+
 function privacyLine(info: EngineInfo) {
   if (info.engine === "mac") return "Rozmowa nie wychodzi z tego komputera.";
   if (info.engine === "zen") return "Transkrypt i notatka (bez telefonów, maili i NIP-ów) idą na serwer OpenCode Zen.";
@@ -859,13 +872,7 @@ function FillBlock({
             </div>
           ) : engine ? (
             <p className="mt-3 rounded-2xl bg-surface px-4 py-3 text-xs leading-5 text-muted">
-              {engine.reason === "login"
-                ? "Automat jest wyłączony — sesja wygasła. Zaloguj się ponownie albo zrób to przez Claude poniżej."
-                : engine.reason === "not_allowed"
-                  ? "Twoje konto nie ma dostępu do automatu (AI_ALLOWED_EMAILS). Możesz to zrobić przez Claude poniżej."
-                  : engine.reason === "offline"
-                    ? "Nie mogę sprawdzić serwera CRM. Możesz to zrobić przez Claude poniżej."
-                    : "Automat jest wyłączony — na serwerze CRM nie ma klucza Claude API. Możesz to zrobić przez Claude poniżej (bez dodatkowych kosztów w ramach Twojego planu) albo dodać ANTHROPIC_API_KEY do .env.local i uruchomić CRM ponownie."}
+              {DISABLED_TEXT[engine.reason ?? ""] ?? DISABLED_TEXT.no_engine}
             </p>
           ) : (
             <p className="mt-3 text-xs text-muted">Sprawdzam, czy AI jest podłączone…</p>

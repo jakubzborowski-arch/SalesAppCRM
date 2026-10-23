@@ -83,6 +83,7 @@ Po każdym ponownym odpaleniu `v2-v3-all.sql` odpal też `v4-team-timeline.sql` 
 - Z kluczem `ANTHROPIC_API_KEY` w `.env.local` (albo w Vercel → Environment Variables) CRM pyta Claude API (structured output, domyślnie `claude-sonnet-5-5`). Telefony, maile i NIP-y są wycinane przed wysyłką. Bez klucza: „Przez Claude” — kopiujesz polecenie do claude.ai / Cowork i wklejasz odpowiedź (JSON).
 - Wynik to podgląd z checkboxami: puste pola są zaznaczone, wypełnione — nie (nadpisujesz świadomie). Cytat, którego nie ma dosłownie w transkrypcie, jest oznaczony. Potrzeby trafiają na mapę jako **hipotezy**, fakt potwierdza handlowiec.
 - Lokalny Qwen (Ollama) albo OpenCode Zen też działają jako silnik, jeśli są skonfigurowane, a klucza Claude nie ma.
+- Potrzebny jest zwykły klucz API z Claude Console (`sk-ant-api…`). Token z `claude setup-token` (`sk-ant-oat…`) to dostęp do Claude Code w ramach subskrypcji — CRM go nie użyje i pokaże to wprost. Plany Max i Team dostają miesięczne kredyty API (claude.ai → Ustawienia → Billing → API credits → połączenie z organizacją w Console). Klucz bez przypisanego workspace'u wymaga `ANTHROPIC_WORKSPACE_ID`.
 - Klucz chroni logowanie do CRM, opcjonalna lista `AI_ALLOWED_EMAILS` i limit 30 odczytów na godzinę na osobę. Bardzo długie rozmowy idą do AI jako początek i koniec (limit 150 tys. znaków), co podgląd wyraźnie zaznacza.
 
 ## Flagi

@@ -8,7 +8,18 @@ const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 export const DEFAULT_CLAUDE_MODEL = "claude-sonnet-5-5";
 
 type Effort = "low" | "medium" | "high";
-export type ClaudeConfig = { apiKey: string; model: string; effort: Effort | null };
+export type ClaudeConfig = { apiKey: string; model: string; effort: Effort | null; workspaceId?: string };
+
+/**
+ * Klucz, który wygląda na Claude, ale nie jest kluczem API: token z `claude setup-token` (sk-ant-oat…)
+ * służy tylko Claude Code w ramach subskrypcji, a klucz administracyjny (sk-ant-admin…) — tylko Admin API.
+ */
+export function claudeKeyProblem(env: Record<string, string | undefined> = process.env): "oauth_token" | "admin_key" | null {
+  const key = env.ANTHROPIC_API_KEY?.trim() ?? "";
+  if (/^sk-ant-oat/i.test(key)) return "oauth_token";
+  if (/^sk-ant-admin/i.test(key)) return "admin_key";
+  return null;
+}
 
 /** Modele 5.x przyjmują output_config.effort; starszym wysyłamy zapytanie bez niego. */
 export function supportsEffort(model: string) {
@@ -17,12 +28,15 @@ export function supportsEffort(model: string) {
 
 export function resolveClaude(env: Record<string, string | undefined> = process.env): ClaudeConfig | null {
   const apiKey = env.ANTHROPIC_API_KEY?.trim() ?? "";
-  if (apiKey.length < 20 || apiKey.length > 400 || /\s/.test(apiKey)) return null;
+  if (apiKey.length < 20 || apiKey.length > 400 || /\s/.test(apiKey) || claudeKeyProblem(env)) return null;
   const model = env.ANTHROPIC_MODEL?.trim() || DEFAULT_CLAUDE_MODEL;
   if (!/^claude-[a-z0-9.-]{2,60}$/.test(model)) return null;
   const wanted = env.ANTHROPIC_EFFORT?.trim().toLowerCase();
   const effort: Effort = wanted === "medium" || wanted === "high" ? wanted : "low";
-  return { apiKey, model, effort: supportsEffort(model) ? effort : null };
+  // Klucz bez przypisanego workspace'u wymaga nagłówka anthropic-workspace-id (Console → Workspaces).
+  const workspace = env.ANTHROPIC_WORKSPACE_ID?.trim() ?? "";
+  const workspaceId = /^wrkspc_[A-Za-z0-9]{6,64}$/.test(workspace) ? workspace : undefined;
+  return { apiKey, model, effort: supportsEffort(model) ? effort : null, ...(workspaceId ? { workspaceId } : {}) };
 }
 
 export type ClaudeResult =
@@ -43,6 +57,9 @@ export function claudeError(status: number, payload: unknown, model: string) {
   if (status === 429) return "Za dużo zapytań do Claude API. Spróbuj za minutę.";
   if (status === 529 || status === 503) return "Claude jest teraz przeciążony. Spróbuj za chwilę.";
   if (/credit balance/i.test(message)) return "Brak środków na koncie Claude API (Console → Billing).";
+  if (/workspace/i.test(message)) {
+    return "Klucz nie jest przypisany do workspace'u. Utwórz klucz z wybranym workspace (Console → API keys) albo dopisz ANTHROPIC_WORKSPACE_ID w .env.local.";
+  }
   if (status === 400) return message ? `Claude API odrzucił zapytanie: ${message}` : "Claude API odrzucił zapytanie.";
   return `Claude API: błąd ${status}.`;
 }
@@ -61,6 +78,7 @@ export async function claudeStructured(
         "content-type": "application/json",
         "x-api-key": config.apiKey,
         "anthropic-version": "2023-06-01",
+        ...(config.workspaceId ? { "anthropic-workspace-id": config.workspaceId } : {}),
       },
       signal: AbortSignal.timeout(input.timeoutMs ?? 110_000),
       body: JSON.stringify({
