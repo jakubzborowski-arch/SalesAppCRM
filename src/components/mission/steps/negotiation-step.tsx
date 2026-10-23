@@ -8,6 +8,7 @@ import type { Mission, Partner } from "@/lib/types";
 import { CheckRow, HelpLink, Note, Requirements, Section } from "@/components/ui";
 import { PeriodFields, TermsFields } from "@/components/mission/terms-editor";
 import { TermsSummary } from "@/components/mission/steps/offer-step";
+import { FromTalkButton } from "@/components/mission/talk-bubble";
 
 export function NegotiationStep({ mission, partner }: { mission: Mission; partner: Partner }) {
   const { toggleObjection, setChecklistItem } = useStore();
@@ -18,7 +19,10 @@ export function NegotiationStep({ mission, partner }: { mission: Mission; partne
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold">Negocjacje i obiekcje</h2>
-        <HelpLink anchor="oferta">Co z warunkami?</HelpLink>
+        <span className="flex flex-wrap items-center gap-3">
+          <FromTalkButton mission={mission} />
+          <HelpLink anchor="oferta">Co z warunkami?</HelpLink>
+        </span>
       </div>
       <p className="mt-1 max-w-2xl text-sm text-muted">
         Zapisz, co partner zgłosił i czy argument zadziałał. Jeśli w rozmowie zmieniły się warunki — popraw je tutaj, żeby

@@ -12,6 +12,7 @@ import { LocalDraft } from "@/components/mission/local-draft";
 import { PeriodFields, TermsFields } from "@/components/mission/terms-editor";
 import { TermsSummary } from "@/components/mission/steps/offer-step";
 import { CheckRow, Field, HelpLink, inputClass, Requirements, Section } from "@/components/ui";
+import { FromTalkButton } from "@/components/mission/talk-bubble";
 
 const BRAND_ITEMS = [
   { key: "contract:brand_app", label: "Nazwa i logo w aplikacji Lutra", required: true },
@@ -137,7 +138,10 @@ export function ContractStep({ mission, partner }: { mission: Mission; partner: 
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold">Porozumienie albo umowa</h2>
-        <HelpLink anchor="umowa">Kiedy mail, a kiedy umowa?</HelpLink>
+        <span className="flex flex-wrap items-center gap-3">
+          <FromTalkButton mission={mission} />
+          <HelpLink anchor="umowa">Kiedy mail, a kiedy umowa?</HelpLink>
+        </span>
       </div>
       <p className="mt-1 max-w-2xl text-sm text-muted">
         Wariant {mission.selectedVariant ?? "—"}

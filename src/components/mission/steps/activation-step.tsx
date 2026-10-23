@@ -9,6 +9,7 @@ import type { Mission, Partner } from "@/lib/types";
 import { CheckRow, Field, HelpLink, inputClass, Note, NumberInput, Requirements, Section } from "@/components/ui";
 import { OpsContactFields } from "@/components/mission/steps/contract-step";
 import { suggestedReviewDate, TermsFields } from "@/components/mission/terms-editor";
+import { FromTalkButton } from "@/components/mission/talk-bubble";
 
 /** Publiczne rejestry do sprawdzenia działalności (otwierają się w nowej karcie). */
 const REGISTRIES = [
@@ -286,7 +287,10 @@ export function ActivationStep({ mission, partner }: { mission: Mission; partner
         <h2 className="text-lg font-semibold">
           {segment === "venue" ? "Weryfikacja i publikacja" : segment === "community" ? "Start cyklu" : "Start pilotażu"}
         </h2>
-        <HelpLink anchor="aktywacja">Co sprawdzamy przed publikacją?</HelpLink>
+        <span className="flex flex-wrap items-center gap-3">
+          <FromTalkButton mission={mission} />
+          <HelpLink anchor="aktywacja">Co sprawdzamy przed publikacją?</HelpLink>
+        </span>
       </div>
       <p className="mt-1 max-w-2xl text-sm text-muted">
         {segment === "venue"

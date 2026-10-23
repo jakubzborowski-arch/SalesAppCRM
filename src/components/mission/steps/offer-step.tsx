@@ -10,6 +10,7 @@ import { useStore } from "@/lib/store";
 import type { Mission, Partner } from "@/lib/types";
 import { HelpLink, Note, Requirements, Section } from "@/components/ui";
 import { PeriodFields, TermsFields, termsIntro } from "@/components/mission/terms-editor";
+import { FromTalkButton } from "@/components/mission/talk-bubble";
 
 /** Podsumowanie warunków do skopiowania (mail, wiadomość, notatka). */
 export function TermsSummary({ mission, partner }: { mission: Mission; partner: Partner }) {
@@ -71,7 +72,10 @@ export function OfferStep({ mission, partner }: { mission: Mission; partner: Par
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold">Oferta i warunki</h2>
-        <HelpLink anchor="oferta">Jak ustalić warunki?</HelpLink>
+        <span className="flex flex-wrap items-center gap-3">
+          <FromTalkButton mission={mission} />
+          <HelpLink anchor="oferta">Jak ustalić warunki?</HelpLink>
+        </span>
       </div>
       <p className="mt-1 max-w-2xl text-sm text-muted">
         {segmentLabel(segment)}: wybierz wariant, wpisz konkretne warunki i okres. Zatwierdzasz Ty — dopiero potem oferta

@@ -7,23 +7,21 @@ import { cn } from "@/lib/cn";
 import { formatPlDate, toIsoDate } from "@/lib/dates";
 import {
   appendToNote,
-  buildProposal,
   channelName,
   extractionContext,
   hasMaterial,
   manualPrompt,
   normalizeExtraction,
   parseLooseJson,
-  planFromProposal,
   readyTranscripts,
   sourceOf,
   firstDateOf,
   MAX_SOURCE_CHARS,
   type DiscoveryExtraction,
   type ExtractionContext,
-  type Proposal,
   type ProposalRow,
 } from "@/lib/discovery-extract";
+import { buildMissionProposal, GROUPS, planMission, type MissionProposal } from "@/lib/mission-extract";
 import { activityChannelLabel, activityOutcomeLabel } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
 import { cleanTranscript, MAX_TRANSCRIPT_CHARS, TRANSCRIPT_FILE_ACCEPT, wordsLabel } from "@/lib/transcript";
@@ -35,6 +33,22 @@ type Focus = "note" | "transcript" | "fill";
 /** Otwiera bąbelek „Notatka z rozmowy” (np. z kroku Discovery) na wybranej części. */
 export function openTalk(focus: Focus = "note") {
   window.dispatchEvent(new CustomEvent(OPEN_TALK_EVENT, { detail: { focus } }));
+}
+
+/** Skrót w nagłówku kroku: uzupełnij ten krok z rozmowy (otwiera bąbelek na podglądzie). */
+export function FromTalkButton({ mission }: { mission: Mission }) {
+  const has =
+    readyTranscripts(mission).length > 0 || mission.conversationNote.trim().length >= 80;
+  if (!has) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => openTalk("fill")}
+      className="flex items-center gap-1.5 rounded-full border border-chip-strong px-3 py-1 text-xs font-semibold text-navy hover:border-blue"
+    >
+      <Sparkles size={13} aria-hidden /> Uzupełnij z rozmowy
+    </button>
+  );
 }
 
 /** Od kontaktu wzwyż: notatka powstaje w kroku Kontakt, korzystamy z niej w Discovery i dalej. */
@@ -151,6 +165,8 @@ function TalkDrawer({
   onClose: () => void;
 }) {
   const noteRef = useRef<HTMLElement>(null);
+  // Po zapisaniu transkryptu analiza rusza sama (gdy AI jest podłączone).
+  const [autoRun, setAutoRun] = useState(0);
   const transcriptRef = useRef<HTMLElement>(null);
   const fillRef = useRef<HTMLElement>(null);
 
@@ -201,10 +217,15 @@ function TalkDrawer({
             <NoteBlock mission={mission} editable={editable} />
           </section>
           <section ref={transcriptRef} className="scroll-mt-4">
-            <TranscriptBlock mission={mission} editable={editable} openedAt={focus.at} />
+            <TranscriptBlock
+              mission={mission}
+              editable={editable}
+              openedAt={focus.at}
+              onSaved={() => setAutoRun((count) => count + 1)}
+            />
           </section>
           <section ref={fillRef} className="scroll-mt-4">
-            <FillBlock mission={mission} partner={partner} editable={editable} active={open} />
+            <FillBlock mission={mission} partner={partner} editable={editable} active={open} autoRun={autoRun} />
           </section>
         </div>
       </aside>
@@ -262,7 +283,17 @@ function targetLabel(activity: Activity) {
   return [dayLabel(activity.occurredAt), activityChannelLabel(activity.channel), outcome, what].filter(Boolean).join(" · ");
 }
 
-function TranscriptBlock({ mission, editable, openedAt }: { mission: Mission; editable: boolean; openedAt: number }) {
+function TranscriptBlock({
+  mission,
+  editable,
+  openedAt,
+  onSaved,
+}: {
+  mission: Mission;
+  editable: boolean;
+  openedAt: number;
+  onSaved: () => void;
+}) {
   const transcripts = readyTranscripts(mission);
   const [adding, setAdding] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -281,14 +312,14 @@ function TranscriptBlock({ mission, editable, openedAt }: { mission: Mission; ed
         </ul>
       ) : (
         <p className="mt-2 text-xs leading-5 text-muted">
-          Jeszcze nic. Wklej transkrypt ze Spinach — AI odczyta z niego pola Discovery, a Ty je sprawdzisz.
+          Jeszcze nic. Wklej transkrypt ze Spinach — AI odczyta z niego pola misji, a Ty je sprawdzisz.
         </p>
       )}
       {justSaved && !showForm ? (
         <p className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900">
           <Check size={14} aria-hidden /> Transkrypt zapisany.
           <button type="button" onClick={() => openTalk("fill")} className="font-semibold text-lutra">
-            Wypełnij Discovery z rozmowy ↓
+            Uzupełnij misję z rozmowy ↓
           </button>
         </p>
       ) : null}
@@ -300,6 +331,7 @@ function TranscriptBlock({ mission, editable, openedAt }: { mission: Mission; ed
           onSaved={() => {
             setAdding(false);
             setJustSaved(true);
+            onSaved();
           }}
           canCancel={transcripts.length > 0}
         />
@@ -658,14 +690,30 @@ function FillBlock({
   partner,
   editable,
   active,
+  autoRun,
 }: {
   mission: Mission;
   partner: Partner;
   editable: boolean;
   active: boolean;
+  /** Rośnie po każdym zapisanym transkrypcie. */
+  autoRun: number;
 }) {
   const store = useStore();
-  const { updateDiscovery, updateDecision, setNextStepAt, upsertNeed, addPartnerContact, setRecording } = store;
+  const {
+    updateDiscovery,
+    updateDecision,
+    setNextStepAt,
+    upsertNeed,
+    addPartnerContact,
+    setRecording,
+    updateTerms,
+    updateContract,
+    updateActivation,
+    updatePartner,
+    setChecklistItem,
+    toggleObjection,
+  } = store;
   const seller = store.state.user.name;
   const [engine, setEngine] = useState<EngineInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -682,7 +730,7 @@ function FillBlock({
   const proposal = useMemo(
     () =>
       reading
-        ? buildProposal(reading.extraction, {
+        ? buildMissionProposal(reading.extraction, {
             mission,
             partner,
             source: reading.source,
@@ -805,12 +853,26 @@ function FillBlock({
     show(raw, context(), "Odpowiedź wklejona z Claude");
   };
 
+  // Najnowsza wersja run() dla efektu auto-startu (bez odpalania przy każdym renderze).
+  const runRef = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    runRef.current = run;
+  });
+  const lastAuto = useRef(autoRun);
+  useEffect(() => {
+    if (autoRun === lastAuto.current) return;
+    lastAuto.current = autoRun;
+    if (!engine?.enabled || !editable || busy) return;
+    openTalk("fill");
+    void runRef.current();
+  }, [autoRun, engine, editable, busy]);
+
   const toggle = (row: ProposalRow) =>
     setOverrides((prev) => ({ ...prev, [rowId(row)]: !(prev[rowId(row)] ?? row.checked) }));
 
   const apply = async () => {
     if (!proposal) return;
-    const plan = planFromProposal(proposal, selected, mission);
+    const plan = planMission(proposal, selected, mission);
     setBusy(true);
     let makerId = plan.maker?.id;
     let makerError = "";
@@ -828,6 +890,22 @@ function FillBlock({
     if (Object.keys(plan.decision).length) updateDecision(mission.id, plan.decision);
     if (plan.nextStepAt) setNextStepAt(mission.id, plan.nextStepAt);
     for (const need of plan.needs) upsertNeed(mission.id, need);
+    // Oferta i warunki.
+    if (plan.terms.discount) updateTerms(mission.id, "discount", plan.terms.discount);
+    if (plan.terms.space) updateTerms(mission.id, "space", plan.terms.space);
+    if (plan.terms.cycle) updateTerms(mission.id, "cycle", plan.terms.cycle);
+    if (plan.terms.pilot) updateTerms(mission.id, "pilot", plan.terms.pilot);
+    // Obiekcje: tylko zaznaczamy to, czego jeszcze nie ma (przełącznik w sklepie).
+    for (const item of plan.objections) {
+      const state = mission.objections.find((o) => o.key === item.key);
+      if (!state?.checked) toggleObjection(mission.id, item.key, "checked");
+      if (item.worked && !state?.argumentWorked) toggleObjection(mission.id, item.key, "argumentWorked");
+    }
+    // Porozumienie / umowa i aktywacja.
+    if (Object.keys(plan.contract).length) updateContract(mission.id, plan.contract);
+    if (Object.keys(plan.activation).length) updateActivation(mission.id, plan.activation);
+    if (plan.partner.hours) updatePartner(partner.id, { hours: plan.partner.hours });
+    for (const [key, value] of Object.entries(plan.checklist)) setChecklistItem(mission.id, key, value);
     if (plan.noteAppend) {
       setRecording(mission.id, { conversationNote: appendToNote(mission.conversationNote, plan.noteAppend) });
     }
@@ -837,7 +915,7 @@ function FillBlock({
     setOverrides({});
     setAnswer("");
     setDone(
-      `Wstawiono ${itemsLabel(count)}. Sprawdź ekran Discovery i kliknij „Potwierdź jako fakt”, gdy wszystko się zgadza.${
+      `Wstawiono ${itemsLabel(count)}. Sprawdź kroki misji, a na ekranie Discovery kliknij „Potwierdź jako fakt”, gdy wszystko się zgadza.${
         makerError ? ` Decydenta nie dodałem: ${makerError}` : ""
       }`,
     );
@@ -847,10 +925,11 @@ function FillBlock({
 
   return (
     <div>
-      <BlockTitle title="Wypełnij Discovery z rozmowy" aside={enabled && engine ? engineLabel(engine) : undefined} />
+      <BlockTitle title="Uzupełnij misję z rozmowy" aside={enabled && engine ? engineLabel(engine) : undefined} />
       <p className="mt-1 text-xs leading-5 text-muted">
-        AI czyta transkrypt i notatkę, a potem proponuje cytat, problem, ograniczenia, decydenta, terminy i potrzeby.
-        Niczego nie wstawia bez Twojego zaznaczenia, a fakt potwierdzasz sam.
+        AI czyta transkrypt i notatkę i proponuje pola wszystkich kroków: rozmowę i potrzeby, ustalone warunki, obiekcje,
+        dane do porozumienia i aktywacji. Niczego nie wstawia bez Twojego zaznaczenia, a fakt potwierdzasz sam. Po
+        kolejnej rozmowie uruchom ponownie — dojdzie tylko to, czego jeszcze nie ma.
       </p>
 
       {!editable ? (
@@ -968,7 +1047,7 @@ function ProposalPreview({
   onApply,
   onDiscard,
 }: {
-  proposal: Proposal;
+  proposal: MissionProposal;
   origin: string;
   clipped: boolean;
   selected: Set<string>;
@@ -991,45 +1070,59 @@ function ProposalPreview({
       ) : null}
       {missing.length ? (
         <p className="border-b border-line bg-surface px-4 py-2 text-xs leading-5 text-muted">
-          W rozmowie nie znalazłem: {missing.join(", ")}. Uzupełnisz to ręcznie na ekranie Discovery.
+          W rozmowie nie znalazłem: {missing.join(", ")}. Uzupełnisz to ręcznie albo po następnej rozmowie.
         </p>
       ) : null}
       {rows.length ? (
-        <ul className="divide-y divide-line">
-          {rows.map((row) => {
-            const checked = selected.has(row.key);
-            return (
-              <li key={row.key}>
-                <label className="flex cursor-pointer gap-3 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 shrink-0 accent-[var(--blue)]"
-                    checked={checked}
-                    onChange={() => onToggle(row)}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-navy">
-                      {row.label}
-                    </span>
-                    <span className="mt-0.5 block whitespace-pre-wrap text-sm leading-6 text-foreground">{row.value}</span>
-                    {row.current ? (
-                      <span className="mt-0.5 block text-xs text-muted">
-                        Teraz: {row.current}
-                        {checked ? (row.merge ? " — nowe dopiszę obok" : " — zostanie zastąpione") : ""}
-                      </span>
-                    ) : null}
-                    {row.hint ? <span className="mt-0.5 block text-xs text-muted">{row.hint}</span> : null}
-                    {row.warning ? (
-                      <span className="mt-1 flex gap-1.5 text-xs text-amber-800">
-                        <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden /> {row.warning}
-                      </span>
-                    ) : null}
-                  </span>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
+        <div>
+          {Object.values(GROUPS)
+            .map((group) => ({ group, items: rows.filter((row) => (row.group ?? GROUPS.talk) === group) }))
+            .filter((section) => section.items.length)
+            .map((section) => (
+              <div key={section.group}>
+                <p className="border-b border-line bg-surface px-4 py-1.5 text-[11px] font-semibold text-muted">
+                  {section.group}
+                </p>
+                <ul className="divide-y divide-line">
+                  {section.items.map((row) => {
+                    const checked = selected.has(row.key);
+                    return (
+                      <li key={row.key}>
+                        <label className="flex cursor-pointer gap-3 px-4 py-3">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 shrink-0 accent-[var(--blue)]"
+                            checked={checked}
+                            onChange={() => onToggle(row)}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-navy">
+                              {row.label}
+                            </span>
+                            <span className="mt-0.5 block whitespace-pre-wrap text-sm leading-6 text-foreground">
+                              {row.value}
+                            </span>
+                            {row.current ? (
+                              <span className="mt-0.5 block text-xs text-muted">
+                                Teraz: {row.current}
+                                {checked ? (row.merge ? " — nowe dopiszę obok" : " — zostanie zastąpione") : ""}
+                              </span>
+                            ) : null}
+                            {row.hint ? <span className="mt-0.5 block text-xs text-muted">{row.hint}</span> : null}
+                            {row.warning ? (
+                              <span className="mt-1 flex gap-1.5 text-xs text-amber-800">
+                                <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden /> {row.warning}
+                              </span>
+                            ) : null}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+        </div>
       ) : (
         <p className="px-4 py-3 text-sm text-muted">Rozmowa nie wnosi nic nowego — pola są już wypełnione tak samo.</p>
       )}
