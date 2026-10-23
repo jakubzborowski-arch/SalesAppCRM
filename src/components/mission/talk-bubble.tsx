@@ -364,7 +364,7 @@ function TranscriptRow({ mission, call, editable }: { mission: Mission; call: Ca
   const save = async () => {
     const clean = cleanTranscript(draft);
     if (clean.length < 20) {
-      setError("Transkrypt jest pusty albo za krótki.");
+      setError("Transkrypt jest pusty albo za krótki (co najmniej 20 znaków).");
       return;
     }
     setBusy(true);
@@ -509,7 +509,11 @@ function AddTranscriptForm({
   const save = async () => {
     const clean = cleanTranscript(text);
     if (clean.length < 20) {
-      setError("Wklej transkrypt albo wczytaj plik.");
+      setError(
+        clean
+          ? `To za mało na transkrypt (${clean.length} znaków, potrzeba co najmniej 20). Wklej całą rozmowę ze Spinach.`
+          : "Wklej transkrypt albo wczytaj plik.",
+      );
       return;
     }
     const when = occurredAt ? new Date(occurredAt) : new Date();

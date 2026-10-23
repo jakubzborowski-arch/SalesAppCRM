@@ -1455,7 +1455,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return { ok: false, error: "Tę misję edytuje jej właściciel albo administrator." };
         }
         const text = input.text.trim();
-        if (text.length < 20) return { ok: false, error: "Transkrypt jest pusty albo za krótki." };
+        if (text.length < 20) return { ok: false, error: "Transkrypt jest pusty albo za krótki (co najmniej 20 znaków)." };
         if (text.length > MAX_TRANSCRIPT_CHARS) {
           return { ok: false, error: "Transkrypt jest za długi (ponad 200 tys. znaków). Podziel go na części." };
         }
