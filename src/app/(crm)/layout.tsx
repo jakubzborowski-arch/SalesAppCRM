@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/sidebar";
 import { SetupBanner } from "@/components/setup-banner";
 import { ReminderNotifier } from "@/components/reminders";
 import { WelcomeTour } from "@/components/onboarding/welcome-tour";
+import { TourBubble } from "@/components/onboarding/tour-bubble";
 import { useStore } from "@/lib/store";
 
 export default function CrmLayout({ children }: { children: ReactNode }) {
@@ -30,6 +31,7 @@ export default function CrmLayout({ children }: { children: ReactNode }) {
       <Sidebar />
       <ReminderNotifier />
       <WelcomeTour key={state.user.id ?? "local"} userId={state.user.id} />
+      <TourBubble userId={state.user.id} />
       <div className="min-w-0 flex-1">
         <SetupBanner />
         {children}

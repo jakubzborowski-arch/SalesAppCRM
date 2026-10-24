@@ -34,7 +34,7 @@ export function Sidebar() {
   const dueCount = useMemo(() => agendaCount(agenda(state)), [state]);
 
   return (
-    <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-line bg-white">
+    <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-line bg-white pb-16">
       <div className="px-6 pb-4 pt-6">
         <Link href="/pulpit" className="font-brand text-[26px] tracking-tight text-navy">
           lutra
