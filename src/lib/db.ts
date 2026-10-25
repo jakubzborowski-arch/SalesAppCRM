@@ -1,6 +1,15 @@
 import type { MigrationRow } from "./migrations";
 import { isValidNip, normalizeNip } from "./company";
-import { loadMissionCore, syncMissionCore } from "./mission-core";
+import {
+  bundlePayload,
+  loadMissionCore,
+  needsLegacyRows,
+  nextStepTaskOf,
+  planMissionCore,
+  removeContractFiles,
+  syncMissionCore,
+  type PlannedMissionCore,
+} from "./mission-core";
 import { mergeCare, mergeTerms } from "./terms";
 import { fitLevel } from "./fit";
 import { MONTH_RE } from "./health";
@@ -896,6 +905,8 @@ export function replaceMissionVersions(versions: Map<string, string>) {
 /** Po wylogowaniu wersje z poprzedniej sesji nie są już nic warte. */
 export function clearMissionVersions() {
   missionVersions.clear();
+  // Po ponownym logowaniu sprawdzamy od nowa, czy jest zapis w jednej transakcji (np. po wgraniu v8).
+  missionBundleAvailable = null;
 }
 
 export class MissionConflictError extends Error {
@@ -907,16 +918,14 @@ export class MissionConflictError extends Error {
   }
 }
 
-export async function persistMission(
-  mission: Mission,
-  workspaceId: string,
-  userId: string,
-  segment: Partner["segment"] = "venue",
-): Promise<{ nextStepTask: TaskItem | null }> {
-  const sb = getSupabase();
-  if (!sb) return { nextStepTask: null };
-  const slim = coreTablesAvailable === true;
-  const changes = {
+/**
+ * Czy w bazie jest `save_mission_bundle` (v8): zapis misji w jednej transakcji.
+ * `false` po odpowiedzi „brak funkcji” — wtedy zapis po staremu, do ponownego logowania.
+ */
+let missionBundleAvailable: boolean | null = null;
+
+function missionColumns(mission: Mission, workspaceId: string, userId: string, details: MissionDetails) {
+  return {
     workspace_id: workspaceId,
     partner_id: mission.partnerId,
     // Właściciel zostaje ten sam, nawet gdy misję zapisuje ktoś inny z zespołu.
@@ -927,9 +936,70 @@ export async function persistMission(
     next_step_at: dateOrNull(mission.nextStepAt),
     outcome: mission.outcome,
     loss_reason: mission.lossReason || null,
-    details: slim ? uiDetailsOf(mission) : detailsOf(mission),
+    details,
     closed_at: mission.status === "active" ? null : (mission.closedAt ?? null),
   };
+}
+
+function isMissionConflict(error: { code?: string; message?: string }) {
+  return error.code === "P0001" && /mission_conflict/.test(error.message ?? "");
+}
+
+/**
+ * Zapis misji i jej tabel jedną transakcją (`save_mission_bundle`). Wersja sprawdzana w tej samej
+ * transakcji: albo zapisuje się wszystko, albo nic. `null` = funkcji nie ma, trzeba po staremu.
+ */
+async function persistMissionBundle(
+  sb: NonNullable<ReturnType<typeof getSupabase>>,
+  mission: Mission,
+  workspaceId: string,
+  userId: string,
+  plan: PlannedMissionCore,
+): Promise<{ nextStepTask: TaskItem | null } | null> {
+  const call = (legacy: boolean) =>
+    sb.rpc("save_mission_bundle", {
+      p_mission_id: mission.id,
+      // Bez znanej wersji funkcja tylko zakłada nową misję — istniejącej nie nadpisze w ciemno.
+      p_expected_version: missionVersions.get(mission.id) ?? null,
+      p_mission: missionColumns(mission, workspaceId, userId, uiDetailsOf(mission)),
+      p_ops: bundlePayload(plan.ops, legacy),
+    });
+  let { data, error } = await call(false);
+  if (needsLegacyRows(plan.ops, error)) ({ data, error } = await call(true));
+  if (error) {
+    if (isMissingFunction(error)) {
+      missionBundleAvailable = false;
+      return null;
+    }
+    if (isMissionConflict(error)) throw new MissionConflictError(mission.id);
+    throw error;
+  }
+  missionBundleAvailable = true;
+  coreTablesAvailable = true;
+  const result = (data ?? {}) as { version?: string | null; returned?: Record<string, Record<string, unknown>[]> };
+  setMissionVersion(mission.id, result.version ? String(result.version) : undefined);
+  // Storage nie jest częścią transakcji: stare pliki umowy kasujemy dopiero po udanym zapisie.
+  await removeContractFiles(plan.staleFiles);
+  return { nextStepTask: nextStepTaskOf(plan, result.returned) };
+}
+
+export async function persistMission(
+  mission: Mission,
+  workspaceId: string,
+  userId: string,
+  segment: Partner["segment"] = "venue",
+): Promise<{ nextStepTask: TaskItem | null }> {
+  const sb = getSupabase();
+  if (!sb) return { nextStepTask: null };
+  const plan = await planMissionCore(mission, workspaceId, userId, segment);
+  if (plan.status === "planned" && missionBundleAvailable !== false) {
+    const saved = await persistMissionBundle(sb, mission, workspaceId, userId, plan);
+    if (saved) return saved;
+  }
+
+  // Po staremu (baza bez v8): misja, potem tabele misji zapytanie po zapytaniu, na końcu domknięcie wersji.
+  const slim = coreTablesAvailable === true;
+  const changes = missionColumns(mission, workspaceId, userId, slim ? uiDetailsOf(mission) : detailsOf(mission));
 
   const version = missionVersions.get(mission.id);
   let claimed: string | undefined;
@@ -954,7 +1024,7 @@ export async function persistMission(
   }
   setMissionVersion(mission.id, claimed);
 
-  const core = await syncMissionCore(mission, workspaceId, userId, segment);
+  const core = await syncMissionCore(mission, workspaceId, userId, segment, plan);
   if (core.status === "synced") {
     if (claimed) {
       // Domknięcie zapisu: nowa wersja dopiero po zapisaniu tabel misji. Kto wczytał misję

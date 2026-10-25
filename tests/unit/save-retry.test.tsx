@@ -107,4 +107,22 @@ describe("zapis: ponawianie po błędzie i ostrzeżenie przed zamknięciem karty
     window.dispatchEvent(after);
     expect(after.defaultPrevented).toBe(false);
   }, 15000);
+
+  it("błąd w środku zapisu w jednej transakcji: baza bez zmian, zapis wraca sam i przechodzi w całości", async () => {
+    const out = await mount();
+    const dbState = () => JSON.stringify([...holder.client.tables].filter(([, rows]) => rows.length));
+    const before = dbState();
+    // Misja i decyzja zapisują się pierwsze — zadanie następnego kroku na końcu nie przechodzi.
+    holder.client.failNext = { table: "tasks", op: "insert", error: { message: "fetch failed" } };
+    act(() => out.store!.setNextStepAt(M1, "2026-11-05"));
+    await waitFor(() => expect(out.store!.saveState).toBe("error"), { timeout: 3000 });
+    expect(holder.client.calls.some((c) => c.table === "missions" && c.op === "update")).toBe(true);
+    expect(dbState()).toBe(before);
+    await waitFor(() => expect(out.store!.saveState).toBe("saved"), { timeout: 5000 });
+    const row = holder.client.rows("missions").find((m) => m.id === M1)!;
+    expect(row.next_step_at).toBe("2026-11-05");
+    expect(row.updated_at).not.toBe("2025-12-31T00:00:00.000Z");
+    expect(holder.client.rows("tasks")).toMatchObject([{ mission_id: M1, title: "Recap", due_at: "2026-11-05", source: "next_step" }]);
+    expect(out.store!.notice).toBeNull();
+  }, 15000);
 });

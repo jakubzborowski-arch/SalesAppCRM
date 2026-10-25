@@ -1,4 +1,4 @@
-// Test migracji v2–v7 na PGlite z atrapą Supabase (auth, storage, role).
+// Test migracji v2–v8 na PGlite z atrapą Supabase (auth, storage, role).
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 
@@ -628,6 +628,136 @@ await expectError("anon nie wywoła limitu AI", () => as(null, () => db.query("s
 await expectError("limit AI odrzuca dziwne parametry", () => as(H, () => db.query("select public.take_ai_quota('extract', 0, 3600)")), /Nieprawidłowy limit/);
 await expectError("tabela użycia AI niewidoczna dla handlowca", () => as(H, () => db.query("select * from ai_usage")), /permission denied/);
 
+// Zapis misji w jednej transakcji: misja + tabele misji razem albo wcale, wersja sprawdzana w środku.
+const bundle = async (id, version, mission, ops) =>
+  (await db.query("select public.save_mission_bundle($1, $2, $3, $4) as r", [id, version, JSON.stringify(mission), JSON.stringify(ops)])).rows[0].r;
+const mB = "77777777-0000-4000-8000-0000000000b1";
+const missionCols = (patch = {}) => ({
+  workspace_id: wsG, partner_id: pG, owner_user_id: G.id, status: "active", current_stage: "research",
+  next_step_label: "Zadzwonić", next_step_at: "2026-11-01", outcome: null, loss_reason: null,
+  details: { conversationNote: "pierwsza" }, closed_at: null, ...patch,
+});
+const needA = "77777777-0000-4000-8000-0000000000a1";
+const needB = "77777777-0000-4000-8000-0000000000a2";
+const fullOps = (needs) => [
+  { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "Puste środy", next_step: "Zadzwonić" }] },
+  { table: "needs", op: "upsert", rows: needs.map((id) => ({ id, mission_id: mB, category: "off_peak", title: `Potrzeba ${id.slice(-2)}`, status: "observation", source: "manual" })) },
+  { table: "mission_checklist_items", op: "upsert", rows: [{ mission_id: mB, stage: "research", item_key: "profile", label: "Profil", is_done: true, done_at: "2026-10-20T10:00:00Z" }] },
+  { table: "mission_objections", op: "upsert", rows: [{ mission_id: mB, library_key: "margin", checked: true, argument_worked: false }] },
+  { table: "offers", op: "upsert", rows: [{ mission_id: mB, variant: "A", custom_terms: { segment: "venue" }, recommended_by: "human", status: "draft" }] },
+  { table: "contracts", op: "upsert", refs: { offer_id: "offers" }, optional: ["sent_at"], rows: [{ mission_id: mB, company_name: "Bistro Gosi sp. z o.o.", signed_by_human: false, sent_at: null, status: "draft" }] },
+  { table: "activations", op: "upsert", refs: { contract_id: "contracts" }, optional: ["kolumna_z_przyszlosci"], rows: [{ mission_id: mB, partner_code: "LUTRA-X", hours_confirmed: true, kolumna_z_przyszlosci: 1 }] },
+  { table: "tasks", op: "insert", key: "next_step", single: true, rows: [{ workspace_id: wsG, mission_id: mB, owner_user_id: G.id, title: "Zadzwonić", due_at: "2026-11-01", source: "next_step" }] },
+];
+const created = await as(G, () => bundle(mB, null, missionCols(), fullOps([needA, needB])));
+const mBRow = await one("select updated_at = $2::timestamptz as same from missions where id = $1", [mB, created.version]);
+ok(created.version && mBRow.same === true, "zapis misji w jednej transakcji: nowa misja, zwraca jej wersję");
+const childCounts = await one(
+  `select (select count(*) from decision_context where mission_id = $1)::int d, (select count(*) from needs where mission_id = $1)::int n,
+          (select count(*) from mission_checklist_items where mission_id = $1)::int c, (select count(*) from mission_objections where mission_id = $1)::int o,
+          (select count(*) from tasks where mission_id = $1)::int t,
+          (select offer_id = (select id from offers where mission_id = $1) from contracts where mission_id = $1) offer_linked,
+          (select contract_id = (select id from contracts where mission_id = $1) from activations where mission_id = $1) contract_linked`,
+  [mB],
+);
+ok(childCounts.d === 1 && childCounts.n === 2 && childCounts.c === 1 && childCounts.o === 1 && childCounts.t === 1, "misja i wszystkie tabele misji zapisane jednym wywołaniem");
+ok(childCounts.offer_linked === true && childCounts.contract_linked === true, "umowa wskazuje ofertę, aktywacja umowę (odczytane w trakcie zapisu)");
+ok(created.returned?.next_step?.[0]?.title === "Zadzwonić" && created.returned.next_step[0].mission_id === mB, "zapis zwraca nowe zadanie następnego kroku");
+
+const v1b = created.version;
+const second = await as(G, () =>
+  bundle(mB, v1b, missionCols({ next_step_label: "Wysłać ofertę", details: { conversationNote: "druga" } }), [
+    { table: "needs", op: "delete", ids: [needB] },
+    { table: "needs", op: "upsert", rows: [{ id: needA, mission_id: mB, category: "margin", title: "Marża", status: "fact", source: "manual" }] },
+    { table: "tasks", op: "update", key: "next_step", single: true, ids: [created.returned.next_step[0].id], set: { title: "Wysłać ofertę" } },
+  ]),
+);
+const afterSecond = await one("select next_step_label, details->>'conversationNote' as note, (select count(*) from needs where mission_id = $1)::int as n, (select category::text from needs where id = $2) as cat from missions where id = $1", [mB, needA]);
+ok(second.version !== v1b && afterSecond.next_step_label === "Wysłać ofertę" && afterSecond.note === "druga", "kolejny zapis z aktualną wersją przechodzi i zmienia wersję");
+ok(afterSecond.n === 1 && afterSecond.cat === "margin" && second.returned.next_step[0].title === "Wysłać ofertę", "usunięcie i zmiana potrzeb, zmiana zadania w tym samym zapisie");
+
+const stateOf = async () =>
+  JSON.stringify(await one(
+    `select m.updated_at, m.next_step_label, m.details, (select jsonb_agg(n order by n.id) from needs n where n.mission_id = $1) needs,
+            (select to_jsonb(d) from decision_context d where d.mission_id = $1) decision, (select jsonb_agg(t order by t.id) from tasks t where t.mission_id = $1) tasks
+     from missions m where m.id = $1`,
+    [mB],
+  ));
+const beforeFail = await stateOf();
+await expectError("błąd w środku zapisu (zła kategoria potrzeby) przerywa całość", () =>
+  as(G, () =>
+    bundle(mB, second.version, missionCols({ next_step_label: "Nie powinno zostać" }), [
+      { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "Nie powinno zostać" }] },
+      { table: "needs", op: "upsert", rows: [{ id: needB, mission_id: mB, category: "bogus", status: "observation", source: "manual" }] },
+    ])), /need_category|invalid input value/);
+ok((await stateOf()) === beforeFail, "po błędzie misja i tabele misji bez zmian (także wiersz misji i jego wersja)");
+await expectError("stara wersja = konflikt", () =>
+  as(G, () => bundle(mB, v1b, missionCols({ next_step_label: "Stara wersja" }), [
+    { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "Stara wersja" }] },
+  ])), /mission_conflict/);
+await expectError("nieznana wersja przy istniejącej misji = konflikt (bez nadpisania w ciemno)", () =>
+  as(G, () => bundle(mB, null, missionCols({ next_step_label: "W ciemno" }), [])), /mission_conflict/);
+ok((await stateOf()) === beforeFail, "konflikt niczego nie zmienia");
+
+await expectError("handlowiec nie zapisze misji szefowej (RLS)", () =>
+  as(H, () => bundle(mB, second.version, missionCols({ next_step_label: "H" }), [
+    { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "H" }] },
+  ])), /mission_conflict/);
+await expectError("handlowiec nie dopisze do misji szefowej przez swoją misję", () =>
+  as(H, async () => {
+    const vH = (await one("select updated_at::text as v from missions where id = $1", [mH])).v;
+    return bundle(mH, vH, { next_step_label: "moje" }, [
+      { table: "needs", op: "upsert", rows: [{ mission_id: mB, category: "margin", status: "observation", source: "manual", id: "77777777-0000-4000-8000-0000000000a3" }] },
+    ]);
+  }), /nie należy do tej misji/);
+await expectError("obcy zespół nie zapisze misji zespołu", () =>
+  as(A, () => bundle(mB, second.version, missionCols({ workspace_id: wsA, partner_id: pA, owner_user_id: A.id, next_step_label: "A" }), [])), /mission_conflict/);
+await expectError("obcy zespół nie przejmie misji zespołu jako „nowej”", () =>
+  as(A, () => bundle(mB, null, missionCols({ workspace_id: wsA, partner_id: pA, owner_user_id: A.id }), [])), /mission_conflict|row-level security/);
+await expectError("anon nie wywoła zapisu misji", () => as(null, () => bundle(mB, second.version, missionCols(), [])), /permission denied/);
+ok((await stateOf()) === beforeFail, "odrzucone zapisy innych osób niczego nie zmieniają");
+
+const mBv = () => one("select updated_at::text as v from missions where id = $1", [mB]).then((r) => r.v);
+const otherNeed = (await one("select id from needs where mission_id <> $1 limit 1", [mB]))?.id
+  ?? (await as(H, async () => (await one("insert into needs (mission_id, category) values ($1, 'margin') returning id", [mH])).id));
+await expectError("wiersz innej misji w operacjach odrzucony", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "needs", op: "upsert", rows: [{ id: needB, mission_id: mH, category: "margin", status: "observation", source: "manual" }] },
+  ])), /nie należy do tej misji/);
+await expectError("istniejąca potrzeba innej misji nie zostanie przepięta", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "needs", op: "upsert", rows: [{ id: otherNeed, mission_id: mB, category: "margin", status: "observation", source: "manual" }] },
+  ])), /innej misji/);
+await expectError("zmiana zadania innej misji odrzucona", async () =>
+  as(G, async () => {
+    const foreignTask = (await one("select id from tasks where mission_id = $1 limit 1", [mG])).id;
+    return bundle(mB, await mBv(), missionCols(), [
+      { table: "tasks", op: "update", single: true, ids: [foreignTask], set: { title: "cudze" } },
+    ]);
+  }), /Oczekiwano jednego/);
+await expectError("zadanie w innym zespole odrzucone", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "tasks", op: "insert", rows: [{ workspace_id: wsA, mission_id: mB, title: "x", source: "next_step" }] },
+  ])), /nie należy do tej misji/);
+await expectError("tabela spoza listy odrzucona", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "partners", op: "update", ids: [pG], set: { notes: "x" } },
+  ])), /nie należy do zapisu misji/);
+await expectError("operacje na samej tabeli misji odrzucone", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "missions", op: "delete", ids: [mG] },
+  ])), /nie należy do zapisu misji/);
+await expectError("nieznana kolumna (spoza „optional”) odrzucona", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "activations", op: "upsert", rows: [{ mission_id: mB, nie_ma_takiej: 1 }] },
+  ])), /does not exist/);
+await expectError("zmiana mission_id w update odrzucona", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "tasks", op: "update", ids: [created.returned.next_step[0].id], set: { mission_id: mG } },
+  ])), /Nieprawidłowa zmiana/);
+ok((await stateOf()) === beforeFail, "odrzucone operacje niczego nie zmieniają");
+ok((await one("select count(*)::int as n from missions where id = $1 and owner_user_id = $2", [mG, H.id])).n === 1, "misja kolegi nietknięta");
+
 const good = await snapshot();
 ok((await versions()).at(-1) === "v8", "v8 zapisuje znacznik wersji");
 await db.exec(v23);
@@ -638,6 +768,13 @@ for (const sql of [v4, v5, v6, v7, v8]) await db.exec(sql);
 const rerunState = await snapshot();
 const changed = [...good.keys()].filter((k) => rerunState.get(k) !== good.get(k)).concat([...rerunState.keys()].filter((k) => !good.has(k)));
 ok(changed.length === 0, `po powtórzeniu v4–v8 uprawnienia i funkcje jak przed (${changed.join(", ") || "bez różnic"})`);
+const afterRerun = await as(G, async () =>
+  bundle(mB, (await one("select updated_at::text as v from missions where id = $1", [mB])).v, missionCols({ next_step_label: "Po powtórce" }), [
+    { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "Po powtórce" }] },
+  ]),
+);
+ok(afterRerun.version && (await one("select problem from decision_context where mission_id = $1", [mB])).problem === "Po powtórce", "zapis misji w jednej transakcji działa po powtórzeniu migracji");
+await expectError("po powtórzeniu migracji anon dalej bez zapisu misji", () => as(null, () => bundle(mB, null, missionCols(), [])), /permission denied/);
 const anonMigrations = await db.query("select has_table_privilege('anon', 'crm_migrations', 'insert') as ins");
 ok(anonMigrations.rows[0].ins === false, "znaczników wersji nie zapisze nikt z zewnątrz");
 

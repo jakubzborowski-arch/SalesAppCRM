@@ -16,7 +16,7 @@ Otwórz [http://localhost:3001](http://localhost:3001) (albo 3000). Zaloguj się
 1. Authentication → Sign In / Providers → Email: włącz **Confirm email** (AI działa tylko dla potwierdzonych adresów).
 2. Authentication → URL Configuration: **Site URL** = adres CRM (lokalnie `http://localhost:3001`, na produkcji adres z Vercela) — tam prowadzi link z maila.
 3. SQL Editor: wklej `supabase/migrations/20261001000003_v2_v3_all.sql` i Run.
-4. SQL Editor: wklej po kolei i Run kolejne pliki z `supabase/migrations/`: v4 (zespół, dziennik kontaktów, historia etapów), v5 (dane firmy), v6 (kto co edytuje, obieg podpisu), v7 (typ partnera, porozumienie mailowe), v8 (jakość AI, metryki i zdrowie partnera, wynik dopasowania, limity AI). Najprościej: w CRM przycisk „Kopiuj SQL” na żółtym pasku daje wszystkie brakujące naraz. Albo Supabase CLI — niżej.
+4. SQL Editor: wklej po kolei i Run kolejne pliki z `supabase/migrations/`: v4 (zespół, dziennik kontaktów, historia etapów), v5 (dane firmy), v6 (kto co edytuje, obieg podpisu), v7 (typ partnera, porozumienie mailowe), v8 (jakość AI, metryki i zdrowie partnera, wynik dopasowania, limity AI, zapis misji w jednej transakcji). Najprościej: w CRM przycisk „Kopiuj SQL” na żółtym pasku daje wszystkie brakujące naraz. Albo Supabase CLI — niżej.
 5. `.env.local` z URL i anon key.
 6. Pierwsze konto: lokalnie (`npm run dev`) rejestracja jest otwarta. Na produkcji konta zakłada się z linku zaproszenia (Ustawienia → Zespół); pierwsze konto administratora — jednorazowo `NEXT_PUBLIC_OPEN_SIGNUP=1`, potem usuń tę zmienną.
 7. W CRM: **Dodaj partnera**, potem **Zajmuję się partnerem**. Przy pierwszym wejściu CRM pokazuje krótkie wprowadzenie; pełny opis jest w menu → **Pomoc** albo w bąbelku „Wprowadzenie”.
