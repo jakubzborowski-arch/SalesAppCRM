@@ -134,4 +134,13 @@ describe("rozmowa → cała misja", () => {
     });
     expect(proposal.rows.find((r) => r.key === "objection:no_time")).toMatchObject({ checked: false });
   });
+
+  it("obiekcja bez cytatu — nie wchodzi sama (razem z „argument zadziałał”)", () => {
+    const proposal = build(mission(), partner(), {
+      obiekcje: [{ klucz: "ask_owner", argument_zadzialal: true, cytat: "" }],
+    });
+    const row = proposal.rows.find((r) => r.key === "objection:ask_owner")!;
+    expect(row).toMatchObject({ checked: false });
+    expect(row.warning).toMatch(/Brak cytatu/);
+  });
 });

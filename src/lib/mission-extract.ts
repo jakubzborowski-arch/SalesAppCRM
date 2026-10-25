@@ -217,8 +217,13 @@ function objectionRows(ext: DiscoveryExtraction, mission: Mission, source: strin
       value: `${label}${item.worked ? " · argument zadziałał" : ""}`,
       current: state?.checked ? `zaznaczona${state.argumentWorked ? ", argument zadziałał" : ""}` : "",
       hint: item.quote && quoteOk ? `„${item.quote}”` : undefined,
-      warning: quoteOk ? undefined : "Nie znalazłem tego zdania w transkrypcie — sprawdź, czy padło.",
-      checked: quoteOk,
+      warning: !item.quote
+        ? "Brak cytatu partnera — zaznacz tylko, jeśli ta obiekcja naprawdę padła."
+        : quoteOk
+          ? undefined
+          : "Nie znalazłem tego zdania w transkrypcie — sprawdź, czy padło.",
+      // Bez dosłownego zdania partnera obiekcja (i „argument zadziałał”) nie wchodzi sama.
+      checked: Boolean(item.quote) && quoteOk,
     });
   }
   return { rows, objections };

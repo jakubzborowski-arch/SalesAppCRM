@@ -170,11 +170,35 @@ export function extractionContext(
       .map((contact) => ({ name: contact.name.trim(), role: contact.role.trim() })),
     seller: seller.trim(),
     callDate: picked[0]?.date ?? toIsoDate(new Date()),
-    note: redactPrivate((mission.conversationNote ?? "").slice(0, MAX_NOTE_CHARS)),
+    note: redactPrivate(stripAiNotes(mission.conversationNote ?? "").slice(0, MAX_NOTE_CHARS)),
     // W poleceniu chronologicznie: najstarsza rozmowa pierwsza.
     transcripts: picked.reverse(),
     clipped,
   };
+}
+
+const AI_NOTE_HEADER = /^Wnioski z rozmowy \(AI\b/;
+
+/**
+ * Wnioski dopisane wcześniej przez AI nie są źródłem: model ich nie dostaje, a weryfikacja cytatów
+ * i faktów ich nie widzi. Inaczej dawna pomyłka AI „potwierdzałaby” następną.
+ */
+export function stripAiNotes(note: string) {
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of note.split("\n")) {
+    if (AI_NOTE_HEADER.test(line.trim())) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && (/^\s*[•\-*]/.test(line) || !line.trim())) {
+      if (!line.trim()) skipping = false;
+      continue;
+    }
+    skipping = false;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Pierwszy dzień rozmów w kontekście — dolna granica dla dat z rozmowy. */
@@ -235,7 +259,7 @@ export function sanitizeContext(raw: unknown, limit = MAX_SOURCE_CHARS): Extract
     }),
     seller: plainString(o.seller, 120),
     callDate: typeof o.callDate === "string" && isIsoDate(o.callDate) ? o.callDate : toIsoDate(new Date()),
-    note: plainString(o.note, MAX_NOTE_CHARS),
+    note: plainString(stripAiNotes(typeof o.note === "string" ? o.note : ""), MAX_NOTE_CHARS),
     transcripts: kept,
     clipped,
   };
@@ -1159,7 +1183,8 @@ export function buildProposal(
   if (summary) {
     const already = ext.summary.every((item) => fold(mission.conversationNote).includes(fold(item)));
     if (!already) {
-      add({ key: "summary", label: "Wnioski do notatki", value: summary, current: "", checked: true });
+      // Wnioski to streszczenie AI, nie słowa partnera — dopisujesz je świadomie.
+      add({ key: "summary", label: "Wnioski do notatki", value: summary, current: "", checked: false });
     }
   }
 
