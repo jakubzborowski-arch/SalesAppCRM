@@ -1,0 +1,111 @@
+{
+  "id": "v10-scianka-boulder-bez-mowcow",
+  "title": "Ścianka Boulder Point — bez etykiet mówców, kod w kasie",
+  "segment": "venue",
+  "callDate": "2026-10-07",
+  "partner": {
+    "name": "Boulder Point",
+    "city": "Rzeszów",
+    "category": "ścianka wspinaczkowa",
+    "contacts": [
+      {
+        "name": "Damian Mazur",
+        "role": "współwłaściciel"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": false,
+  "transcript": "Cześć, z tej strony Kuba z Lutry, rozmawialiśmy na Instagramie.\nTak, pamiętam, Damian, prowadzę ściankę razem ze wspólnikiem.\nJak wygląda u was ruch?\nWieczorami w tygodniu jest tłok, a w soboty i niedziele rano mamy pustki, do dwunastej przychodzi garstka ludzi.\nTo moglibyśmy przyprowadzać grupy właśnie w weekendowe poranki.\nDla grup mogę zejść 12 procent z ceny wejściówki, w soboty i niedziele od 9 do 12.\nWypożyczenie butów i uprzęży nie wchodzi w zniżkę.\nNajlepiej, żeby recepcja wpisywała kod w systemie, mamy do tego pole na rabaty.\nGrupa od pięciu osób, bo wtedy opłaca nam się instruktor.\nWcześniej robiliśmy karnety poranne, ale sprzedało się kilka sztuk.\nDobra, a kto u was podpisuje?\nOstatnie słowo ma wspólnik, Adam Lewandowski, ja mogę tylko polecić.\nPogadam z nim i dam znać do końca tygodnia.",
+  "gold": {
+    "cytat": "Wieczorami w tygodniu jest tłok, a w soboty i niedziele rano mamy pustki, do dwunastej przychodzi garstka ludzi.",
+    "problem": "W soboty i niedziele rano do 12 są pustki.",
+    "kategoria": "off_peak",
+    "priorytet": 3,
+    "rezultat": "",
+    "ograniczenia": [
+      "Sob–nd 9–12",
+      "Od 5 osób",
+      "Bez wypożyczenia butów i uprzęży"
+    ],
+    "decydent": "Adam Lewandowski",
+    "rola_decydenta": "wspólnik",
+    "termin_decyzji": "do końca tygodnia",
+    "termin_decyzji_data": "2026-10-09",
+    "wczesniejsze_proby": "Karnety poranne — sprzedało się kilka sztuk.",
+    "nastepny_krok": "Damian rozmawia ze wspólnikiem i daje znać do końca tygodnia.",
+    "data_nastepnego_kroku": "2026-10-09",
+    "potrzeby": [
+      {
+        "tytul": "Ruch w weekendowe poranki",
+        "kategoria": "off_peak",
+        "priorytet": 3,
+        "cytat": "Wieczorami w tygodniu jest tłok, a w soboty i niedziele rano mamy pustki, do dwunastej przychodzi garstka ludzi.",
+        "rezultat": "",
+        "ograniczenia": "Sob–nd 9–12, od 5 osób"
+      }
+    ],
+    "wnioski": [
+      "W soboty i niedziele rano do 12 są pustki.",
+      "Zniżka 12% na wejściówkę, sob–nd 9–12, od 5 osób, bez wypożyczenia sprzętu; kod w systemie recepcji.",
+      "Karnety poranne się nie sprzedały.",
+      "Decyduje wspólnik Adam Lewandowski — odpowiedź do końca tygodnia."
+    ],
+    "warunki": {
+      "znizka_procent": 12,
+      "gratis": "",
+      "dni": [
+        "sat",
+        "sun"
+      ],
+      "godziny_od": "09:00",
+      "godziny_do": "12:00",
+      "min_grupa": 5,
+      "wylaczenia": "Wypożyczenie butów i uprzęży",
+      "realizacja": "code",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Wieczorami w tygodniu jest tłok, a w soboty i niedziele rano mamy pustki, do dwunastej przychodzi garstka ludzi.",
+      "rezultat": "",
+      "ograniczenia": "Wypożyczenie butów i uprzęży nie wchodzi w zniżkę.",
+      "decydent": "Ostatnie słowo ma wspólnik, Adam Lewandowski, ja mogę tylko polecić.",
+      "termin_decyzji": "Pogadam z nim i dam znać do końca tygodnia.",
+      "wczesniejsze_proby": "Wcześniej robiliśmy karnety poranne, ale sprzedało się kilka sztuk.",
+      "nastepny_krok": "Pogadam z nim i dam znać do końca tygodnia.",
+      "znizka": "Dla grup mogę zejść 12 procent z ceny wejściówki, w soboty i niedziele od 9 do 12.",
+      "kiedy": "Dla grup mogę zejść 12 procent z ceny wejściówki, w soboty i niedziele od 9 do 12.",
+      "grupa": "Grupa od pięciu osób, bo wtedy opłaca nam się instruktor.",
+      "wylaczenia": "Wypożyczenie butów i uprzęży nie wchodzi w zniżkę.",
+      "realizacja": "Najlepiej, żeby recepcja wpisywała kod w systemie, mamy do tego pole na rabaty.",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Brak etykiet mówców. Weekendowe poranki jako pora poza szczytem, wyłączenia, kod w kasie, decydent spoza karty, „do końca tygodnia” w środę 7.10 = piątek 9.10."
+}

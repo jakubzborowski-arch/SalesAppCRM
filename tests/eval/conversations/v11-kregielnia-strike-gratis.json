@@ -1,0 +1,117 @@
+{
+  "id": "v11-kregielnia-strike-gratis",
+  "title": "Kręgielnia Strike — godzina gratis zamiast procentów, zgoda właściciela",
+  "segment": "venue",
+  "callDate": "2026-10-12",
+  "partner": {
+    "name": "Kręgielnia Strike",
+    "city": "Bydgoszcz",
+    "category": "kręgielnia",
+    "contacts": [
+      {
+        "name": "Patrycja Malinowska",
+        "role": "kierowniczka"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Spinach AI — Meeting notes\nSpotkanie: Lutra x Kręgielnia Strike\nData: 12 października 2026\nUczestnicy: Kuba Zborowski, Patrycja Malinowska\n\nKuba Zborowski: Dzień dobry, pani Patrycjo, jak wygląda obłożenie torów?\nPatrycja Malinowska: Od poniedziałku do środy między 13 a 17 tory stoją wolne, czasem gra jedna rodzina.\nPatrycja Malinowska: Wieczorami i w weekendy rezerwacje są na tydzień do przodu.\nKuba Zborowski: Czy dałaby pani grupom z Lutry zniżkę procentową w tych godzinach?\nPatrycja Malinowska: Procentów nie mogę dać, mamy cennik narzucony przez franczyzę.\nPatrycja Malinowska: Mogę za to dać trzecią godzinę gry gratis przy rezerwacji dwóch godzin.\nKuba Zborowski: To świetna opcja. Od ilu osób?\nPatrycja Malinowska: Od 6 osób, czyli minimum jeden pełny tor.\nPatrycja Malinowska: Obsługa przy kasie zeskanuje kod QR z aplikacji, tak będzie najszybciej.\nPatrycja Malinowska: Muszę to jeszcze przedstawić właścicielowi, sama nie mogę podpisać.\nKuba Zborowski: Rozumiem. Mogę przygotować jednostronicowe podsumowanie, które pani mu pokaże.\nPatrycja Malinowska: To mi pomoże, z kartką na pewno pójdzie szybciej.\nPatrycja Malinowska: Odpowiedź dam panu do 23 października.\nKuba Zborowski: Podsumowanie wyślę jutro rano.",
+  "gold": {
+    "cytat": "Od poniedziałku do środy między 13 a 17 tory stoją wolne, czasem gra jedna rodzina.",
+    "problem": "Od poniedziałku do środy między 13 a 17 tory stoją wolne.",
+    "kategoria": "off_peak",
+    "priorytet": 3,
+    "rezultat": "",
+    "ograniczenia": [
+      "Pon–śr 13–17",
+      "Od 6 osób",
+      "Bez zniżek procentowych"
+    ],
+    "decydent": "",
+    "rola_decydenta": "właściciel",
+    "termin_decyzji": "do 23 października",
+    "termin_decyzji_data": "2026-10-23",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba wysyła jutro rano jednostronicowe podsumowanie dla właściciela.",
+    "data_nastepnego_kroku": "2026-10-13",
+    "potrzeby": [
+      {
+        "tytul": "Rezerwacje torów od poniedziałku do środy po południu",
+        "kategoria": "off_peak",
+        "priorytet": 3,
+        "cytat": "Od poniedziałku do środy między 13 a 17 tory stoją wolne, czasem gra jedna rodzina.",
+        "rezultat": "",
+        "ograniczenia": "Od 6 osób"
+      }
+    ],
+    "wnioski": [
+      "Od poniedziałku do środy 13–17 tory stoją wolne.",
+      "Bez rabatu procentowego (cennik franczyzy) — trzecia godzina gry gratis przy rezerwacji dwóch, od 6 osób, kod QR.",
+      "Kierowniczka przedstawi propozycję właścicielowi; odpowiedź do 23 października."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "Trzecia godzina gry gratis przy rezerwacji dwóch godzin",
+      "dni": [
+        "mon",
+        "tue",
+        "wed"
+      ],
+      "godziny_od": "13:00",
+      "godziny_do": "17:00",
+      "min_grupa": 6,
+      "wylaczenia": "",
+      "realizacja": "qr",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "ask_owner",
+        "argument_zadzialal": true,
+        "cytat": "Muszę to jeszcze przedstawić właścicielowi, sama nie mogę podpisać."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Od poniedziałku do środy między 13 a 17 tory stoją wolne, czasem gra jedna rodzina.",
+      "rezultat": "",
+      "ograniczenia": "Procentów nie mogę dać, mamy cennik narzucony przez franczyzę.",
+      "decydent": "Muszę to jeszcze przedstawić właścicielowi, sama nie mogę podpisać.",
+      "termin_decyzji": "Odpowiedź dam panu do 23 października.",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "To mi pomoże, z kartką na pewno pójdzie szybciej.",
+      "znizka": "Mogę za to dać trzecią godzinę gry gratis przy rezerwacji dwóch godzin.",
+      "kiedy": "Od poniedziałku do środy między 13 a 17 tory stoją wolne, czasem gra jedna rodzina.",
+      "grupa": "Od 6 osób, czyli minimum jeden pełny tor.",
+      "wylaczenia": "",
+      "realizacja": "Obsługa przy kasie zeskanuje kod QR z aplikacji, tak będzie najszybciej.",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Gratis zamiast procentów (franczyza), decydent tylko z roli (właściciel, bez imienia — brak wiersza decydenta), ask_owner z argumentem, który zadziałał (podsumowanie na kartce). Nagłówek Spinach w wersji „Meeting notes”."
+}

@@ -1,0 +1,112 @@
+{
+  "id": "v06-bistro-kasek-telefon-mail",
+  "title": "Bistro Kąsek — telefon i e-mail w rozmowie (nie mogą trafić do wyniku)",
+  "segment": "venue",
+  "callDate": "2026-10-22",
+  "partner": {
+    "name": "Bistro Kąsek",
+    "city": "Gdańsk",
+    "category": "bistro",
+    "contacts": [
+      {
+        "name": "Natalia Kaczmarek",
+        "role": "właścicielka"
+      },
+      {
+        "name": "Bartek Nowicki",
+        "role": "szef kuchni"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba Zborowski: Dzień dobry, pani Natalio. Dzwonię, jak się umawialiśmy.\nNatalia Kaczmarek: Dzień dobry. Mam dziesięć minut, potem zaczyna się obiad.\nKuba Zborowski: To krótko, jak wyglądają wieczory w tygodniu?\nNatalia Kaczmarek: Po dwudziestej w poniedziałki i wtorki kuchnia praktycznie stoi.\nNatalia Kaczmarek: Mogę dać 20 procent na całe menu w poniedziałki i wtorki od 19 do 22.\nKuba Zborowski: Super. Jak realizujemy? Mamy kod QR albo kod do wpisania w kasie.\nNatalia Kaczmarek: Kod numeryczny, nasz system kasowy nie czyta QR.\nNatalia Kaczmarek: Porozumienie proszę wysłać mailem, podpiszę je elektronicznie.\nNatalia Kaczmarek: Adres to natalia.kaczmarek@kasek-bistro.pl, tam wszystko czytam.\nNatalia Kaczmarek: Gdyby coś się działo w trakcie wieczoru, dzwońcie do Bartka Nowickiego, to nasz szef kuchni, numer 601 234 567.\nKuba Zborowski: Zapisane. A firma?\nNatalia Kaczmarek: Kąsek Natalia Kaczmarek, NIP podam w mailu.\nNatalia Kaczmarek: Otwarte mamy od wtorku do niedzieli od 12 do 22, w poniedziałki od 16.\nKuba Zborowski: Dziękuję, porozumienie wyślę dziś po południu.",
+  "gold": {
+    "cytat": "Po dwudziestej w poniedziałki i wtorki kuchnia praktycznie stoi.",
+    "problem": "W poniedziałki i wtorki po 20 kuchnia praktycznie stoi.",
+    "kategoria": "off_peak",
+    "priorytet": 3,
+    "rezultat": "",
+    "ograniczenia": [
+      "Pon–wt 19–22"
+    ],
+    "decydent": "Natalia Kaczmarek",
+    "rola_decydenta": "właścicielka",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba wysyła dziś po południu porozumienie mailem do podpisu elektronicznego.",
+    "data_nastepnego_kroku": "2026-10-22",
+    "potrzeby": [
+      {
+        "tytul": "Goście w poniedziałki i wtorki wieczorem",
+        "kategoria": "off_peak",
+        "priorytet": 3,
+        "cytat": "Po dwudziestej w poniedziałki i wtorki kuchnia praktycznie stoi.",
+        "rezultat": "",
+        "ograniczenia": "Pon–wt 19–22"
+      }
+    ],
+    "wnioski": [
+      "W poniedziałki i wtorki po 20 kuchnia praktycznie stoi.",
+      "Zniżka 20% na całe menu, pon–wt 19–22, realizacja kodem numerycznym.",
+      "Porozumienie mailem do podpisu elektronicznego; kontakt w trakcie wieczoru — szef kuchni Bartek Nowicki."
+    ],
+    "warunki": {
+      "znizka_procent": 20,
+      "gratis": "",
+      "dni": [
+        "mon",
+        "tue"
+      ],
+      "godziny_od": "19:00",
+      "godziny_do": "22:00",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "code",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [],
+    "umowa": {
+      "nazwa_firmy": "Kąsek Natalia Kaczmarek",
+      "kontakt_awaryjny": "Bartek Nowicki",
+      "godziny_otwarcia": "Wt–nd 12–22, w poniedziałki od 16",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Po dwudziestej w poniedziałki i wtorki kuchnia praktycznie stoi.",
+      "rezultat": "",
+      "ograniczenia": "Mogę dać 20 procent na całe menu w poniedziałki i wtorki od 19 do 22.",
+      "decydent": "Porozumienie proszę wysłać mailem, podpiszę je elektronicznie.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Porozumienie proszę wysłać mailem, podpiszę je elektronicznie.",
+      "znizka": "Mogę dać 20 procent na całe menu w poniedziałki i wtorki od 19 do 22.",
+      "kiedy": "Mogę dać 20 procent na całe menu w poniedziałki i wtorki od 19 do 22.",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "Kod numeryczny, nasz system kasowy nie czyta QR.",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "Kąsek Natalia Kaczmarek, NIP podam w mailu.",
+      "kontakt_awaryjny": "Gdyby coś się działo w trakcie wieczoru, dzwońcie do Bartka Nowickiego, to nasz szef kuchni",
+      "godziny_otwarcia": "Otwarte mamy od wtorku do niedzieli od 12 do 22, w poniedziałki od 16.",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "W rozmowie pada e-mail i numer telefonu — nie mogą się pojawić w żadnym polu ani dowodzie (CRM i tak redaguje je przed wysyłką). Kontakt awaryjny tylko imię i nazwisko; dowód ucięty przed numerem."
+}

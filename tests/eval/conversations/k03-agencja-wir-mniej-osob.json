@@ -1,0 +1,110 @@
+{
+  "id": "k03-agencja-wir-mniej-osob",
+  "title": "Agencja Wir — handlowiec 30 osób, partnerka 20",
+  "segment": "company",
+  "callDate": "2026-10-20",
+  "partner": {
+    "name": "Agencja Kreatywna Wir",
+    "city": "Warszawa",
+    "category": "agencja marketingowa",
+    "contacts": [
+      {
+        "name": "Dominika Jabłońska",
+        "role": "HR managerka"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba Zborowski: Dzień dobry, pani Dominiko. Myślałem o pilotażu dla całej firmy, około 30 osób.\nDominika Jabłońska: Trzydzieści to za dużo na start, część ludzi jest na projektach u klientów.\nDominika Jabłońska: Zacznijmy od 20 osób z biura na Mokotowie.\nDominika Jabłońska: Mamy już Multisport i aplikację do integracji, ludzie mają dość kolejnych narzędzi.\nKuba Zborowski: My nie dokładamy obowiązków, wyjścia umawiają się same w gronie znajomych z pracy, bez zapisów w HR.\nDominika Jabłońska: Okej, jeśli to nie będzie na mojej głowie, to ma sens.\nDominika Jabłońska: Ludzie po projektach siedzą w słuchawkach i nie rozmawiają ze sobą, to jest nasz główny problem.\nDominika Jabłońska: Feedback zróbmy 17 listopada, po czterech tygodniach.\nDominika Jabłońska: Decyzję o wdrożeniu podejmuje zarząd, ale bierze pod uwagę moją rekomendację.\nKuba Zborowski: Rozumiem, w czwartek przyślę materiały dla zespołu.\nDominika Jabłońska: Dobrze, roześlę je w piątek.",
+  "gold": {
+    "cytat": "Ludzie po projektach siedzą w słuchawkach i nie rozmawiają ze sobą, to jest nasz główny problem.",
+    "problem": "Po projektach ludzie siedzą w słuchawkach i nie rozmawiają ze sobą.",
+    "kategoria": "integration",
+    "priorytet": 4,
+    "rezultat": "",
+    "ograniczenia": [],
+    "decydent": "",
+    "rola_decydenta": "zarząd",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "Multisport i aplikacja do integracji — ludzie mają dość kolejnych narzędzi.",
+    "nastepny_krok": "Kuba przysyła w czwartek materiały dla zespołu, Dominika rozsyła je w piątek.",
+    "data_nastepnego_kroku": "2026-10-22",
+    "potrzeby": [
+      {
+        "tytul": "Rozmowy w zespole po projektach",
+        "kategoria": "integration",
+        "priorytet": 4,
+        "cytat": "Ludzie po projektach siedzą w słuchawkach i nie rozmawiają ze sobą, to jest nasz główny problem.",
+        "rezultat": "",
+        "ograniczenia": ""
+      }
+    ],
+    "wnioski": [
+      "Po projektach ludzie siedzą w słuchawkach i nie rozmawiają ze sobą.",
+      "Handlowiec proponował 30 osób, partnerka zaczyna od 20 osób z biura na Mokotowie.",
+      "Mają Multisport i aplikację do integracji; przekonało ją, że to nie będzie na jej głowie.",
+      "Feedback 17 listopada; decyzję o wdrożeniu podejmuje zarząd."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "Biuro na Mokotowie",
+      "pilotaz_osoby": 20,
+      "pilotaz_feedback": "2026-11-17",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "other_apps",
+        "argument_zadzialal": true,
+        "cytat": "Mamy już Multisport i aplikację do integracji, ludzie mają dość kolejnych narzędzi."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Ludzie po projektach siedzą w słuchawkach i nie rozmawiają ze sobą, to jest nasz główny problem.",
+      "rezultat": "",
+      "ograniczenia": "",
+      "decydent": "Decyzję o wdrożeniu podejmuje zarząd, ale bierze pod uwagę moją rekomendację.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "Mamy już Multisport i aplikację do integracji, ludzie mają dość kolejnych narzędzi.",
+      "nastepny_krok": "Dobrze, roześlę je w piątek.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "Zacznijmy od 20 osób z biura na Mokotowie.",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Handlowiec proponuje 30 osób, partnerka ustala 20 — liczba partnerki wygrywa. Obiekcja other_apps (Multisport) — zadziałało. Decydent = zarząd bez imienia."
+}

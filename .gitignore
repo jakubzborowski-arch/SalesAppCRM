@@ -43,3 +43,6 @@ supabase/.temp/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ocena AI (raporty z npm run eval:ai)
+/tests/eval/out/

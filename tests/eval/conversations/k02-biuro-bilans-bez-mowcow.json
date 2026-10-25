@@ -1,0 +1,109 @@
+{
+  "id": "k02-biuro-bilans-bez-mowcow",
+  "title": "Biuro Rachunkowe Bilans — bez etykiet mówców, pilotaż działu kadr",
+  "segment": "company",
+  "callDate": "2026-10-05",
+  "partner": {
+    "name": "Biuro Rachunkowe Bilans",
+    "city": "Poznań",
+    "category": "biuro rachunkowe",
+    "contacts": [
+      {
+        "name": "Monika Szulc",
+        "role": "kierowniczka biura"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": false,
+  "transcript": "Dzień dobry, Kuba Zborowski z Lutry, rozmawialiśmy na targach HR.\nDzień dobry, tak, Monika Szulc, kieruję biurem.\nMamy w biurze problem, który pan pewnie zna z innych firm, po rozliczeniach rocznych ludzie są wypaleni i nikt nie ma siły na integrację.\nW dziale kadr i płac rotacja w tym roku była bardzo wysoka, odeszły trzy osoby.\nRozumiem. Lutra umawia małe wyjścia po pracy, bez wielkiej organizacji.\nSzczerze, nie mam czasu organizować kolejnych wyjść, sama siedzę w deklaracjach.\nOrganizację bierzemy na siebie, pani tylko akceptuje termin.\nW takim razie wchodzę w to.\nNa pilotaż weźmy dział kadr i płac, to osiem osób.\nFeedback zróbmy 30 listopada, wtedy mamy spokojniejszy tydzień.\nDecyzję podejmuję ja, wspólnik zostawia mi sprawy zespołu.\nJutro wyślę pani propozycję pierwszego wyjścia.\nDobrze, będę czekać na maila.",
+  "gold": {
+    "cytat": "Mamy w biurze problem, który pan pewnie zna z innych firm, po rozliczeniach rocznych ludzie są wypaleni i nikt nie ma siły na integrację.",
+    "problem": "Po rozliczeniach rocznych ludzie są wypaleni, a w dziale kadr i płac była wysoka rotacja.",
+    "kategoria": "wellbeing",
+    "priorytet": 4,
+    "rezultat": "",
+    "ograniczenia": [],
+    "decydent": "Monika Szulc",
+    "rola_decydenta": "kierowniczka biura",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba wysyła jutro propozycję pierwszego wyjścia.",
+    "data_nastepnego_kroku": "2026-10-06",
+    "potrzeby": [
+      {
+        "tytul": "Odciążenie wypalonego zespołu po rozliczeniach",
+        "kategoria": "wellbeing",
+        "priorytet": 4,
+        "cytat": "Mamy w biurze problem, który pan pewnie zna z innych firm, po rozliczeniach rocznych ludzie są wypaleni i nikt nie ma siły na integrację.",
+        "rezultat": "",
+        "ograniczenia": ""
+      }
+    ],
+    "wnioski": [
+      "Po rozliczeniach rocznych zespół jest wypalony; wysoka rotacja w dziale kadr i płac.",
+      "Kierowniczka nie ma czasu na organizację — przekonało ją, że Lutra organizuje.",
+      "Pilotaż: dział kadr i płac, 8 osób, feedback 30 listopada."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "Dział kadr i płac",
+      "pilotaz_osoby": 8,
+      "pilotaz_feedback": "2026-11-30",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "no_time",
+        "argument_zadzialal": true,
+        "cytat": "Szczerze, nie mam czasu organizować kolejnych wyjść, sama siedzę w deklaracjach."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Mamy w biurze problem, który pan pewnie zna z innych firm, po rozliczeniach rocznych ludzie są wypaleni i nikt nie ma siły na integrację.",
+      "rezultat": "",
+      "ograniczenia": "",
+      "decydent": "Decyzję podejmuję ja, wspólnik zostawia mi sprawy zespołu.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Dobrze, będę czekać na maila.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "Na pilotaż weźmy dział kadr i płac, to osiem osób.",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Firma, transkrypt bez etykiet mówców (CRM odznacza pilotaż: SPEAKERS_UNKNOWN). Obiekcja no_time — zadziałało. Liczba osób słownie (osiem)."
+}

@@ -1,0 +1,118 @@
+{
+  "id": "v05-pod-lipa-daty-wzgledne",
+  "title": "Kawiarnia Pod Lipą — daty względne i decyzja szefa",
+  "segment": "venue",
+  "callDate": "2026-10-19",
+  "partner": {
+    "name": "Kawiarnia Pod Lipą",
+    "city": "Lublin",
+    "category": "kawiarnia",
+    "contacts": [
+      {
+        "name": "Ewelina Duda",
+        "role": "kierowniczka"
+      },
+      {
+        "name": "Grzegorz Duda",
+        "role": "właściciel"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba Zborowski: Dzień dobry, pani Ewelino, jak wygląda u was popołudnie w tygodniu?\nEwelina Duda: Po lunchu, mniej więcej od 15 do 18, jest u nas cicho, szczególnie w środy.\nKuba Zborowski: Moglibyśmy kierować do was grupy właśnie na te godziny.\nEwelina Duda: Brzmi dobrze, ja bym dała 10 procent na kawę i ciasto w środy od 15 do 18.\nEwelina Duda: Ale ostateczną decyzję podejmuje szef, pan Grzegorz Duda, muszę go zapytać.\nKuba Zborowski: Rozumiem. Kiedy mógłbym się odezwać?\nEwelina Duda: Szef wraca w środę, porozmawiam z nim i dam panu znać w czwartek.\nEwelina Duda: Decyzja na pewno zapadnie do końca miesiąca, bo potem robimy grafik na listopad.\nKuba Zborowski: Dobrze, to w czwartek zadzwonię, jeśli się nie odezwę wcześniej.\nEwelina Duda: Jasne, w czwartek po dwunastej będę na miejscu.",
+  "gold": {
+    "cytat": "Po lunchu, mniej więcej od 15 do 18, jest u nas cicho, szczególnie w środy.",
+    "problem": "Po lunchu od 15 do 18 jest cicho, szczególnie w środy.",
+    "kategoria": "off_peak",
+    "priorytet": 3,
+    "rezultat": "",
+    "ograniczenia": [
+      "Środy 15–18",
+      "Zniżka tylko na kawę i ciasto"
+    ],
+    "decydent": "Grzegorz Duda",
+    "rola_decydenta": "właściciel",
+    "termin_decyzji": "do końca miesiąca",
+    "termin_decyzji_data": "2026-10-31",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Ewelina Duda rozmawia z szefem i daje znać w czwartek; jeśli nie, Kuba dzwoni w czwartek.",
+    "data_nastepnego_kroku": "2026-10-22",
+    "potrzeby": [
+      {
+        "tytul": "Ruch w środy po lunchu",
+        "kategoria": "off_peak",
+        "priorytet": 3,
+        "cytat": "Po lunchu, mniej więcej od 15 do 18, jest u nas cicho, szczególnie w środy.",
+        "rezultat": "",
+        "ograniczenia": "Środy 15–18"
+      }
+    ],
+    "wnioski": [
+      "Od 15 do 18 jest cicho, szczególnie w środy.",
+      "Kierowniczka proponuje 10% na kawę i ciasto w środy 15–18.",
+      "Decyduje szef Grzegorz Duda — odpowiedź w czwartek, decyzja do końca miesiąca."
+    ],
+    "warunki": {
+      "znizka_procent": 10,
+      "gratis": "",
+      "dni": [
+        "wed"
+      ],
+      "godziny_od": "15:00",
+      "godziny_do": "18:00",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "ask_owner",
+        "argument_zadzialal": false,
+        "cytat": "Ale ostateczną decyzję podejmuje szef, pan Grzegorz Duda, muszę go zapytać."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Po lunchu, mniej więcej od 15 do 18, jest u nas cicho, szczególnie w środy.",
+      "rezultat": "",
+      "ograniczenia": "Brzmi dobrze, ja bym dała 10 procent na kawę i ciasto w środy od 15 do 18.",
+      "decydent": "Ale ostateczną decyzję podejmuje szef, pan Grzegorz Duda, muszę go zapytać.",
+      "termin_decyzji": "Decyzja na pewno zapadnie do końca miesiąca, bo potem robimy grafik na listopad.",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Szef wraca w środę, porozmawiam z nim i dam panu znać w czwartek.",
+      "znizka": "Brzmi dobrze, ja bym dała 10 procent na kawę i ciasto w środy od 15 do 18.",
+      "kiedy": "Brzmi dobrze, ja bym dała 10 procent na kawę i ciasto w środy od 15 do 18.",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Daty względne od poniedziałku 19.10: „w czwartek” = 22.10, „do końca miesiąca” = 31.10. Zniżkę zaproponowała sama partnerka (wpisujemy), decydent nieobecny (z karty), obiekcja ask_owner bez argumentu."
+}

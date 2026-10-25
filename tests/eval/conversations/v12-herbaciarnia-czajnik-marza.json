@@ -1,0 +1,116 @@
+{
+  "id": "v12-herbaciarnia-czajnik-marza",
+  "title": "Herbaciarnia Czajnik — handlowiec 15%, partnerka 8%, tylko posty",
+  "segment": "venue",
+  "callDate": "2026-10-08",
+  "partner": {
+    "name": "Herbaciarnia Czajnik",
+    "city": "Opole",
+    "category": "herbaciarnia",
+    "contacts": [
+      {
+        "name": "Lena Mróz",
+        "role": "właścicielka"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba: Dzień dobry, pani Leno, dziękuję, że znalazła pani chwilę.\nLena Mróz: Dzień dobry, proszę bardzo, tylko krótko, bo jestem sama na zmianie.\nKuba: Jak wyglądają u pani popołudnia?\nLena Mróz: Od otwarcia do szesnastej to są pojedyncze osoby z laptopami, siedzą godzinę przy jednym dzbanku.\nLena Mróz: Wolałabym większe grupy, które zamówią coś więcej niż herbatę.\nKuba: Moglibyśmy przyprowadzać grupy we wtorki i czwartki, czy dałaby pani 15 procent?\nLena Mróz: Przy moich marżach 15 procent to dużo, herbata jest droga w zakupie.\nKuba: Grupa zwykle zamawia też ciasta i przekąski, więc rachunek jest wyższy.\nLena Mróz: Wiem, ale i tak nie zejdę niżej niż do 8 procent zniżki.\nKuba: Czyli 8 procent?\nLena Mróz: Tak, 8 procent we wtorki i czwartki od 12 do 16, i nie łączy się z kartą stałego klienta.\nLena Mróz: Kod niech kelnerka wpisuje w kasie, z QR nie umiemy.\nLena Mróz: Posty na waszym Instagramie mogą być, ale bez zdjęć z wnętrza, bo jesteśmy w trakcie remontu.\nKuba: Rozumiem. Prześlę porozumienie w poniedziałek.\nLena Mróz: Dobrze, przeczytam.",
+  "gold": {
+    "cytat": "Od otwarcia do szesnastej to są pojedyncze osoby z laptopami, siedzą godzinę przy jednym dzbanku.",
+    "problem": "Do 16 przychodzą pojedyncze osoby z laptopami, które długo siedzą przy jednym dzbanku.",
+    "kategoria": "margin",
+    "priorytet": 3,
+    "rezultat": "Większe grupy, które zamówią coś więcej niż herbatę.",
+    "ograniczenia": [
+      "Wt i czw 12–16",
+      "Nie łączy się z kartą stałego klienta"
+    ],
+    "decydent": "",
+    "rola_decydenta": "",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba przesyła porozumienie w poniedziałek.",
+    "data_nastepnego_kroku": "2026-10-12",
+    "potrzeby": [
+      {
+        "tytul": "Większe zamówienia od grup",
+        "kategoria": "margin",
+        "priorytet": 3,
+        "cytat": "Wolałabym większe grupy, które zamówią coś więcej niż herbatę.",
+        "rezultat": "Wyższy rachunek grupy",
+        "ograniczenia": "Wt i czw 12–16"
+      }
+    ],
+    "wnioski": [
+      "Do 16 przychodzą pojedyncze osoby z laptopami.",
+      "Handlowiec proponował 15%, partnerka zgodziła się na 8% (marże).",
+      "8% we wtorki i czwartki 12–16, bez łączenia z kartą stałego klienta, kod w kasie.",
+      "Zgoda na posty, bez zdjęć z wnętrza (remont)."
+    ],
+    "warunki": {
+      "znizka_procent": 8,
+      "gratis": "",
+      "dni": [
+        "tue",
+        "thu"
+      ],
+      "godziny_od": "12:00",
+      "godziny_do": "16:00",
+      "min_grupa": 0,
+      "wylaczenia": "Nie łączy się z kartą stałego klienta",
+      "realizacja": "code",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "margin",
+        "argument_zadzialal": false,
+        "cytat": "Przy moich marżach 15 procent to dużo, herbata jest droga w zakupie."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": true
+    },
+    "dowody": {
+      "problem": "Od otwarcia do szesnastej to są pojedyncze osoby z laptopami, siedzą godzinę przy jednym dzbanku.",
+      "rezultat": "Wolałabym większe grupy, które zamówią coś więcej niż herbatę.",
+      "ograniczenia": "Tak, 8 procent we wtorki i czwartki od 12 do 16, i nie łączy się z kartą stałego klienta.",
+      "decydent": "",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Dobrze, przeczytam.",
+      "znizka": "Tak, 8 procent we wtorki i czwartki od 12 do 16, i nie łączy się z kartą stałego klienta.",
+      "kiedy": "Tak, 8 procent we wtorki i czwartki od 12 do 16, i nie łączy się z kartą stałego klienta.",
+      "grupa": "",
+      "wylaczenia": "Tak, 8 procent we wtorki i czwartki od 12 do 16, i nie łączy się z kartą stałego klienta.",
+      "realizacja": "Kod niech kelnerka wpisuje w kasie, z QR nie umiemy.",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": "Posty na waszym Instagramie mogą być, ale bez zdjęć z wnętrza, bo jesteśmy w trakcie remontu."
+    }
+  },
+  "notes": "Handlowiec proponuje 15%, partnerka zostaje przy 8% — obiekcja margin bez argumentu, który zadziałał. Handlowiec podpisany tylko „Kuba:”. Zgoda tylko na posty (zdjęcia — odmowa)."
+}

@@ -1,0 +1,112 @@
+{
+  "id": "c02-planszowkowe-czwartki-co-dwa-tygodnie",
+  "title": "Planszówkowe Czwartki — co dwa tygodnie, „w przyszły czwartek”",
+  "segment": "community",
+  "callDate": "2026-10-21",
+  "partner": {
+    "name": "Planszówkowe Czwartki",
+    "city": "Łódź",
+    "category": "grupa planszówkowa",
+    "contacts": [
+      {
+        "name": "Filip Krawczyk",
+        "role": "organizator"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba: Hej Filip, dzięki za telefon. Ile osób przychodzi na wasze spotkania?\nFilip Krawczyk: Zwykle kilkanaście, ale zapisy prowadzę w arkuszu i co tydzień ktoś nie przychodzi bez uprzedzenia.\nFilip Krawczyk: Lokale robią się nerwowe, jak rezerwujemy stół na dwanaście osób, a przychodzi sześć.\nKuba: Lutra ma potwierdzenia obecności i przypomnienia, więc widać, kto naprawdę przyjdzie.\nFilip Krawczyk: Brzmi fajnie, ale nie mam czasu ogarniać kolejnego narzędzia, robię to po pracy.\nKuba: Ty tylko tworzysz wydarzenie, resztę zapisów i przypomnień robi aplikacja.\nFilip Krawczyk: Jak to tylko jedno kliknięcie, to wchodzę.\nFilip Krawczyk: Spróbujmy cztery spotkania co dwa tygodnie, w czwartki wieczorem.\nFilip Krawczyk: Pierwsze w przyszły czwartek, tak jak zwykle o osiemnastej.\nFilip Krawczyk: Jeśli na każdym spotkaniu przyjdzie co najmniej dziesięć potwierdzonych osób, to zostajemy na dłużej.\nKuba: Super, jutro podeślę ci link do założenia grupy.\nFilip Krawczyk: Okej, czekam na link.",
+  "gold": {
+    "cytat": "Lokale robią się nerwowe, jak rezerwujemy stół na dwanaście osób, a przychodzi sześć.",
+    "problem": "Zapisani nie przychodzą bez uprzedzenia, a lokale denerwują się pustymi miejscami przy rezerwacji.",
+    "kategoria": "attendance",
+    "priorytet": 4,
+    "rezultat": "Co najmniej dziesięć potwierdzonych osób na każdym spotkaniu.",
+    "ograniczenia": [
+      "Czwartki wieczorem"
+    ],
+    "decydent": "Filip Krawczyk",
+    "rola_decydenta": "organizator",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "Zapisy w arkuszu — co tydzień ktoś nie przychodzi bez uprzedzenia.",
+    "nastepny_krok": "Kuba wysyła jutro link do założenia grupy.",
+    "data_nastepnego_kroku": "2026-10-22",
+    "potrzeby": [
+      {
+        "tytul": "Potwierdzone zapisy na spotkania",
+        "kategoria": "attendance",
+        "priorytet": 4,
+        "cytat": "Lokale robią się nerwowe, jak rezerwujemy stół na dwanaście osób, a przychodzi sześć.",
+        "rezultat": "10 potwierdzonych osób na spotkaniu",
+        "ograniczenia": "Czwartki wieczorem"
+      }
+    ],
+    "wnioski": [
+      "Zapisy w arkuszu, część osób nie przychodzi bez uprzedzenia — lokale są niezadowolone.",
+      "Organizator nie ma czasu na kolejne narzędzie; przekonało go, że to jedno kliknięcie.",
+      "Cykl 4 spotkań co dwa tygodnie w czwartki, start w przyszły czwartek (29.10).",
+      "Cel: co najmniej 10 potwierdzonych osób na spotkaniu."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 4,
+      "cykl_czestotliwosc": "biweekly",
+      "cykl_pierwsze": "2026-10-29",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "no_time",
+        "argument_zadzialal": true,
+        "cytat": "Brzmi fajnie, ale nie mam czasu ogarniać kolejnego narzędzia, robię to po pracy."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Lokale robią się nerwowe, jak rezerwujemy stół na dwanaście osób, a przychodzi sześć.",
+      "rezultat": "Jeśli na każdym spotkaniu przyjdzie co najmniej dziesięć potwierdzonych osób, to zostajemy na dłużej.",
+      "ograniczenia": "Spróbujmy cztery spotkania co dwa tygodnie, w czwartki wieczorem.",
+      "decydent": "Jak to tylko jedno kliknięcie, to wchodzę.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "Zwykle kilkanaście, ale zapisy prowadzę w arkuszu i co tydzień ktoś nie przychodzi bez uprzedzenia.",
+      "nastepny_krok": "Okej, czekam na link.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "Spróbujmy cztery spotkania co dwa tygodnie, w czwartki wieczorem.",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Cykl co dwa tygodnie (biweekly), pierwsze „w przyszły czwartek” liczone od środy 21.10 = 29.10. Obiekcja no_time z argumentem, który zadziałał. Handlowiec jako „Kuba:”."
+}

@@ -1,0 +1,111 @@
+{
+  "id": "c04-stowarzyszenie-zakladka-zarzad",
+  "title": "Stowarzyszenie Zakładka — częściowo: co miesiąc, reszta czeka na zarząd",
+  "segment": "community",
+  "callDate": "2026-10-22",
+  "partner": {
+    "name": "Stowarzyszenie Czytelnicze Zakładka",
+    "city": "Białystok",
+    "category": "klub książki",
+    "contacts": [
+      {
+        "name": "Halina Wójcik",
+        "role": "wiceprezeska"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba Zborowski: Dzień dobry, pani Halino, dzięki za rozmowę.\nHalina Wójcik: Dzień dobry. Od razu powiem, że jestem tu w imieniu zarządu, sama niczego nie podpiszę.\nKuba Zborowski: Jasne. Jak wyglądają wasze spotkania?\nHalina Wójcik: Klub książki spotyka się raz w miesiącu w bibliotece, ale biblioteka od stycznia skraca godziny.\nHalina Wójcik: Szukamy miejsca na spotkania raz w miesiącu, najlepiej kawiarni, gdzie można posiedzieć dwie godziny.\nKuba Zborowski: Możemy zaproponować kilka lokali i ogarnąć rezerwacje. Ile spotkań chcielibyście na początek?\nHalina Wójcik: Tego nie wiem, to ustali zarząd.\nHalina Wójcik: Muszę to przedstawić zarządowi, a zarząd zbiera się 15 listopada.\nKuba Zborowski: Rozumiem. Mogę przygotować krótki opis dla zarządu?\nHalina Wójcik: Tak, proszę go przysłać przed posiedzeniem.",
+  "gold": {
+    "cytat": "Klub książki spotyka się raz w miesiącu w bibliotece, ale biblioteka od stycznia skraca godziny.",
+    "problem": "Biblioteka od stycznia skraca godziny, klub książki szuka nowego miejsca na comiesięczne spotkania.",
+    "kategoria": "operations",
+    "priorytet": 3,
+    "rezultat": "",
+    "ograniczenia": [
+      "Kawiarnia na dwie godziny"
+    ],
+    "decydent": "",
+    "rola_decydenta": "zarząd stowarzyszenia",
+    "termin_decyzji": "posiedzenie zarządu 15 listopada",
+    "termin_decyzji_data": "2026-11-15",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba przesyła krótki opis dla zarządu przed posiedzeniem.",
+    "data_nastepnego_kroku": "",
+    "potrzeby": [
+      {
+        "tytul": "Nowe miejsce na spotkania klubu książki",
+        "kategoria": "operations",
+        "priorytet": 3,
+        "cytat": "Szukamy miejsca na spotkania raz w miesiącu, najlepiej kawiarni, gdzie można posiedzieć dwie godziny.",
+        "rezultat": "",
+        "ograniczenia": "Kawiarnia na dwie godziny"
+      }
+    ],
+    "wnioski": [
+      "Biblioteka od stycznia skraca godziny — klub szuka miejsca na spotkania raz w miesiącu.",
+      "Liczbę spotkań i decyzję ustali zarząd na posiedzeniu 15 listopada.",
+      "Kuba prześle krótki opis dla zarządu przed posiedzeniem."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "monthly",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "ask_owner",
+        "argument_zadzialal": false,
+        "cytat": "Muszę to przedstawić zarządowi, a zarząd zbiera się 15 listopada."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Klub książki spotyka się raz w miesiącu w bibliotece, ale biblioteka od stycznia skraca godziny.",
+      "rezultat": "",
+      "ograniczenia": "Szukamy miejsca na spotkania raz w miesiącu, najlepiej kawiarni, gdzie można posiedzieć dwie godziny.",
+      "decydent": "Muszę to przedstawić zarządowi, a zarząd zbiera się 15 listopada.",
+      "termin_decyzji": "Muszę to przedstawić zarządowi, a zarząd zbiera się 15 listopada.",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Tak, proszę go przysłać przed posiedzeniem.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "Szukamy miejsca na spotkania raz w miesiącu, najlepiej kawiarni, gdzie można posiedzieć dwie godziny.",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Częściowe ustalenia: tylko częstotliwość (monthly), liczba spotkań i start nieznane (0 / \"\"). Decydent = zarząd (bez imienia), termin 15.11, następny krok bez konkretnego dnia (data pusta). ask_owner bez argumentu."
+}

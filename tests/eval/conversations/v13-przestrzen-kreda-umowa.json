@@ -1,0 +1,114 @@
+{
+  "id": "v13-przestrzen-kreda-umowa",
+  "title": "Przestrzeń Kreda — pół roku (umowa), zniżka słownie",
+  "segment": "venue",
+  "callDate": "2026-10-06",
+  "partner": {
+    "name": "Przestrzeń Kreda",
+    "city": "Szczecin",
+    "category": "sala warsztatowa",
+    "contacts": [
+      {
+        "name": "Oliwia Szymańska",
+        "role": "prezeska fundacji"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Jakub Zborowski (Lutra): Dzień dobry, pani Oliwio. Dziękuję za pokazanie przestrzeni.\nOliwia Szymańska (Kreda): Dzień dobry. Jak pan widział, mamy salę warsztatową z kuchnią, mieści 25 osób.\nJakub Zborowski (Lutra): Jak wygląda jej wykorzystanie?\nOliwia Szymańska (Kreda): Popołudniami i w weekendy prowadzimy własne zajęcia, ale w dni robocze do piętnastej sala jest wolna.\nOliwia Szymańska (Kreda): Wynajem w tych godzinach to dla fundacji ważny dochód, bez niego trudno nam utrzymać lokal.\nJakub Zborowski (Lutra): Nasze grupy szukają miejsc na warsztaty i spotkania w ciągu dnia.\nOliwia Szymańska (Kreda): Dla grup z Lutry mogę dać trzydzieści procent rabatu na wynajem sali, od poniedziałku do piątku, od 8 do 15.\nOliwia Szymańska (Kreda): Grupa od 8 osób, przy mniejszej nie opłaca się nam sprzątanie.\nOliwia Szymańska (Kreda): Rezerwacja mailowa z hasłem, które ustalimy, i to wystarczy.\nJakub Zborowski (Lutra): Na jak długo chciałaby pani współpracę?\nOliwia Szymańska (Kreda): Od razu na pół roku, od 1 listopada do końca kwietnia, krótsze okresy nas nie interesują.\nJakub Zborowski (Lutra): Przy takim okresie przygotujemy umowę, nie samo porozumienie mailowe.\nOliwia Szymańska (Kreda): Rozumiem. Umowy zatwierdza zarząd fundacji, zbieramy się 20 października.\nOliwia Szymańska (Kreda): Jako prezeska podpiszę umowę po posiedzeniu, jeśli zarząd nie będzie miał uwag.\nOliwia Szymańska (Kreda): Pełna nazwa to Fundacja Kreda.\nOliwia Szymańska (Kreda): Logo możecie umieścić w aplikacji, to dla nas dobra promocja.\nJakub Zborowski (Lutra): Świetnie, przygotuję projekt umowy i spotkajmy się w przyszły wtorek.\nOliwia Szymańska (Kreda): Pasuje, w przyszły wtorek o dziesiątej.",
+  "gold": {
+    "cytat": "Popołudniami i w weekendy prowadzimy własne zajęcia, ale w dni robocze do piętnastej sala jest wolna.",
+    "problem": "W dni robocze do 15 sala jest wolna, a wynajem to ważny dochód fundacji.",
+    "kategoria": "off_peak",
+    "priorytet": 4,
+    "rezultat": "",
+    "ograniczenia": [
+      "Pon–pt 8–15",
+      "Od 8 osób",
+      "Minimum pół roku"
+    ],
+    "decydent": "Oliwia Szymańska",
+    "rola_decydenta": "prezeska fundacji",
+    "termin_decyzji": "posiedzenie zarządu 20 października",
+    "termin_decyzji_data": "2026-10-20",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Spotkanie w przyszły wtorek o 10 — Kuba przynosi projekt umowy.",
+    "data_nastepnego_kroku": "2026-10-13",
+    "potrzeby": [
+      {
+        "tytul": "Wynajem sali w dni robocze do 15",
+        "kategoria": "off_peak",
+        "priorytet": 4,
+        "cytat": "Wynajem w tych godzinach to dla fundacji ważny dochód, bez niego trudno nam utrzymać lokal.",
+        "rezultat": "",
+        "ograniczenia": "Od 8 osób"
+      }
+    ],
+    "wnioski": [
+      "W dni robocze do 15 sala warsztatowa (25 osób, kuchnia) jest wolna; wynajem to ważny dochód fundacji.",
+      "Rabat 30% na wynajem, pon–pt 8–15, grupy od 8 osób, rezerwacja z hasłem.",
+      "Okres od 1 listopada do końca kwietnia — potrzebna umowa; zarząd zatwierdza 20 października.",
+      "Zgoda na logo w aplikacji."
+    ],
+    "warunki": {
+      "znizka_procent": 30,
+      "gratis": "",
+      "dni": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri"
+      ],
+      "godziny_od": "08:00",
+      "godziny_do": "15:00",
+      "min_grupa": 8,
+      "wylaczenia": "",
+      "realizacja": "password",
+      "miejsce_na_wydarzenia": "Sala warsztatowa z kuchnią na 25 osób",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "2026-11-01",
+      "okres_do": "2027-04-30"
+    },
+    "obiekcje": [],
+    "umowa": {
+      "nazwa_firmy": "Fundacja Kreda",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": true,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Popołudniami i w weekendy prowadzimy własne zajęcia, ale w dni robocze do piętnastej sala jest wolna.",
+      "rezultat": "",
+      "ograniczenia": "Grupa od 8 osób, przy mniejszej nie opłaca się nam sprzątanie.",
+      "decydent": "Jako prezeska podpiszę umowę po posiedzeniu, jeśli zarząd nie będzie miał uwag.",
+      "termin_decyzji": "Umowy zatwierdza zarząd fundacji, zbieramy się 20 października.",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Pasuje, w przyszły wtorek o dziesiątej.",
+      "znizka": "Dla grup z Lutry mogę dać trzydzieści procent rabatu na wynajem sali, od poniedziałku do piątku, od 8 do 15.",
+      "kiedy": "Dla grup z Lutry mogę dać trzydzieści procent rabatu na wynajem sali, od poniedziałku do piątku, od 8 do 15.",
+      "grupa": "Grupa od 8 osób, przy mniejszej nie opłaca się nam sprzątanie.",
+      "wylaczenia": "",
+      "realizacja": "Rezerwacja mailowa z hasłem, które ustalimy, i to wystarczy.",
+      "miejsce": "Jak pan widział, mamy salę warsztatową z kuchnią, mieści 25 osób.",
+      "okres": "Od razu na pół roku, od 1 listopada do końca kwietnia, krótsze okresy nas nie interesują.",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "Pełna nazwa to Fundacja Kreda.",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "Logo możecie umieścić w aplikacji, to dla nas dobra promocja.",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Współpraca na 6 miesięcy (umowa, nie mail), mówcy z dopiskiem „(Lutra)” / „(Kreda)”. Zniżka powiedziana słownie („trzydzieści procent”, liczba 30 nigdzie cyframi) — bramka dowodu przyjmuje słowa, ale luźne sprawdzenie relatesTo szuka cyfr (znany problem, patrz test). „Przyszły wtorek” = 13.10."
+}

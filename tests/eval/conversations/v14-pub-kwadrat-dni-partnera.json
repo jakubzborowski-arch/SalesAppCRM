@@ -1,0 +1,116 @@
+{
+  "id": "v14-pub-kwadrat-dni-partnera",
+  "title": "Pub Kwadrat — handlowiec chce środy, partner daje poniedziałki i wtorki",
+  "segment": "venue",
+  "callDate": "2026-10-23",
+  "partner": {
+    "name": "Pub Kwadrat",
+    "city": "Gliwice",
+    "category": "pub",
+    "contacts": [
+      {
+        "name": "Krzysztof Baran",
+        "role": "manager i współwłaściciel"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba Zborowski: Dzień dobry, panie Krzysztofie. Myślałem o środach, bo wtedy dużo grup się umawia.\nKrzysztof Baran: W środy mamy quiz i komplet, więc środy odpadają.\nKrzysztof Baran: Puste są poniedziałki i wtorki, wtedy przyjdzie może dziesięć osób na cały wieczór.\nKuba Zborowski: To może poniedziałki i wtorki, 15 procent?\nKrzysztof Baran: Poniedziałki i wtorki tak, od 18 do 23, i 15 procent na jedzenie, alkohol bez zniżki.\nKrzysztof Baran: Tylko szczerze, mam już Glovo, Pyszne i jeszcze jakąś aplikację z rabatami, wszystko to samo.\nKuba Zborowski: My nie jesteśmy dostawą ani kuponem, przyprowadzamy grupy na miejsce.\nKrzysztof Baran: Zobaczymy, na razie nie jestem przekonany, ale spróbować mogę.\nKrzysztof Baran: Realizacja kodem QR, tak jak przy innych aplikacjach.\nKrzysztof Baran: Dajmy sobie miesiąc próby, od 2 listopada do 2 grudnia.\nKuba Zborowski: Dobrze, wyślę porozumienie mailem w poniedziałek.\nKrzysztof Baran: Okej, na początku tygodnia odpowiem.",
+  "gold": {
+    "cytat": "Puste są poniedziałki i wtorki, wtedy przyjdzie może dziesięć osób na cały wieczór.",
+    "problem": "W poniedziałki i wtorki przychodzi może dziesięć osób na cały wieczór.",
+    "kategoria": "off_peak",
+    "priorytet": 3,
+    "rezultat": "",
+    "ograniczenia": [
+      "Pon–wt 18–23",
+      "Bez zniżki na alkohol",
+      "Środy odpadają (quiz)"
+    ],
+    "decydent": "",
+    "rola_decydenta": "",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba wysyła porozumienie mailem w poniedziałek.",
+    "data_nastepnego_kroku": "2026-10-26",
+    "potrzeby": [
+      {
+        "tytul": "Goście w poniedziałki i wtorki wieczorem",
+        "kategoria": "off_peak",
+        "priorytet": 3,
+        "cytat": "Puste są poniedziałki i wtorki, wtedy przyjdzie może dziesięć osób na cały wieczór.",
+        "rezultat": "",
+        "ograniczenia": "Pon–wt 18–23"
+      }
+    ],
+    "wnioski": [
+      "Środy odpadają (quiz, komplet); puste są poniedziałki i wtorki.",
+      "15% na jedzenie, alkohol bez zniżki, pon–wt 18–23, kod QR.",
+      "Miesiąc próby od 2 listopada do 2 grudnia; partner nie jest przekonany do kolejnej aplikacji."
+    ],
+    "warunki": {
+      "znizka_procent": 15,
+      "gratis": "",
+      "dni": [
+        "mon",
+        "tue"
+      ],
+      "godziny_od": "18:00",
+      "godziny_do": "23:00",
+      "min_grupa": 0,
+      "wylaczenia": "Alkohol",
+      "realizacja": "qr",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "2026-11-02",
+      "okres_do": "2026-12-02"
+    },
+    "obiekcje": [
+      {
+        "klucz": "other_apps",
+        "argument_zadzialal": false,
+        "cytat": "Tylko szczerze, mam już Glovo, Pyszne i jeszcze jakąś aplikację z rabatami, wszystko to samo."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Puste są poniedziałki i wtorki, wtedy przyjdzie może dziesięć osób na cały wieczór.",
+      "rezultat": "",
+      "ograniczenia": "W środy mamy quiz i komplet, więc środy odpadają.",
+      "decydent": "",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Okej, na początku tygodnia odpowiem.",
+      "znizka": "Poniedziałki i wtorki tak, od 18 do 23, i 15 procent na jedzenie, alkohol bez zniżki.",
+      "kiedy": "Poniedziałki i wtorki tak, od 18 do 23, i 15 procent na jedzenie, alkohol bez zniżki.",
+      "grupa": "",
+      "wylaczenia": "Poniedziałki i wtorki tak, od 18 do 23, i 15 procent na jedzenie, alkohol bez zniżki.",
+      "realizacja": "Realizacja kodem QR, tak jak przy innych aplikacjach.",
+      "miejsce": "",
+      "okres": "Dajmy sobie miesiąc próby, od 2 listopada do 2 grudnia.",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Handlowiec proponuje środy, partner je odrzuca — dni partnera wygrywają (wed = błąd). Obiekcja other_apps, argument NIE zadziałał („nie jestem przekonany”). Miesiąc próby, „w poniedziałek” z piątku 23.10 = 26.10."
+}
