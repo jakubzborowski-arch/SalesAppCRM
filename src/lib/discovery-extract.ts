@@ -1,6 +1,8 @@
 import { formatPlDate, isIsoDate, parseDeadline, toIsoDate } from "./dates";
 import { categoryLabel, CONTACT_CHANNELS, NEED_CATEGORIES, OBJECTION_KEYS, PRIORITIES, segmentLabel } from "./playbook";
+import { emptyEvidence, EVIDENCE_KEYS, type Evidence, type SpeakerView } from "./evidence";
 import { redactPrivate } from "./redact";
+import { fold } from "./text";
 import { WEEKDAYS } from "./terms";
 import type {
   CallRecord,
@@ -113,6 +115,8 @@ export type DiscoveryExtraction = {
   terms: ExtractedTerms;
   objections: ExtractedObjection[];
   deal: ExtractedDeal;
+  /** Zdanie partnera (dosłownie z rozmowy) potwierdzające każde pole; "" gdy brak. */
+  evidence: Evidence;
 };
 
 // ---------------------------------------------------------------------------
@@ -299,6 +303,7 @@ export const EXTRACTION_SYSTEM = [
   "  Społeczność: cykl_wydarzenia (ile), cykl_czestotliwosc (weekly, biweekly, monthly), cykl_pierwsze (RRRR-MM-DD). Firma: pilotaz_zespol, pilotaz_osoby, pilotaz_feedback (RRRR-MM-DD).",
   "  okres_od / okres_do: ustalony okres współpracy (RRRR-MM-DD), gdy padły daty albo długość („na 3 miesiące od 1 listopada”).",
   "- obiekcje: zastrzeżenia, które partner zgłosił — klucz: other_apps („mam inne aplikacje ze zniżkami”), how_many („ile osób przyprowadzicie?”), margin („zniżka mi się nie opłaca”), no_time („nie mam czasu tego pilnować”), ask_owner („muszę zapytać właściciela”), come_back („wróćcie, jak będzie więcej użytkowników”). argument_zadzialal: true tylko gdy partner wyraźnie przyjął odpowiedź handlowca. cytat: dosłowne zdanie partnera albo \"\". Tylko obiekcje, które padły.",
+  "- dowody: dla każdego pola, które wypełniasz, jedno zdanie słowo w słowo z wypowiedzi osoby po stronie partnera (albo z notatki handlowca), z którego to wynika — bez imienia mówcy i czasu. Klucze: problem, rezultat, ograniczenia, decydent, termin_decyzji, wczesniejsze_proby, nastepny_krok, znizka, kiedy (dni i godziny), grupa, wylaczenia, realizacja, miejsce, okres, cykl, pilotaz, nazwa_firmy, kontakt_awaryjny, godziny_otwarcia, zgoda_logo, zgoda_zdjecia, zgoda_social. Gdy partner tylko potwierdził propozycję handlowca („okej, może być”), przytocz to potwierdzenie. Pole puste → dowód \"\". Nie przytaczaj słów handlowca jako dowodu.",
   "- umowa: nazwa_firmy (pełna nazwa firmy partnera, jeśli padła), kontakt_awaryjny (imię i nazwisko osoby do kontaktu w trakcie wydarzeń), godziny_otwarcia (jak padły), zgoda_logo / zgoda_zdjecia / zgoda_social: true tylko gdy partner wyraźnie zgodził się na nazwę i logo w aplikacji, zdjęcia, posty w social mediach Lutry.",
 ].join("\n");
 
@@ -329,6 +334,7 @@ export const EXTRACTION_SCHEMA = {
     "warunki",
     "obiekcje",
     "umowa",
+    "dowody",
   ],
   properties: {
     cytat: text("Dosłowne zdanie partnera z transkryptu albo pusty tekst."),
@@ -429,6 +435,14 @@ export const EXTRACTION_SCHEMA = {
         zgoda_social: { type: "boolean" },
       },
     },
+    dowody: {
+      type: "object",
+      additionalProperties: false,
+      required: [...EVIDENCE_KEYS],
+      properties: Object.fromEntries(
+        EVIDENCE_KEYS.map((key) => [key, text("Dosłowne zdanie partnera z rozmowy, które to pokazuje, albo pusty tekst.")]),
+      ),
+    },
   },
 } as const;
 
@@ -476,6 +490,7 @@ const EXAMPLE_SHAPE = {
     zgoda_zdjecia: false,
     zgoda_social: false,
   },
+  dowody: emptyEvidence(),
 };
 
 export const JSON_ONLY =
@@ -544,14 +559,6 @@ export function parseLooseJson(raw: string): unknown {
     }
   }
   return null;
-}
-
-function fold(value: string) {
-  return value
-    .toLocaleLowerCase("pl")
-    .replace(/ł/g, "l")
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
 }
 
 function keyOf(key: string) {
@@ -761,7 +768,15 @@ export function normalizeExtraction(raw: unknown): DiscoveryExtraction {
     terms: termsOf(first(o, "warunki", "terms")),
     objections: objectionsOf(first(o, "obiekcje", "objections")),
     deal: dealOf(first(o, "umowa", "deal")),
+    evidence: evidenceOf(first(o, "dowody", "evidence")),
   };
+}
+
+function evidenceOf(raw: unknown): Evidence {
+  const e = objectOf(raw);
+  const out = emptyEvidence();
+  for (const key of EVIDENCE_KEYS) out[key] = clean(e[key], 400);
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -959,9 +974,14 @@ export function buildProposal(
     /** Dzień najstarszej rozmowy w źródle — dolna granica dla dat z rozmowy. */
     fromDate?: string;
     today?: Date;
+    /** Kto mówi: cytaty sprawdzamy tylko w wypowiedziach partnera, dowody — patrz evidence.ts. */
+    view?: SpeakerView;
   },
 ): Proposal {
   const { mission, partner, source, callDate } = input;
+  // Cytaty partnera szukamy w jego wypowiedziach (i notatce); gdy mówcy nieznani — w całej rozmowie.
+  const quoteSource = input.view?.known ? input.view.partnerText : source;
+  const sellerSaid = (quote: string) => Boolean(input.view?.known && input.view.sellerText && quoteFound(quote, input.view.sellerText));
   const fromDate = input.fromDate && isIsoDate(input.fromDate) && input.fromDate < callDate ? input.fromDate : callDate;
   const todayIso = toIsoDate(input.today ?? new Date());
   const d = mission.discovery;
@@ -978,9 +998,11 @@ export function buildProposal(
   if (quote) {
     const warning = !hasSource
       ? "Nie ma transkryptu w CRM — nie sprawdzę, czy cytat jest dosłowny."
-      : quoteFound(quote, source)
+      : quoteFound(quote, quoteSource)
         ? undefined
-        : "Nie znalazłem tego zdania w transkrypcie — sprawdź, czy jest dosłowne.";
+        : sellerSaid(quote)
+          ? "To zdanie powiedział handlowiec, nie partner — wybierz cytat partnera."
+          : "Nie znalazłem tego zdania w transkrypcie — sprawdź, czy jest dosłowne.";
     add({ key: "quote", label: "Cytat partnera", value: quote, current: d.quote, warning });
   }
 
@@ -1143,7 +1165,7 @@ export function buildProposal(
   ext.needs.forEach((item) => {
     const category = item.category || ext.category;
     if (!category || known.includes(words(item.title).join(" "))) return;
-    const quoteOk = item.quote && (!hasSource || quoteFound(item.quote, source));
+    const quoteOk = item.quote && (!hasSource || quoteFound(item.quote, quoteSource));
     const need: Need = {
       id: newId(),
       category,

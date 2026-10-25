@@ -24,6 +24,7 @@ import {
 import { buildMissionProposal, GROUPS, planMission, type MissionProposal } from "@/lib/mission-extract";
 import { activityChannelLabel, activityOutcomeLabel } from "@/lib/playbook";
 import { AI_NOTICE_SCRIPT, aiNoticeGiven, withAiNotice } from "@/lib/ai-notice";
+import { speakerView, type SpeakerView } from "@/lib/evidence";
 import { useStore } from "@/lib/store";
 import { cleanTranscript, MAX_TRANSCRIPT_CHARS, TRANSCRIPT_FILE_ACCEPT, wordsLabel } from "@/lib/transcript";
 import type { Activity, CallRecord, Channel, Mission, Partner, StageId } from "@/lib/types";
@@ -653,6 +654,7 @@ type EngineInfo = {
 type Reading = {
   extraction: DiscoveryExtraction;
   source: string;
+  view: SpeakerView;
   callDate: string;
   fromDate: string;
   origin: string;
@@ -746,6 +748,7 @@ function FillBlock({
             source: reading.source,
             callDate: reading.callDate,
             fromDate: reading.fromDate,
+            view: reading.view,
           })
         : null,
     [reading, mission, partner],
@@ -792,6 +795,7 @@ function FillBlock({
     setReading({
       extraction: normalizeExtraction(raw),
       source: sourceOf(ctx),
+      view: speakerView(ctx),
       callDate: ctx.callDate,
       fromDate: firstDateOf(ctx),
       origin,
@@ -1065,6 +1069,7 @@ function FillBlock({
           proposal={proposal}
           origin={reading.origin}
           clipped={reading.clipped}
+          speakersKnown={reading.view.known}
           selected={selected}
           busy={busy}
           onToggle={toggle}
@@ -1083,6 +1088,7 @@ function ProposalPreview({
   proposal,
   origin,
   clipped,
+  speakersKnown,
   selected,
   busy,
   onToggle,
@@ -1092,6 +1098,7 @@ function ProposalPreview({
   proposal: MissionProposal;
   origin: string;
   clipped: boolean;
+  speakersKnown: boolean;
   selected: Set<string>;
   busy: boolean;
   onToggle: (row: ProposalRow) => void;
@@ -1108,6 +1115,12 @@ function ProposalPreview({
       {clipped ? (
         <p className="border-b border-line bg-amber-50 px-4 py-2 text-xs leading-5 text-amber-900">
           Rozmowa była za długa na jedno zapytanie — AI dostało początek i koniec (bez środka) albo tylko nowsze rozmowy.
+        </p>
+      ) : null}
+      {!speakersKnown ? (
+        <p className="border-b border-line bg-amber-50 px-4 py-2 text-xs leading-5 text-amber-900">
+          Nie rozpoznałem w transkrypcie, kto jest handlowcem, a kto partnerem (brak „Imię Nazwisko: …” albo Twoje imię
+          nie pada). Warunki i dane do umowy są odznaczone — sprawdź, czy to mówił partner.
         </p>
       ) : null}
       {missing.length ? (

@@ -120,11 +120,12 @@ export async function POST(request: Request) {
   const done = await completeRaw(request, {
     system,
     user,
-    maxTokens: 2400,
+    // Pola + dowody (zdania partnera) to kilka tysięcy znaków JSON-u.
+    maxTokens: 4000,
     timeoutMs: engine.engine === "mac" ? 110_000 : 90_000,
     json: true,
     // Ok. 3 znaki na token po polsku + miejsce na odpowiedź; domyślne okno Ollamy ucina początek polecenia.
-    numCtx: Math.min(32_768, Math.ceil((system.length + user.length) / 3) + 3_000),
+    numCtx: Math.min(32_768, Math.ceil((system.length + user.length) / 3) + 4_500),
   });
   if (!done.ok) return Response.json({ error: done.error }, { status: done.status });
   const data = parseLooseJson(done.text);

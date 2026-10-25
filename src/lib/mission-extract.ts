@@ -15,6 +15,7 @@ import {
   type Proposal,
   type ProposalRow,
 } from "./discovery-extract";
+import { applyEvidence } from "./evidence";
 import { OBJECTION_KEYS } from "./playbook";
 import { cycleSummary, discountSummary, periodText, pilotSummary, redemptionLabel, termsChecks } from "./terms";
 import type {
@@ -309,7 +310,7 @@ export function buildMissionProposal(
   const talk = base.rows.filter((row) => row.key !== "summary").map((row) => ({ ...row, group: GROUPS.talk }));
   const note = base.rows.filter((row) => row.key === "summary").map((row) => ({ ...row, group: GROUPS.note }));
   const offer = termsRows(ext, mission, partner, check, { fromDate, callDate });
-  const objections = objectionRows(ext, mission, source);
+  const objections = objectionRows(ext, mission, input.view?.known ? input.view.partnerText : source);
   const deal = dealRows(ext, mission, partner, check, source);
 
   // Czego w warunkach nadal brakuje, gdyby wstawić wszystko z podglądu.
@@ -326,9 +327,17 @@ export function buildMissionProposal(
     .filter((item) => !item.done)
     .map((item) => `warunki: ${item.label}`);
 
+  const all = [...talk, ...offer.rows, ...objections.rows, ...deal.rows, ...note];
+  // Każde pole musi mieć zdanie-dowód w słowach partnera; bez niego wiersz jest odznaczony.
+  const rows = input.view
+    ? applyEvidence(all, ext.evidence, input.view, quoteFound, {
+        discountPercent: ext.terms.discountPercent,
+        minGroup: ext.terms.minGroup,
+      })
+    : all;
   return {
     ...base,
-    rows: [...talk, ...offer.rows, ...objections.rows, ...deal.rows, ...note],
+    rows,
     missing: [...base.missing, ...termsMissing],
     mission: {
       terms: offer.terms,
