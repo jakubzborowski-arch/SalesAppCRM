@@ -503,6 +503,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /** W trakcie wczytywania workspace nie zapisujemy (stan zaraz zostanie podmieniony). */
   const hydrating = useRef(false);
   const flushChain = useRef<Promise<void>>(Promise.resolve());
+  /** Ponawianie nieudanego zapisu (sieć, chwilowy błąd bazy): 2 s, 5 s, 15 s, 30 s, potem co minutę. */
+  const retryAttempt = useRef(0);
+  const retryTimer = useRef<number | null>(null);
+  const retryFlush = useRef<() => void>(() => {});
 
   useEffect(() => {
     latest.current = state;
@@ -671,10 +675,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     if (firstError) {
       if (isMissingPartnersTable(firstError)) setDbStatus("need-sql");
-      else setDbError(firstError.message ?? "Nie udało się zapisać zmian.");
+      else {
+        setDbError(firstError.message ?? "Nie udało się zapisać zmian.");
+        // Zmiany zostają w pamięci karty — spróbujemy jeszcze raz, zamiast czekać na kolejną edycję.
+        const delays = [2_000, 5_000, 15_000, 30_000, 60_000];
+        const delay = delays[Math.min(retryAttempt.current, delays.length - 1)];
+        retryAttempt.current += 1;
+        if (retryTimer.current) window.clearTimeout(retryTimer.current);
+        retryTimer.current = window.setTimeout(() => {
+          retryTimer.current = null;
+          retryFlush.current();
+        }, delay);
+      }
       setSaveState("error");
       return;
     }
+    retryAttempt.current = 0;
     setDbError(null);
     setSaveState(conflicts.length ? "error" : "saved");
   }, []);
@@ -683,6 +699,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     flushChain.current = flushChain.current.then(flush, flush);
     return flushChain.current;
   }, [flush]);
+
+  useEffect(() => {
+    retryFlush.current = () => void scheduleFlush();
+  }, [scheduleFlush]);
+
+  /** Czy w karcie są zmiany, których baza jeszcze nie ma (Supabase; w demo zapis jest od razu w przeglądarce). */
+  const hasUnsaved = useCallback(() => {
+    if (dbStatusRef.current !== "ok" || !workspaceIdRef.current) return false;
+    const snapshot = latest.current;
+    return (
+      snapshot.missions.some((m) => savedMissions.current.get(m.id) !== m) ||
+      snapshot.partners.some((p) => savedPartners.current.get(p.id) !== p)
+    );
+  }, []);
 
   /** Sprawdza zaproszenie i pokazuje potwierdzenie. Nic nie przyjmuje bez kliknięcia „Dołącz”. */
   const inspectInvite = useCallback(async (token: string) => {
@@ -938,14 +968,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [refreshData]);
 
   useEffect(() => {
-    // Ostrzeżenie przed zamknięciem karty, gdy zmiany jeszcze się zapisują.
+    // Ostrzeżenie przed zamknięciem karty, gdy zmiany się zapisują, czekają na zapis (0,5 s) albo zapis się nie udał.
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (saveState !== "saving") return;
+      if (saveState !== "saving" && !hasUnsaved()) return;
+      void scheduleFlush();
       event.preventDefault();
+      event.returnValue = "";
+    };
+    // Karta chowa się (inna aplikacja, telefon blokuje ekran) — zapisujemy od razu, bez czekania.
+    const onHidden = () => {
+      if (document.visibilityState === "hidden" && hasUnsaved()) void scheduleFlush();
+    };
+    // Wraca sieć po błędzie zapisu — próbujemy od razu.
+    const onOnline = () => {
+      if (hasUnsaved()) void scheduleFlush();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [saveState]);
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [saveState, hasUnsaved, scheduleFlush]);
+
+  useEffect(
+    () => () => {
+      if (retryTimer.current) window.clearTimeout(retryTimer.current);
+    },
+    [],
+  );
 
   const patchMission = (missionId: string, fn: (m: Mission) => Mission) => {
     setState((prev) => {
