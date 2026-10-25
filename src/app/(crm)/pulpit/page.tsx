@@ -11,7 +11,7 @@ import { FirstSteps } from "@/components/onboarding/first-steps";
 function Topbar() {
   const { state } = useStore();
   return (
-    <div className="flex items-center justify-end gap-3 px-8 py-6 text-sm text-muted">
+    <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
       <span>CRM / Pulpit</span>
       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-xs font-semibold text-navy">
         {state.user.initials}
@@ -29,7 +29,7 @@ export default function PulpitPage() {
   return (
     <div>
       <Topbar />
-      <div className="px-8 pb-10">
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
           Pulpit handlowca
         </p>
@@ -62,7 +62,7 @@ export default function PulpitPage() {
         {urgent ? (
           <Link
             href={`/partners/${urgent.partner.id}/mission`}
-            className="mt-6 block max-w-3xl rounded-[28px] border border-line bg-white p-6 shadow-[0_8px_40px_rgba(9,12,155,0.06)]"
+            className="mt-6 block max-w-3xl rounded-[28px] border border-line bg-white p-4 sm:p-6 shadow-[0_8px_40px_rgba(9,12,155,0.06)]"
           >
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-navy">
               Teraz

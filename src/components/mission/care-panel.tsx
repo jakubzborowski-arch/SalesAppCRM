@@ -123,7 +123,7 @@ export function CarePanel({ mission, partner }: { mission: Mission; partner: Par
       : null;
 
   return (
-    <section className="mt-6 max-w-4xl rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-6 max-w-4xl rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">Aktywny partner · opieka</p>

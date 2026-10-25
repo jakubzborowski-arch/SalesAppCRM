@@ -65,9 +65,9 @@ export function DraftBubble({
 
   return (
     // Nad bąbelkiem „Notatka z rozmowy” (prawy dolny róg).
-    <div className="fixed bottom-24 right-6 z-40 flex flex-col items-end gap-3">
+    <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-3 sm:bottom-24 sm:right-6">
       {open ? (
-        <div className="w-[min(22rem,calc(100vw-3rem))] rounded-3xl border border-chip-mid bg-white p-4 shadow-[0_12px_40px_rgba(9,12,155,0.16)]">
+        <div className="w-[min(22rem,calc(100vw-2rem))] rounded-3xl border border-chip-mid bg-white p-4 shadow-[0_12px_40px_rgba(9,12,155,0.16)]">
           <div className="flex items-start justify-between gap-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
               {mode === "mail" ? "Mail z faktów" : "Wniosek z faktów"}

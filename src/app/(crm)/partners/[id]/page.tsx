@@ -72,13 +72,13 @@ export default function PartnerDetailPage({
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-3 px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         <span>CRM / Partnerzy / {partner.name}</span>
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-xs font-semibold text-navy">
           {state.user.initials}
         </span>
       </div>
-      <div className="px-8 pb-10">
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
           <div className="min-w-0">
             <p className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-navy">

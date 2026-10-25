@@ -27,12 +27,13 @@ export default function CrmLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-surface">
+    <div className="flex min-h-screen flex-col bg-surface lg:flex-row">
       <Sidebar />
       <ReminderNotifier />
       <WelcomeTour key={state.user.id ?? "local"} userId={state.user.id} />
       <TourBubble userId={state.user.id} />
-      <div className="min-w-0 flex-1">
+      {/* Na telefonie miejsce pod treścią na bąbelek „?” (lewy dolny róg). */}
+      <div className="min-w-0 flex-1 pb-20 lg:pb-0">
         <SetupBanner />
         {children}
       </div>

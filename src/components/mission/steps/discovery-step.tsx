@@ -318,7 +318,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
                   ))}
                 </select>
               </Field>
-              <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2">
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
                 <input
                   className={inputClass}
                   placeholder="Imię i nazwisko"

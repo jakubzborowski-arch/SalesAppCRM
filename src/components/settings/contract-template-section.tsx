@@ -126,7 +126,7 @@ function TemplateEditor({ kind }: { kind: Kind }) {
 export function ContractTemplateSection() {
   const [kind, setKind] = useState<Kind>("contract");
   return (
-    <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-4 rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="font-semibold">Szablony umowy i porozumienia</h2>
       <p className="mt-1 text-sm text-muted">
         Do 3 miesięcy wystarczy porozumienie mailowe, dłużej — umowa w PDF z podpisami obu stron.

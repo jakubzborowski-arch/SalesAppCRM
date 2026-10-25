@@ -112,10 +112,10 @@ export default function TasksPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-end px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         CRM / Zadania
       </div>
-      <div className="px-8 pb-10">
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight">Zadania</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
           Następny krok z misji, zadania dodane ręcznie i przypomnienia z CRM (maile po kontakcie, podpisy, opieka). Jedna
@@ -123,7 +123,7 @@ export default function TasksPage() {
         </p>
 
         <form
-          className="mt-6 grid max-w-3xl gap-3 rounded-[24px] border border-line bg-white p-5 md:grid-cols-[1fr_160px_auto]"
+          className="mt-6 grid max-w-3xl gap-3 rounded-[24px] border border-line bg-white p-4 sm:p-5 md:grid-cols-[1fr_160px_auto] [&>*]:min-w-0"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!missionId) {
@@ -186,7 +186,7 @@ export default function TasksPage() {
           </div>
         </form>
 
-        <div className="mt-6 flex gap-2">
+        <div className="mt-6 flex flex-wrap gap-2">
           {(
             [
               ["open", "Otwarte"],
@@ -212,7 +212,7 @@ export default function TasksPage() {
           {rows.map((row) => (
             <div
               key={row.id}
-              className="flex items-start justify-between gap-4 rounded-[24px] border border-line bg-white px-5 py-4"
+              className="flex items-start justify-between gap-4 rounded-[24px] border border-line bg-white px-4 py-4 sm:px-5"
             >
               <label className="flex min-w-0 items-start gap-3">
                 <input
@@ -222,7 +222,7 @@ export default function TasksPage() {
                   disabled={(row.source !== "human" && row.id.includes(":")) || (row.mission ? !canEditMission(row.mission) : false)}
                   onChange={(e) => completeTask(row.id, e.target.checked)}
                 />
-                <span>
+                <span className="min-w-0 break-words">
                   <span className={cn("font-semibold", row.doneAt && "text-muted line-through")}>
                     {row.partner?.name ?? "Misja"}
                   </span>
