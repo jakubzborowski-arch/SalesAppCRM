@@ -214,7 +214,8 @@ export type PartnerContact = {
 };
 
 export type Consent = {
-  channel: Channel;
+  /** „other” = zgoda niezwiązana z kanałem (np. informacja o analizie AI). */
+  channel: Channel | "other";
   purpose: "contact" | "recording" | "ai_analysis";
   status: ConsentStatus;
 };

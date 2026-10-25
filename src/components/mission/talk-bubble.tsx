@@ -23,6 +23,7 @@ import {
 } from "@/lib/discovery-extract";
 import { buildMissionProposal, GROUPS, planMission, type MissionProposal } from "@/lib/mission-extract";
 import { activityChannelLabel, activityOutcomeLabel } from "@/lib/playbook";
+import { AI_NOTICE_SCRIPT, aiNoticeGiven, withAiNotice } from "@/lib/ai-notice";
 import { useStore } from "@/lib/store";
 import { cleanTranscript, MAX_TRANSCRIPT_CHARS, TRANSCRIPT_FILE_ACCEPT, wordsLabel } from "@/lib/transcript";
 import type { Activity, CallRecord, Channel, Mission, Partner, StageId } from "@/lib/types";
@@ -683,7 +684,7 @@ const DISABLED_TEXT: Record<string, string> = {
     "Automat jest wyłączony: na serwerze nie ustawiono AI_ALLOWED_EMAILS (na produkcji lista jest obowiązkowa). Możesz to zrobić przez Claude poniżej.",
   offline: "Nie mogę sprawdzić serwera CRM. Możesz to zrobić przez Claude poniżej.",
   no_engine:
-    "Automat jest wyłączony — na serwerze CRM nie ma klucza Claude API. Możesz to zrobić przez Claude poniżej (bez dodatkowych kosztów w ramach Twojego planu) albo dodać ANTHROPIC_API_KEY do .env.local i uruchomić CRM ponownie.",
+    "Automat jest wyłączony — na serwerze CRM nie ma klucza Claude API. Dodaj ANTHROPIC_API_KEY do .env.local i uruchom CRM ponownie albo zrób to przez Claude poniżej.",
 };
 
 function privacyLine(info: EngineInfo) {
@@ -722,6 +723,8 @@ function FillBlock({
     toggleObjection,
   } = store;
   const seller = store.state.user.name;
+  // RODO: rozmowę wysyłamy do AI dopiero, gdy partner wie o transkrypcji i analizie przez AI.
+  const informed = aiNoticeGiven(partner);
   const [engine, setEngine] = useState<EngineInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -799,6 +802,10 @@ function FillBlock({
   };
 
   const run = async () => {
+    if (!informed) {
+      setError("Najpierw zaznacz, że partner wie o transkrypcji i analizie przez AI.");
+      return;
+    }
     const ctx = context(limit);
     if (!hasMaterial(ctx)) {
       setError("Najpierw wklej transkrypt albo dopisz notatkę z rozmowy.");
@@ -836,6 +843,10 @@ function FillBlock({
   };
 
   const copyPrompt = async () => {
+    if (!informed) {
+      setError("Najpierw zaznacz, że partner wie o transkrypcji i analizie przez AI.");
+      return;
+    }
     const ctx = context();
     if (!hasMaterial(ctx)) {
       setError("Najpierw wklej transkrypt albo dopisz notatkę z rozmowy.");
@@ -869,10 +880,10 @@ function FillBlock({
   useEffect(() => {
     if (autoRun === lastAuto.current) return;
     lastAuto.current = autoRun;
-    if (!engine?.enabled || !editable || busy) return;
+    if (!engine?.enabled || !editable || busy || !informed) return;
     openTalk("fill");
     void runRef.current();
-  }, [autoRun, engine, editable, busy]);
+  }, [autoRun, engine, editable, busy, informed]);
 
   const toggle = (row: ProposalRow) =>
     setOverrides((prev) => ({ ...prev, [rowId(row)]: !(prev[rowId(row)] ?? row.checked) }));
@@ -943,11 +954,30 @@ function FillBlock({
         <p className="mt-3 rounded-2xl bg-chip px-4 py-3 text-xs text-navy">Tylko podgląd — pola wypełnia osoba, która prowadzi misję.</p>
       ) : (
         <>
+          <label
+            className={cn(
+              "mt-3 flex items-start gap-2 rounded-2xl px-4 py-3 text-xs leading-5",
+              informed ? "bg-surface text-muted" : "bg-amber-50 text-amber-950",
+            )}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={informed}
+              onChange={(event) => updatePartner(partner.id, { consents: withAiNotice(partner, event.target.checked) })}
+            />
+            <span>
+              <strong className="font-semibold">Partner wie, że rozmowa jest transkrybowana i analizowana przez AI.</strong>{" "}
+              {informed ? "Zapisane w zgodach partnera." : (
+                <>Bez tego CRM nie wyśle rozmowy do AI. Możesz powiedzieć na początku rozmowy: „{AI_NOTICE_SCRIPT}”</>
+              )}
+            </span>
+          </label>
           {enabled ? (
             <div className="mt-3">
               <button
                 type="button"
-                disabled={busy || !ready}
+                disabled={busy || !ready || !informed}
                 onClick={() => void run()}
                 className="flex items-center gap-2 rounded-full bg-navy px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
@@ -985,12 +1015,17 @@ function FillBlock({
             {manualOpen || (engine !== null && !enabled) ? (
               <div className="space-y-3 border-t border-line px-4 py-4 text-xs leading-5">
                 <p className="text-muted">
-                  1. Skopiuj polecenie z rozmową i wklej je w Claude (claude.ai albo Cowork). Masz skill „Discovery do
-                  CRM”? Wtedy wystarczy wkleić w Claude sam transkrypt.
+                  1. Skopiuj polecenie z rozmową i wklej je w Claude (claude.ai albo Cowork). Polecenie jest już bez
+                  telefonów, maili i NIP-ów — nie wklejaj zamiast niego surowego transkryptu.
+                </p>
+                <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-950">
+                  Dane partnera wklejaj tylko do Claude w planie firmowym (Team albo Enterprise) albo z wyłączonym
+                  „Pomagaj ulepszać Claude” (claude.ai → Ustawienia → Prywatność). W planach prywatnych rozmowy mogą służyć
+                  do trenowania modeli i nie obejmuje ich umowa powierzenia danych.
                 </p>
                 <button
                   type="button"
-                  disabled={!ready}
+                  disabled={!ready || !informed}
                   onClick={() => void copyPrompt()}
                   className="rounded-full border border-lutra px-4 py-1.5 text-xs font-semibold text-lutra disabled:opacity-50"
                 >
