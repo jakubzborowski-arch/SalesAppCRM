@@ -19,6 +19,7 @@ import {
   relatesTo,
   sanitizeContext,
   sourceOf,
+  stripAiNotes,
 } from "@/lib/discovery-extract";
 import { emptyCompany } from "@/lib/company";
 import { emptyMission } from "@/lib/seed";
@@ -304,8 +305,19 @@ describe("podgląd i wstawianie", () => {
     expect(plan.nextStepAt).toBe("2026-10-22");
     expect(plan.maker).toEqual({ id: "c-anna", name: "Anna Kowalska", role: "właścicielka" });
     expect(plan.needs).toHaveLength(2);
-    expect(plan.noteAppend).toBe("Wnioski z rozmowy (AI, 21.10.2026):\n• Środy po 16 są puste\n• Decyzja Anny do końca tygodnia");
-    expect(appendToNote("Notatka", plan.noteAppend!)).toBe(`Notatka\n\n${plan.noteAppend}`);
+    // Wnioski AI nie wchodzą same — handlowiec zaznacza je świadomie.
+    expect(row("summary").checked).toBe(false);
+    expect(plan.noteAppend).toBeUndefined();
+    const withSummary = planFromProposal(proposal, new Set(["summary"]), mission, new Date(2026, 9, 21));
+    expect(withSummary.noteAppend).toBe("Wnioski z rozmowy (AI, 21.10.2026):\n• Środy po 16 są puste\n• Decyzja Anny do końca tygodnia");
+    expect(appendToNote("Notatka", withSummary.noteAppend!)).toBe(`Notatka\n\n${withSummary.noteAppend}`);
+  });
+
+  it("wnioski AI z notatki nie są źródłem dla modelu ani dla sprawdzania cytatów", () => {
+    const note = "Rozmowa z Anną.\n\nWnioski z rozmowy (AI, 21.10.2026):\n• Zgoda na 20% zniżki\n• Decyzja jutro\n\nPo wizycie: ma pusto we wtorki.";
+    expect(stripAiNotes(note)).toBe("Rozmowa z Anną.\n\nPo wizycie: ma pusto we wtorki.");
+    const ctx = sanitizeContext({ partner: { name: "Nova" }, note, transcripts: [] });
+    expect(ctx?.note).not.toMatch(/20%/);
   });
 
   it("wypełnione pola nie są nadpisywane bez zaznaczenia; zmyślony cytat — ostrzeżenie", () => {

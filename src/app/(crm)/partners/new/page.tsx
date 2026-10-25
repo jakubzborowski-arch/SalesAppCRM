@@ -115,10 +115,10 @@ export default function NewPartnerPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-end px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         CRM / Partnerzy / Nowy · {state.user.initials}
       </div>
-      <form onSubmit={submit} className="px-8 pb-12">
+      <form onSubmit={submit} className="px-4 pb-12 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
@@ -166,7 +166,7 @@ export default function NewPartnerPage() {
         </div>
 
         <div className="mt-6 grid gap-5 lg:grid-cols-2">
-          <section className="rounded-[28px] border border-line bg-white p-6">
+          <section className="rounded-[28px] border border-line bg-white p-4 sm:p-6">
             <h2 className="font-semibold">Partner</h2>
             <p className="mt-1 text-xs text-muted">To, czego potrzebujesz, żeby karta w ogóle powstała.</p>
             <div className="mt-4">
@@ -251,7 +251,7 @@ export default function NewPartnerPage() {
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-line bg-white p-6">
+          <section className="rounded-[28px] border border-line bg-white p-4 sm:p-6">
             <h2 className="font-semibold">Kontakt</h2>
             <p className="mt-1 text-xs text-muted">
               Nie blokuje zapisu. Zgody zostają „nieznane”, aż potwierdzisz je na karcie partnera.
@@ -289,7 +289,7 @@ export default function NewPartnerPage() {
           </section>
         </div>
 
-        <section className="mt-5 rounded-[28px] border border-line bg-white p-6">
+        <section className="mt-5 rounded-[28px] border border-line bg-white p-4 sm:p-6">
           <h2 className="font-semibold">Social media</h2>
           <p className="mt-1 text-xs text-muted">
             Opcjonalne. Handle albo link — nie zgoda na kontakt. LinkedIn i reszta idą do „Inne”.
@@ -322,7 +322,7 @@ export default function NewPartnerPage() {
           </div>
         </section>
 
-        <details className="mt-5 rounded-[28px] border border-line bg-white p-6 open:pb-6">
+        <details className="mt-5 rounded-[28px] border border-line bg-white p-4 sm:p-6 open:pb-6">
           <summary className="cursor-pointer list-none font-semibold outline-none">
             Więcej szczegółów
             <span className="ml-2 text-xs font-normal text-muted">

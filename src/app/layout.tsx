@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   description: "Misje pozyskania partnerów Lutry",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pl" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
       <head>

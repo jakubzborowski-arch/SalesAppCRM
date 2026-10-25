@@ -33,9 +33,14 @@ function mission(patch: Partial<Mission> = {}): Mission {
 
 const at = (iso: string) => vi.setSystemTime(new Date(iso));
 
-describe("persistMission", () => {
+// Te same scenariusze dla zapisu w jednej transakcji (v8) i po staremu (baza bez save_mission_bundle).
+describe.each([
+  { mode: "jedna transakcja", rpc: true },
+  { mode: "po staremu, bez funkcji w bazie", rpc: false },
+])("persistMission ($mode)", ({ rpc }) => {
   beforeEach(() => {
     fake.db = new FakeDb();
+    if (!rpc) delete fake.db.rpcHandlers.save_mission_bundle;
     clearMissionVersions();
     vi.useFakeTimers({ toFake: ["Date"] });
     at("2026-10-01T10:00:00Z");
@@ -180,11 +185,138 @@ describe("persistMission", () => {
     await persistMission(m, WS, A);
     const afterFirst = writes();
     await persistMission({ ...m, conversationNote: "x" }, WS, A);
-    // drugi zapis: warunkowy zapis misji + domknięcie wersji po tabelach misji
-    expect(writes() - afterFirst).toBe(2);
+    // Po staremu: warunkowy zapis misji + domknięcie wersji po tabelach misji.
+    // W jednej transakcji: jeden zapis misji (wersja sprawdzana w tej samej transakcji).
+    expect(writes() - afterFirst).toBe(rpc ? 1 : 2);
     const details = fake.db.rows("missions")[0].details as Record<string, unknown>;
     expect(details.needs).toBeUndefined();
     expect(details.closeNote).toBe("nota");
+  });
+
+  it("umowa i aktywacja z tego samego zapisu wskazują nową ofertę i umowę", async () => {
+    const base = mission();
+    await persistMission(
+      {
+        ...base,
+        selectedVariant: "A",
+        contract: { ...base.contract, companyName: "Nova sp. z o.o.", documentPath: `${A}/m/umowa.pdf` },
+        activation: { ...base.activation, partnerCode: "LUTRA-NOVA", testNotes: "ok" },
+      },
+      WS,
+      A,
+    );
+    const offer = fake.db.rows("offers")[0];
+    const contract = fake.db.rows("contracts")[0];
+    expect(offer.id).toBeTruthy();
+    expect(contract.offer_id).toBe(offer.id);
+    expect(contract.status).toBe("ready");
+    expect(fake.db.rows("activations")[0].contract_id).toBe(contract.id);
+    expect(fake.db.rows("activations")[0].test_notes).toBe("ok");
+  });
+
+  it("baza bez kolumny test_notes: aktywacja zapisuje się bez niej", async () => {
+    fake.db.missingColumns.activations = ["test_notes"];
+    const base = mission();
+    await persistMission({ ...base, activation: { ...base.activation, partnerCode: "LUTRA-X", testNotes: "notatka" } }, WS, A);
+    const row = fake.db.rows("activations")[0];
+    expect(row.partner_code).toBe("LUTRA-X");
+    expect("test_notes" in row).toBe(false);
+  });
+
+  // Storage nie wchodzi do transakcji. W jednej transakcji stary plik kasujemy po udanym zapisie;
+  // po staremu umowa wskazuje nowy plik od razu po swoim zapisie, więc stary znika wtedy (jak dotąd).
+  it("zastąpiony plik umowy znika ze Storage, gdy umowa już wskazuje nowy", async () => {
+    const base = mission();
+    const withPdf = (path: string): Mission => ({
+      ...base,
+      contract: { ...base.contract, companyName: "Nova", documentPath: path },
+      activation: { ...base.activation, partnerCode: "LUTRA-X" },
+    });
+    await persistMission(withPdf(`${A}/m/stara.pdf`), WS, A);
+    fake.db.failNext = { table: "activations", op: "upsert", error: { message: "fetch failed" } };
+    await expect(persistMission(withPdf(`${A}/m/nowa.pdf`), WS, A)).rejects.toMatchObject({ message: "fetch failed" });
+    expect(fake.db.rows("contracts")[0].document_path).toBe(rpc ? `${A}/m/stara.pdf` : `${A}/m/nowa.pdf`);
+    expect(fake.db.removedFiles).toEqual(rpc ? [] : [`contracts/${A}/m/stara.pdf`]);
+    await persistMission(withPdf(`${A}/m/nowa.pdf`), WS, A);
+    expect(fake.db.rows("contracts")[0].document_path).toBe(`${A}/m/nowa.pdf`);
+    expect(fake.db.removedFiles).toEqual([`contracts/${A}/m/stara.pdf`]);
+  });
+});
+
+describe("persistMission: jedna transakcja", () => {
+  beforeEach(() => {
+    fake.db = new FakeDb();
+    clearMissionVersions();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at("2026-10-01T10:00:00Z");
+  });
+
+  const state = () => JSON.stringify([...fake.db.tables].filter(([, rows]) => rows.length));
+
+  it("błąd w środku zapisu: baza bez zmian (także misja i jej wersja), kolejny zapis przechodzi", async () => {
+    const needId = crypto.randomUUID();
+    const m = mission({ nextStepLabel: "Zadzwonić", nextStepAt: "2026-10-02", checklist: { "research:profile": true } });
+    await persistMission(m, WS, A);
+    const before = state();
+    const changed = {
+      ...m,
+      nextStepLabel: "Wysłać ofertę",
+      conversationNote: "po rozmowie",
+      needs: [{ id: needId, category: "off_peak" as const, title: "Puste środy", description: "", priority: 3, status: "fact" as const, confirmed: true }],
+    };
+    fake.db.failNext = { table: "needs", op: "upsert", error: { code: "22P02", message: "invalid input value for enum need_category" } };
+    await expect(persistMission(changed, WS, A)).rejects.toMatchObject({ code: "22P02" });
+    expect(state()).toBe(before);
+    // Wersja w widoku i w bazie wciąż ta sama: ponowienie przechodzi bez konfliktu.
+    const { nextStepTask } = await persistMission(changed, WS, A);
+    expect(nextStepTask?.title).toBe("Wysłać ofertę");
+    expect(fake.db.rows("needs")).toHaveLength(1);
+    expect(fake.db.rows("missions")[0].next_step_label).toBe("Wysłać ofertę");
+    expect(fake.db.rows("tasks")).toHaveLength(1);
+  });
+
+  it("nieznana wersja przy istniejącej misji = konflikt zamiast nadpisania w ciemno", async () => {
+    const m = mission({ nextStepLabel: "Moje" });
+    fake.db.rows("missions").push({
+      id: m.id, workspace_id: WS, partner_id: P, owner_user_id: B, status: "active", current_stage: "contact",
+      next_step_label: "Kolegi", details: {}, started_at: "2026-09-01", updated_at: "2026-09-02T10:00:00.000Z",
+    });
+    await expect(persistMission(m, WS, A)).rejects.toBeInstanceOf(MissionConflictError);
+    expect(fake.db.rows("missions")[0].next_step_label).toBe("Kolegi");
+    expect(fake.db.rows("decision_context")).toHaveLength(0);
+  });
+
+  it("baza bez v6 odrzuca nowy status umowy: zapis jeszcze raz w starym formacie", async () => {
+    const original = fake.db.rpcHandlers.save_mission_bundle;
+    const seen: unknown[] = [];
+    fake.db.rpcHandlers.save_mission_bundle = (args) => {
+      const contract = (args.p_ops as Array<{ table: string; rows?: Array<Record<string, unknown>> }>).find((op) => op.table === "contracts");
+      seen.push(contract?.rows?.[0]?.status);
+      if (contract?.rows?.[0]?.status === "sent") {
+        throw Object.assign(new Error('new row for relation "contracts" violates check constraint "contracts_status_check"'), { code: "23514" });
+      }
+      return original(args);
+    };
+    const base = mission();
+    await persistMission({ ...base, contract: { ...base.contract, documentPath: `${A}/m/u.pdf`, sentAt: "2026-10-01T09:00:00Z" } }, WS, A);
+    expect(seen).toEqual(["sent", "ready"]);
+    expect(fake.db.rows("contracts")[0]).toMatchObject({ status: "ready", document_path: `${A}/m/u.pdf` });
+    expect("sent_at" in fake.db.rows("contracts")[0]).toBe(false);
+  });
+
+  it("baza bez funkcji: zapis po staremu i bez ponownego pytania o funkcję", async () => {
+    delete fake.db.rpcHandlers.save_mission_bundle;
+    const rpc = vi.spyOn(fake.db, "rpc");
+    const m = mission({ nextStepLabel: "Zadzwonić", nextStepAt: "2026-10-02" });
+    const { nextStepTask } = await persistMission(m, WS, A);
+    expect(nextStepTask?.title).toBe("Zadzwonić");
+    await persistMission({ ...m, conversationNote: "x" }, WS, A);
+    expect(rpc.mock.calls.filter(([name]) => name === "save_mission_bundle")).toHaveLength(1);
+    expect(fake.db.rows("missions")[0].details).toMatchObject({ conversationNote: "x" });
+    // Po ponownym logowaniu sprawdzamy jeszcze raz (np. po wgraniu v8).
+    clearMissionVersions();
+    await persistMission({ ...m, conversationNote: "y" }, WS, A);
+    expect(rpc.mock.calls.filter(([name]) => name === "save_mission_bundle")).toHaveLength(2);
   });
 });
 
@@ -270,5 +402,45 @@ describe("loadCrm i dziennik", () => {
     const row = fake.db.rows("conversations")[0];
     expect(row).toMatchObject({ channel: "email", direction: "inbound", outcome: "replied", subject: "Re: oferta", summary_human: "Pasuje czwartek", contact_id: null });
     expect(activity.subject).toBe("Re: oferta");
+  });
+});
+
+describe("zapis w jednej transakcji: zgubiona odpowiedź serwera", () => {
+  beforeEach(() => {
+    fake.db = new FakeDb();
+    clearMissionVersions();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at("2026-10-01T10:00:00Z");
+  });
+
+  it("baza przyjęła zapis, odpowiedź zginęła: ponowienie i kolejna zmiana przechodzą bez fałszywego konfliktu", async () => {
+    const m = mission({ nextStepLabel: "Zadzwonić", nextStepAt: "2026-10-02" });
+    await persistMission(m, WS, A);
+    const realRpc = fake.db.rpc.bind(fake.db);
+    let lose = true;
+    fake.db.rpc = (async (name: string, args: Record<string, unknown> = {}) => {
+      const result = await realRpc(name, args);
+      if (name === "save_mission_bundle" && lose) {
+        lose = false;
+        return { data: null, error: { message: "TypeError: fetch failed" } };
+      }
+      return result;
+    }) as typeof fake.db.rpc;
+    at("2026-10-01T10:05:00Z");
+    const first = { ...m, nextStepLabel: "Wysłać recap" };
+    await expect(persistMission(first, WS, A)).rejects.toMatchObject({ message: expect.stringMatching(/fetch failed/) });
+    expect(fake.db.rows("missions")[0].next_step_label).toBe("Wysłać recap");
+    // Ponowienie tego samego zapisu (stara wersja w pamięci) — rozpoznany własny zapis, bez konfliktu.
+    await expect(persistMission(first, WS, A)).resolves.toBeTruthy();
+    // Zgubiona odpowiedź, a w międzyczasie kolejna zmiana — też przechodzi.
+    lose = true;
+    at("2026-10-01T10:06:00Z");
+    await expect(persistMission({ ...m, nextStepLabel: "Krok 3" }, WS, A)).rejects.toBeTruthy();
+    at("2026-10-01T10:07:00Z");
+    await persistMission({ ...m, nextStepLabel: "Krok 4" }, WS, A);
+    expect(fake.db.rows("missions")[0].next_step_label).toBe("Krok 4");
+    // Prawdziwy konflikt (kolega) nadal jest konfliktem.
+    await fake.db.from("missions").update({ next_step_label: "Kolega" }).eq("id", m.id);
+    await expect(persistMission({ ...m, nextStepLabel: "Krok 5" }, WS, A)).rejects.toBeInstanceOf(MissionConflictError);
   });
 });

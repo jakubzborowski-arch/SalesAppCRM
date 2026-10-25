@@ -228,3 +228,40 @@ create policy "contracts_select_own" on storage.objects for select to authentica
 drop policy if exists "contracts_update_own" on storage.objects;
 create policy "contracts_update_own" on storage.objects for update to authenticated
   using (bucket_id = 'contracts' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Ponowne v2–v3 na bazie z v6: stare polityki „*_all” (każdy w zespole edytuje wszystko) nie wracają.
+do $$
+declare
+  p record;
+begin
+  if to_regprocedure('public.can_edit_mission(uuid)') is null then
+    return;
+  end if;
+  for p in
+    select * from (values
+      ('partners_all', 'partners'), ('contacts_all', 'partner_contacts'), ('consents_all', 'consents'),
+      ('missions_all', 'missions'), ('conversations_all', 'conversations'), ('recordings_all', 'recordings'),
+      ('transcripts_all', 'transcripts'), ('checklist_all', 'mission_checklist_items'),
+      ('decision_all', 'decision_context'), ('needs_all', 'needs'), ('offers_all', 'offers'),
+      ('mission_objections_all', 'mission_objections'), ('tasks_all', 'tasks'), ('contracts_all', 'contracts'),
+      ('activations_all', 'activations')
+    ) as legacy (policy, tab)
+  loop
+    if to_regclass('public.' || p.tab) is not null then
+      execute format('drop policy if exists %I on public.%I', p.policy, p.tab);
+    end if;
+  end loop;
+  raise notice 'Baza ma już v6: odpal teraz ponownie v4–v8 („Kopiuj SQL” w CRM), żeby przywrócić aktualne uprawnienia.';
+end $$;
+
+-- Znacznik wersji: CRM wykrywa, gdy starsza migracja została odpalona po nowszej (trzeba wtedy powtórzyć kolejne).
+create table if not exists public.crm_migrations (
+  version text primary key,
+  applied_at timestamptz not null default now()
+);
+alter table public.crm_migrations enable row level security;
+drop policy if exists "crm_migrations_select" on public.crm_migrations;
+create policy "crm_migrations_select" on public.crm_migrations for select to authenticated using (true);
+grant select on public.crm_migrations to authenticated;
+insert into public.crm_migrations (version, applied_at) values ('v3', clock_timestamp())
+  on conflict (version) do update set applied_at = excluded.applied_at;

@@ -1,16 +1,17 @@
-// Test migracji v2–v7 na PGlite z atrapą Supabase (auth, storage, role).
+// Test migracji v2–v8 na PGlite z atrapą Supabase (auth, storage, role).
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 
 const REPO = process.argv[2] ?? new URL("../..", import.meta.url).pathname;
-const v23 = readFileSync(`${REPO}/supabase/v2-v3-all.sql`, "utf8").replace(
+const v23 = readFileSync(`${REPO}/supabase/migrations/20261001000003_v2_v3_all.sql`, "utf8").replace(
   /create extension if not exists pgcrypto;/g,
   "",
 );
-const v4 = readFileSync(`${REPO}/supabase/v4-team-timeline.sql`, "utf8");
-const v5 = readFileSync(`${REPO}/supabase/v5-company-data.sql`, "utf8");
-const v6 = readFileSync(`${REPO}/supabase/v6-roles-contracts.sql`, "utf8");
-const v7 = readFileSync(`${REPO}/supabase/v7-partner-types.sql`, "utf8");
+const v4 = readFileSync(`${REPO}/supabase/migrations/20261001000004_v4_team_timeline.sql`, "utf8");
+const v5 = readFileSync(`${REPO}/supabase/migrations/20261001000005_v5_company_data.sql`, "utf8");
+const v6 = readFileSync(`${REPO}/supabase/migrations/20261001000006_v6_roles_contracts.sql`, "utf8");
+const v7 = readFileSync(`${REPO}/supabase/migrations/20261001000007_v7_partner_types.sql`, "utf8");
+const v8 = readFileSync(`${REPO}/supabase/migrations/20261025000008_v8_quality_care.sql`, "utf8");
 
 const stub = `
 create role anon nologin;
@@ -553,6 +554,243 @@ await db.query("update partners set capacity = 0.4 where id = $1", [pH]);
 await db.exec(v7);
 const numeric = await all("select id, capacity from partners where id = any($1::uuid[])", [[pG, pH]]);
 ok(numeric.find((row) => row.id === pG)?.capacity === 40 && numeric.find((row) => row.id === pH)?.capacity === null, "40.4 → 40, 0.4 → puste");
+
+
+// --- v8 i ponowne odpalanie starszych migracji ---
+console.log("\n== v8 i kolejność migracji");
+await db.exec(v8);
+await db.exec(v8);
+const snapshot = async () => {
+  const pol = (await db.query("select schemaname||'.'||tablename||'.'||policyname as k, cmd||'|'||coalesce(qual,'')||'|'||coalesce(with_check,'') as v from pg_policies")).rows;
+  const fn = (await db.query("select p.proname||'('||pg_get_function_identity_arguments(p.oid)||')' as k, md5(pg_get_functiondef(p.oid)) as v from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'")).rows;
+  return new Map([...pol.map((r) => ["P " + r.k, r.v]), ...fn.map((r) => ["F " + r.k, r.v])]);
+};
+const versions = async () => (await all("select version from crm_migrations order by applied_at")).map((r) => r.version);
+// Podpowiedzi AI: zapis tylko we własnym zespole i jako ja; czyta zespół; obcy i anon — nic.
+const sugg = (ws, mission, user) =>
+  db.query("insert into ai_suggestions (workspace_id, mission_id, user_id, outcome, engine, prompt_version, rows) values ($1, $2, $3, 'applied', 'claude', 'p-1', '[]'::jsonb)", [ws, mission, user]);
+await as(H, () => sugg(wsG, mG, H.id));
+ok((await as(G, () => all("select id from ai_suggestions where workspace_id = $1", [wsG]))).length === 1, "zespół widzi podpowiedzi AI swoich misji");
+ok((await as(A, () => all("select id from ai_suggestions"))).length === 0, "obcy zespół nie widzi podpowiedzi AI");
+await expectError("podpowiedź AI do cudzego zespołu odrzucona", () => as(A, () => sugg(wsG, mG, A.id)), /row-level security/);
+await expectError("podpowiedź AI w cudzym imieniu odrzucona", () => as(H, () => sugg(wsG, mG, G.id)), /row-level security/);
+await expectError("podpowiedź AI do misji z innego zespołu odrzucona", () => as(A, () => sugg(wsA, mG, A.id)), /row-level security/);
+await expectError("anon nie zapisze podpowiedzi AI", () => as(null, () => sugg(wsG, mG, G.id)), /permission denied|row-level security/);
+await expectError("podpowiedzi AI nie da się poprawić po fakcie", () => as(H, () => db.query("update ai_suggestions set outcome = 'discarded'")), /permission denied/);
+
+// Metryki partnera: zespół czyta, edytuje ten, kto może edytować kartę; obcy zespół i anon — nic.
+const metric = (partner, month, redemptions) =>
+  db.query("insert into partner_metrics (partner_id, month, events, attendees, redemptions) values ($1, $2, 2, 10, $3) returning id, created_by", [partner, month, redemptions]);
+const hMetric = await as(H, async () => (await metric(pH, "2026-09", 12)).rows[0]);
+ok(hMetric?.created_by === H.id, "handlowiec zapisuje metryki swojego partnera (created_by = on)");
+await as(H, () => db.query("insert into partner_metrics (partner_id, month, redemptions) values ($1, '2026-09', 14) on conflict (partner_id, month) do update set redemptions = excluded.redemptions, updated_at = now()", [pH]));
+ok((await as(G, () => one("select redemptions from partner_metrics where partner_id = $1 and month = '2026-09'", [pH])))?.redemptions === 14, "upsert po (partner, miesiąc); administrator widzi metryki zespołu");
+const pG2 = await as(G, async () => (await one("insert into partners (workspace_id, name, owner_user_id) values ($1, 'Klub Gosi', $2) returning id", [wsG, G.id])).id);
+await as(G, () => metric(pG2, "2026-09", 5));
+ok((await as(H, () => all("select id from partner_metrics where partner_id = $1", [pG2]))).length === 1, "handlowiec czyta metryki partnera kolegi");
+await expectError("handlowiec nie dopisze metryk cudzego partnera", () => as(H, () => metric(pG2, "2026-08", 1)), /row-level security/);
+const hUpdOther = await as(H, () => db.query("update partner_metrics set redemptions = 99 where partner_id = $1", [pG2]));
+ok((hUpdOther.affectedRows ?? 0) === 0, "handlowiec nie poprawi metryk cudzego partnera");
+const hDelOther = await as(H, () => db.query("delete from partner_metrics where partner_id = $1", [pG2]));
+ok((hDelOther.affectedRows ?? 0) === 0, "handlowiec nie usunie metryk cudzego partnera");
+ok((await as(A, () => all("select id from partner_metrics"))).length === 0, "obcy zespół nie widzi metryk");
+await expectError("obcy zespół nie zapisze metryk", () => as(A, () => metric(pH, "2026-07", 1)), /row-level security/);
+const aUpd = await as(A, () => db.query("update partner_metrics set redemptions = 0"));
+ok((aUpd.affectedRows ?? 0) === 0, "obcy zespół nie poprawi metryk");
+await expectError("anon nie czyta metryk", () => as(null, () => all("select id from partner_metrics")), /permission denied/);
+await expectError("anon nie zapisze metryk", () => as(null, () => metric(pH, "2026-06", 1)), /permission denied|row-level security/);
+await expectError("miesiąc w złym formacie odrzucony", () => as(H, () => metric(pH, "2026-13", 1)), /check constraint/);
+await expectError("ujemne realizacje odrzucone", () => as(H, () => metric(pH, "2026-05", -1)), /check constraint/);
+await expectError("drugi wiersz za ten sam miesiąc odrzucony", () => as(H, () => metric(pH, "2026-09", 1)), /duplicate key|unique/);
+await expectError("notatka ponad 1000 znaków odrzucona", () =>
+  as(H, () => db.query("insert into partner_metrics (partner_id, month, notes) values ($1, '2026-04', $2)", [pH, "x".repeat(1001)])), /check constraint/);
+await as(H, () => db.query("delete from partner_metrics where partner_id = $1 and month = '2026-09'", [pH]));
+ok((await all("select id from partner_metrics where partner_id = $1", [pH])).length === 0, "handlowiec usuwa metryki swojego partnera");
+await db.query("delete from partners where id = $1", [pG2]);
+ok((await all("select id from partner_metrics where partner_id = $1", [pG2])).length === 0, "usunięcie partnera kasuje jego metryki");
+
+// Wynik dopasowania: każde kryterium 0–2 albo puste.
+const fitUpd = await as(H, () => db.query("update partners set fit_dead_hours = 2, fit_capacity = 1, fit_area = 0 where id = $1", [pH]));
+ok((fitUpd.affectedRows ?? 0) === 1, "handlowiec ocenia dopasowanie swojego lokalu");
+ok((await one("select fit_dead_hours + fit_capacity + fit_area as s from partners where id = $1", [pH])).s === 3, "suma dopasowania 3/6");
+await expectError("dopasowanie 3 odrzucone", () => as(H, () => db.query("update partners set fit_area = 3 where id = $1", [pH])), /partners_fit_range/);
+await expectError("dopasowanie ujemne odrzucone", () => as(H, () => db.query("update partners set fit_capacity = -1 where id = $1", [pH])), /partners_fit_range/);
+await as(H, () => db.query("update partners set fit_area = null where id = $1", [pH]));
+ok((await one("select fit_area from partners where id = $1", [pH])).fit_area === null, "kryterium można wyczyścić");
+
+// Limit AI w bazie: atomowo, na osobę i rodzaj, limity stałe w bazie; anon nic; tabela niewidoczna z zewnątrz.
+const take = (user, kind = "extract", limit = 1000) =>
+  as(user, async () => (await one("select public.take_ai_quota($1, $2, 60) as ok", [kind, limit])).ok);
+const thirty = [];
+for (let i = 0; i < 31; i++) thirty.push(await take(H));
+ok(thirty.slice(0, 30).every(Boolean) && thirty[30] === false, "limit AI: 30 odczytów na godzinę, 31. odrzucony (limit z klienta ignorowany)");
+ok((await take(H, "draft")) === true, "limit AI liczy osobno szkice");
+ok((await take(G)) === true, "limit AI liczy osobno każdą osobę");
+await expectError("anon nie wywoła limitu AI", () => as(null, () => db.query("select public.take_ai_quota('extract')")), /permission denied/);
+await expectError("limit AI odrzuca nieznany rodzaj", () => as(H, () => db.query("select public.take_ai_quota('inne')")), /Nieprawidłowy limit/);
+await expectError("tabela użycia AI niewidoczna dla handlowca", () => as(H, () => db.query("select * from ai_usage")), /permission denied/);
+
+// Zapis misji w jednej transakcji: misja + tabele misji razem albo wcale, wersja sprawdzana w środku.
+const bundle = async (id, version, mission, ops) =>
+  (await db.query("select public.save_mission_bundle($1, $2, $3, $4) as r", [id, version, JSON.stringify(mission), JSON.stringify(ops)])).rows[0].r;
+const mB = "77777777-0000-4000-8000-0000000000b1";
+const missionCols = (patch = {}) => ({
+  workspace_id: wsG, partner_id: pG, owner_user_id: G.id, status: "active", current_stage: "research",
+  next_step_label: "Zadzwonić", next_step_at: "2026-11-01", outcome: null, loss_reason: null,
+  details: { conversationNote: "pierwsza" }, closed_at: null, ...patch,
+});
+const needA = "77777777-0000-4000-8000-0000000000a1";
+const needB = "77777777-0000-4000-8000-0000000000a2";
+const fullOps = (needs) => [
+  { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "Puste środy", next_step: "Zadzwonić" }] },
+  { table: "needs", op: "upsert", rows: needs.map((id) => ({ id, mission_id: mB, category: "off_peak", title: `Potrzeba ${id.slice(-2)}`, status: "observation", source: "manual" })) },
+  { table: "mission_checklist_items", op: "upsert", rows: [{ mission_id: mB, stage: "research", item_key: "profile", label: "Profil", is_done: true, done_at: "2026-10-20T10:00:00Z" }] },
+  { table: "mission_objections", op: "upsert", rows: [{ mission_id: mB, library_key: "margin", checked: true, argument_worked: false }] },
+  { table: "offers", op: "upsert", rows: [{ mission_id: mB, variant: "A", custom_terms: { segment: "venue" }, recommended_by: "human", status: "draft" }] },
+  { table: "contracts", op: "upsert", refs: { offer_id: "offers" }, optional: ["sent_at"], rows: [{ mission_id: mB, company_name: "Bistro Gosi sp. z o.o.", signed_by_human: false, sent_at: null, status: "draft" }] },
+  { table: "activations", op: "upsert", refs: { contract_id: "contracts" }, optional: ["kolumna_z_przyszlosci"], rows: [{ mission_id: mB, partner_code: "LUTRA-X", hours_confirmed: true, kolumna_z_przyszlosci: 1 }] },
+  { table: "tasks", op: "insert", key: "next_step", single: true, rows: [{ workspace_id: wsG, mission_id: mB, owner_user_id: G.id, title: "Zadzwonić", due_at: "2026-11-01", source: "next_step" }] },
+];
+const created = await as(G, () => bundle(mB, null, missionCols(), fullOps([needA, needB])));
+const mBRow = await one("select updated_at = $2::timestamptz as same from missions where id = $1", [mB, created.version]);
+ok(created.version && mBRow.same === true, "zapis misji w jednej transakcji: nowa misja, zwraca jej wersję");
+const childCounts = await one(
+  `select (select count(*) from decision_context where mission_id = $1)::int d, (select count(*) from needs where mission_id = $1)::int n,
+          (select count(*) from mission_checklist_items where mission_id = $1)::int c, (select count(*) from mission_objections where mission_id = $1)::int o,
+          (select count(*) from tasks where mission_id = $1)::int t,
+          (select offer_id = (select id from offers where mission_id = $1) from contracts where mission_id = $1) offer_linked,
+          (select contract_id = (select id from contracts where mission_id = $1) from activations where mission_id = $1) contract_linked`,
+  [mB],
+);
+ok(childCounts.d === 1 && childCounts.n === 2 && childCounts.c === 1 && childCounts.o === 1 && childCounts.t === 1, "misja i wszystkie tabele misji zapisane jednym wywołaniem");
+ok(childCounts.offer_linked === true && childCounts.contract_linked === true, "umowa wskazuje ofertę, aktywacja umowę (odczytane w trakcie zapisu)");
+ok(created.returned?.next_step?.[0]?.title === "Zadzwonić" && created.returned.next_step[0].mission_id === mB, "zapis zwraca nowe zadanie następnego kroku");
+
+const v1b = created.version;
+const second = await as(G, () =>
+  bundle(mB, v1b, missionCols({ next_step_label: "Wysłać ofertę", details: { conversationNote: "druga" } }), [
+    { table: "needs", op: "delete", ids: [needB] },
+    { table: "needs", op: "upsert", rows: [{ id: needA, mission_id: mB, category: "margin", title: "Marża", status: "fact", source: "manual" }] },
+    { table: "tasks", op: "update", key: "next_step", single: true, ids: [created.returned.next_step[0].id], set: { title: "Wysłać ofertę" } },
+  ]),
+);
+const afterSecond = await one("select next_step_label, details->>'conversationNote' as note, (select count(*) from needs where mission_id = $1)::int as n, (select category::text from needs where id = $2) as cat from missions where id = $1", [mB, needA]);
+ok(second.version !== v1b && afterSecond.next_step_label === "Wysłać ofertę" && afterSecond.note === "druga", "kolejny zapis z aktualną wersją przechodzi i zmienia wersję");
+ok(afterSecond.n === 1 && afterSecond.cat === "margin" && second.returned.next_step[0].title === "Wysłać ofertę", "usunięcie i zmiana potrzeb, zmiana zadania w tym samym zapisie");
+
+const stateOf = async () =>
+  JSON.stringify(await one(
+    `select m.updated_at, m.next_step_label, m.details, (select jsonb_agg(n order by n.id) from needs n where n.mission_id = $1) needs,
+            (select to_jsonb(d) from decision_context d where d.mission_id = $1) decision, (select jsonb_agg(t order by t.id) from tasks t where t.mission_id = $1) tasks
+     from missions m where m.id = $1`,
+    [mB],
+  ));
+const beforeFail = await stateOf();
+await expectError("błąd w środku zapisu (zła kategoria potrzeby) przerywa całość", () =>
+  as(G, () =>
+    bundle(mB, second.version, missionCols({ next_step_label: "Nie powinno zostać" }), [
+      { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "Nie powinno zostać" }] },
+      { table: "needs", op: "upsert", rows: [{ id: needB, mission_id: mB, category: "bogus", status: "observation", source: "manual" }] },
+    ])), /need_category|invalid input value/);
+ok((await stateOf()) === beforeFail, "po błędzie misja i tabele misji bez zmian (także wiersz misji i jego wersja)");
+await expectError("stara wersja = konflikt", () =>
+  as(G, () => bundle(mB, v1b, missionCols({ next_step_label: "Stara wersja" }), [
+    { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "Stara wersja" }] },
+  ])), /mission_conflict/);
+await expectError("nieznana wersja przy istniejącej misji = konflikt (bez nadpisania w ciemno)", () =>
+  as(G, () => bundle(mB, null, missionCols({ next_step_label: "W ciemno" }), [])), /mission_conflict/);
+ok((await stateOf()) === beforeFail, "konflikt niczego nie zmienia");
+
+await expectError("handlowiec nie zapisze misji szefowej (RLS)", () =>
+  as(H, () => bundle(mB, second.version, missionCols({ next_step_label: "H" }), [
+    { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "H" }] },
+  ])), /mission_conflict/);
+await expectError("handlowiec nie dopisze do misji szefowej przez swoją misję", () =>
+  as(H, async () => {
+    const vH = (await one("select updated_at::text as v from missions where id = $1", [mH])).v;
+    return bundle(mH, vH, { next_step_label: "moje" }, [
+      { table: "needs", op: "upsert", rows: [{ mission_id: mB, category: "margin", status: "observation", source: "manual", id: "77777777-0000-4000-8000-0000000000a3" }] },
+    ]);
+  }), /nie należy do tej misji/);
+await expectError("obcy zespół nie zapisze misji zespołu", () =>
+  as(A, () => bundle(mB, second.version, missionCols({ workspace_id: wsA, partner_id: pA, owner_user_id: A.id, next_step_label: "A" }), [])), /mission_conflict/);
+await expectError("obcy zespół nie przejmie misji zespołu jako „nowej”", () =>
+  as(A, () => bundle(mB, null, missionCols({ workspace_id: wsA, partner_id: pA, owner_user_id: A.id }), [])), /mission_conflict|row-level security/);
+await expectError("anon nie wywoła zapisu misji", () => as(null, () => bundle(mB, second.version, missionCols(), [])), /permission denied/);
+ok((await stateOf()) === beforeFail, "odrzucone zapisy innych osób niczego nie zmieniają");
+
+const mBv = () => one("select updated_at::text as v from missions where id = $1", [mB]).then((r) => r.v);
+const otherNeed = (await one("select id from needs where mission_id <> $1 limit 1", [mB]))?.id
+  ?? (await as(H, async () => (await one("insert into needs (mission_id, category) values ($1, 'margin') returning id", [mH])).id));
+await expectError("wiersz innej misji w operacjach odrzucony", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "needs", op: "upsert", rows: [{ id: needB, mission_id: mH, category: "margin", status: "observation", source: "manual" }] },
+  ])), /nie należy do tej misji/);
+await expectError("istniejąca potrzeba innej misji nie zostanie przepięta", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "needs", op: "upsert", rows: [{ id: otherNeed, mission_id: mB, category: "margin", status: "observation", source: "manual" }] },
+  ])), /innej misji/);
+await expectError("zmiana zadania innej misji odrzucona", async () =>
+  as(G, async () => {
+    const foreignTask = (await one("select id from tasks where mission_id = $1 limit 1", [mG])).id;
+    return bundle(mB, await mBv(), missionCols(), [
+      { table: "tasks", op: "update", single: true, ids: [foreignTask], set: { title: "cudze" } },
+    ]);
+  }), /Oczekiwano jednego/);
+await expectError("zadanie w innym zespole odrzucone", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "tasks", op: "insert", rows: [{ workspace_id: wsA, mission_id: mB, title: "x", source: "next_step" }] },
+  ])), /nie należy do tej misji/);
+await expectError("tabela spoza listy odrzucona", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "partners", op: "update", ids: [pG], set: { notes: "x" } },
+  ])), /nie należy do zapisu misji/);
+await expectError("operacje na samej tabeli misji odrzucone", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "missions", op: "delete", ids: [mG] },
+  ])), /nie należy do zapisu misji/);
+await expectError("nieznana kolumna (spoza „optional”) odrzucona", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "activations", op: "upsert", rows: [{ mission_id: mB, nie_ma_takiej: 1 }] },
+  ])), /does not exist/);
+await expectError("zmiana mission_id w update odrzucona", async () =>
+  as(G, async () => bundle(mB, await mBv(), missionCols(), [
+    { table: "tasks", op: "update", ids: [created.returned.next_step[0].id], set: { mission_id: mG } },
+  ])), /Nieprawidłowa zmiana/);
+ok((await stateOf()) === beforeFail, "odrzucone operacje niczego nie zmieniają");
+ok((await one("select count(*)::int as n from missions where id = $1 and owner_user_id = $2", [mG, H.id])).n === 1, "misja kolegi nietknięta");
+
+// Rejestracja tylko z zaproszenia (hook Before User Created).
+const hook = async (email, token) =>
+  (await one("select public.crm_before_user_created($1::jsonb) as r", [JSON.stringify({ user: { email, user_metadata: token ? { invite_token: token } : {} } })])).r;
+const inviteOpen = await as(G, async () => (await one("select public.create_workspace_invite(null) as t")).t);
+const inviteMail = await as(G, async () => (await one("select public.create_workspace_invite($1) as t", ["nowa@zespol.pl"])).t);
+ok((await hook("ktos@gmail.com", null)).error?.http_code === 403, "bez zaproszenia rejestracja odrzucona");
+ok((await hook("ktos@gmail.com", "zly-kod")).error?.http_code === 403, "zły kod zaproszenia odrzucony");
+ok(JSON.stringify(await hook("ktos@gmail.com", inviteOpen)) === "{}", "zaproszenie bez adresu wpuszcza");
+ok(JSON.stringify(await hook("Nowa@Zespol.pl", inviteMail)) === "{}", "zaproszenie z adresem wpuszcza ten adres");
+ok((await hook("inna@zespol.pl", inviteMail)).error?.http_code === 403, "zaproszenie z adresem nie wpuszcza innego adresu");
+await expectError("hook rejestracji niedostępny dla zalogowanych", () => as(H, () => db.query("select public.crm_before_user_created('{}'::jsonb)")), /permission denied/);
+
+const good = await snapshot();
+ok((await versions()).at(-1) === "v8", "v8 zapisuje znacznik wersji");
+await db.exec(v23);
+const legacyLeft = await all("select policyname from pg_policies where policyname like '%\\_all' escape '\\' and schemaname = 'public'");
+ok(legacyLeft.length === 0, "ponowne v2–v3 po v6 nie przywraca polityk „*_all”");
+ok((await versions()).at(-1) === "v3", "znacznik pokazuje, że v2–v3 poszło po nowszych (CRM każe powtórzyć v4–v8)");
+for (const sql of [v4, v5, v6, v7, v8]) await db.exec(sql);
+const rerunState = await snapshot();
+const changed = [...good.keys()].filter((k) => rerunState.get(k) !== good.get(k)).concat([...rerunState.keys()].filter((k) => !good.has(k)));
+ok(changed.length === 0, `po powtórzeniu v4–v8 uprawnienia i funkcje jak przed (${changed.join(", ") || "bez różnic"})`);
+const afterRerun = await as(G, async () =>
+  bundle(mB, (await one("select updated_at::text as v from missions where id = $1", [mB])).v, missionCols({ next_step_label: "Po powtórce" }), [
+    { table: "decision_context", op: "upsert", rows: [{ mission_id: mB, problem: "Po powtórce" }] },
+  ]),
+);
+ok(afterRerun.version && (await one("select problem from decision_context where mission_id = $1", [mB])).problem === "Po powtórce", "zapis misji w jednej transakcji działa po powtórzeniu migracji");
+await expectError("po powtórzeniu migracji anon dalej bez zapisu misji", () => as(null, () => bundle(mB, null, missionCols(), [])), /permission denied/);
+const anonMigrations = await db.query("select has_table_privilege('anon', 'crm_migrations', 'insert') as ins");
+ok(anonMigrations.rows[0].ins === false, "znaczników wersji nie zapisze nikt z zewnątrz");
 
 console.log(`\nWynik: ${passes} ok, ${failures} błędów`);
 process.exit(failures ? 1 : 0);

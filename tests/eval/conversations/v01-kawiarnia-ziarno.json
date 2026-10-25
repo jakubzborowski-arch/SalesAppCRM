@@ -1,0 +1,121 @@
+{
+  "id": "v01-kawiarnia-ziarno",
+  "title": "Kawiarnia Ziarno — pełne ustalenia, nagłówek Spinach",
+  "segment": "venue",
+  "callDate": "2026-10-20",
+  "partner": {
+    "name": "Kawiarnia Ziarno",
+    "city": "Kraków",
+    "category": "kawiarnia",
+    "contacts": [
+      {
+        "name": "Agnieszka Wróbel",
+        "role": "właścicielka"
+      },
+      {
+        "name": "Paweł Kos",
+        "role": "kierownik sali"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Spinach AI — Notatka ze spotkania\nSpotkanie: Lutra × Kawiarnia Ziarno\nData: wtorek, 20 października 2026, 11:00–11:28\nUczestnicy: Kuba Zborowski (Lutra), Agnieszka Wróbel (Kawiarnia Ziarno)\n\nKuba Zborowski: Dzień dobry, dziękuję za czas. Jak wygląda ruch w ciągu tygodnia?\nAgnieszka Wróbel: Rano i w weekendy mamy pełno, ale od wtorku do czwartku po południu sala stoi pusta.\nAgnieszka Wróbel: Między czternastą a siedemnastą mam czasem dwa zajęte stoliki na dwadzieścia.\nKuba Zborowski: My przyprowadzamy grupy znajomych, które umawiają się przez aplikację. Co mogłaby pani dać takiej grupie?\nAgnieszka Wróbel: Mogę dać 15 procent na całe zamówienie, od wtorku do czwartku, między 14 a 17.\nKuba Zborowski: Od ilu osób?\nAgnieszka Wróbel: Niech to będzie od czterech osób, mniejsze grupy i tak siadają same.\nAgnieszka Wróbel: Próbowaliśmy happy hours na Instagramie, ale przyszło może pięć osób przez miesiąc.\nKuba Zborowski: Rozumiem. A jak obsługa ma rozpoznać grupę z Lutry?\nAgnieszka Wróbel: Najprościej kod QR, kelner zeskanuje go telefonem przy kasie.\nAgnieszka Wróbel: Tylko mam już dwie aplikacje ze zniżkami i nic z tego nie ma.\nKuba Zborowski: Różnica jest taka, że my nie dajemy zniżki pojedynczym osobom, tylko przyprowadzamy całe grupy w godzinach, kiedy jest pusto.\nAgnieszka Wróbel: No dobrze, to mnie przekonuje.\nAgnieszka Wróbel: Sukcesem będzie dla mnie, jeśli w te popołudnia przyjdą chociaż trzy grupy w tygodniu.\nKuba Zborowski: Na początek proponuję trzy miesiące, wtedy wystarczy porozumienie mailowe.\nAgnieszka Wróbel: Dobrze, zacznijmy od 1 listopada do końca stycznia.\nKuba Zborowski: Czy możemy pokazać logo kawiarni w aplikacji i zrobić zdjęcia na pierwszym spotkaniu?\nAgnieszka Wróbel: Logo w aplikacji jak najbardziej, zdjęcia też możecie robić.\nKuba Zborowski: A posty w social mediach?\nAgnieszka Wróbel: Z postami wolę poczekać, aż zobaczę pierwsze efekty.\nAgnieszka Wróbel: Firma to Ziarno Agnieszka Wróbel, jednoosobowa działalność.\nAgnieszka Wróbel: W trakcie wydarzeń dzwońcie do Pawła Kosa, to nasz kierownik sali.\nKuba Zborowski: Super. Wyślę porozumienie mailem jutro.\nAgnieszka Wróbel: Dobrze, podpiszę je od razu, decyzję i tak podejmuję sama.",
+  "gold": {
+    "cytat": "Rano i w weekendy mamy pełno, ale od wtorku do czwartku po południu sala stoi pusta.",
+    "problem": "Od wtorku do czwartku po południu sala stoi pusta.",
+    "kategoria": "off_peak",
+    "priorytet": 4,
+    "rezultat": "Co najmniej trzy grupy w tygodniu w popołudnia od wtorku do czwartku.",
+    "ograniczenia": [
+      "Wtorek–czwartek 14–17",
+      "Od 4 osób"
+    ],
+    "decydent": "Agnieszka Wróbel",
+    "rola_decydenta": "właścicielka",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "Happy hours na Instagramie — przyszło około pięciu osób w miesiąc.",
+    "nastepny_krok": "Kuba wysyła porozumienie mailem, właścicielka je podpisuje.",
+    "data_nastepnego_kroku": "2026-10-21",
+    "potrzeby": [
+      {
+        "tytul": "Ruch w popołudnia od wtorku do czwartku",
+        "kategoria": "off_peak",
+        "priorytet": 4,
+        "cytat": "Między czternastą a siedemnastą mam czasem dwa zajęte stoliki na dwadzieścia.",
+        "rezultat": "Trzy grupy w tygodniu",
+        "ograniczenia": "Wtorek–czwartek 14–17, od 4 osób"
+      }
+    ],
+    "wnioski": [
+      "Od wtorku do czwartku między 14 a 17 sala stoi pusta.",
+      "Zniżka 15% na całe zamówienie dla grup od 4 osób, realizacja kodem QR.",
+      "Współpraca od 1 listopada do końca stycznia, porozumienie mailowe.",
+      "Zgoda na logo w aplikacji i zdjęcia; posty dopiero po pierwszych efektach."
+    ],
+    "warunki": {
+      "znizka_procent": 15,
+      "gratis": "",
+      "dni": [
+        "tue",
+        "wed",
+        "thu"
+      ],
+      "godziny_od": "14:00",
+      "godziny_do": "17:00",
+      "min_grupa": 4,
+      "wylaczenia": "",
+      "realizacja": "qr",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "2026-11-01",
+      "okres_do": "2027-01-31"
+    },
+    "obiekcje": [
+      {
+        "klucz": "other_apps",
+        "argument_zadzialal": true,
+        "cytat": "Tylko mam już dwie aplikacje ze zniżkami i nic z tego nie ma."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "Ziarno Agnieszka Wróbel",
+      "kontakt_awaryjny": "Paweł Kos",
+      "godziny_otwarcia": "",
+      "zgoda_logo": true,
+      "zgoda_zdjecia": true,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Rano i w weekendy mamy pełno, ale od wtorku do czwartku po południu sala stoi pusta.",
+      "rezultat": "Sukcesem będzie dla mnie, jeśli w te popołudnia przyjdą chociaż trzy grupy w tygodniu.",
+      "ograniczenia": "Niech to będzie od czterech osób, mniejsze grupy i tak siadają same.",
+      "decydent": "Dobrze, podpiszę je od razu, decyzję i tak podejmuję sama.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "Próbowaliśmy happy hours na Instagramie, ale przyszło może pięć osób przez miesiąc.",
+      "nastepny_krok": "Dobrze, podpiszę je od razu, decyzję i tak podejmuję sama.",
+      "znizka": "Mogę dać 15 procent na całe zamówienie, od wtorku do czwartku, między 14 a 17.",
+      "kiedy": "Mogę dać 15 procent na całe zamówienie, od wtorku do czwartku, między 14 a 17.",
+      "grupa": "Niech to będzie od czterech osób, mniejsze grupy i tak siadają same.",
+      "wylaczenia": "",
+      "realizacja": "Najprościej kod QR, kelner zeskanuje go telefonem przy kasie.",
+      "miejsce": "",
+      "okres": "Dobrze, zacznijmy od 1 listopada do końca stycznia.",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "Firma to Ziarno Agnieszka Wróbel, jednoosobowa działalność.",
+      "kontakt_awaryjny": "W trakcie wydarzeń dzwońcie do Pawła Kosa, to nasz kierownik sali.",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "Logo w aplikacji jak najbardziej, zdjęcia też możecie robić.",
+      "zgoda_zdjecia": "Logo w aplikacji jak najbardziej, zdjęcia też możecie robić.",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Komplet ustaleń dla lokalu: zniżka, dni i godziny, grupa słownie („od czterech” — bramka liczby celowo odznacza), QR, okres 3 mies., zgody logo+zdjęcia (social odmowa), obiekcja other_apps z argumentem, który zadziałał. „Jutro” liczone od daty rozmowy."
+}

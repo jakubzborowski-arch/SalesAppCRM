@@ -13,17 +13,35 @@ Otwórz [http://localhost:3001](http://localhost:3001) (albo 3000). Zaloguj się
 
 ## Supabase
 
-1. Authentication → Providers: wyłącz **Confirm email**.
-2. SQL Editor: wklej `supabase/v2-v3-all.sql` i Run.
-3. SQL Editor: wklej `supabase/v4-team-timeline.sql` i Run (zespół, dziennik kontaktów, historia etapów).
-4. SQL Editor: wklej `supabase/v5-company-data.sql` i Run (dane firmy partnera: nazwa, NIP, REGON, adresy).
-5. SQL Editor: wklej `supabase/v6-roles-contracts.sql` i Run (kto co edytuje, przekazywanie misji, obieg podpisu, szablon umowy).
-6. SQL Editor: wklej `supabase/v7-partner-types.sql` i Run (typ partnera, pojemność miejsca, szablon porozumienia mailowego).
-7. `.env.local` z URL i anon key.
-8. W CRM: **Dodaj partnera**, potem **Zajmuję się partnerem**. Przy pierwszym wejściu CRM pokazuje krótkie wprowadzenie; pełny opis jest w menu → **Pomoc**.
+1. Authentication → Sign In / Providers → Email: włącz **Confirm email** (AI działa tylko dla potwierdzonych adresów).
+2. Authentication → URL Configuration: **Site URL** = adres CRM (lokalnie `http://localhost:3001`, na produkcji adres z Vercela) — tam prowadzi link z maila.
+3. SQL Editor: wklej `supabase/migrations/20261001000003_v2_v3_all.sql` i Run.
+4. SQL Editor: wklej po kolei i Run kolejne pliki z `supabase/migrations/`: v4 (zespół, dziennik kontaktów, historia etapów), v5 (dane firmy), v6 (kto co edytuje, obieg podpisu), v7 (typ partnera, porozumienie mailowe), v8 (jakość AI, metryki i zdrowie partnera, wynik dopasowania, limity AI, zapis misji w jednej transakcji). Najprościej: w CRM przycisk „Kopiuj SQL” na żółtym pasku daje wszystkie brakujące naraz. Albo Supabase CLI — niżej.
+5. `.env.local` z URL i anon key.
+6. Pierwsze konto: lokalnie (`npm run dev`) rejestracja jest otwarta. Na produkcji konta zakłada się z linku zaproszenia (Ustawienia → Zespół); pierwsze konto administratora — jednorazowo `NEXT_PUBLIC_OPEN_SIGNUP=1`, potem usuń tę zmienną.
+7. W CRM: **Dodaj partnera**, potem **Zajmuję się partnerem**. Przy pierwszym wejściu CRM pokazuje krótkie wprowadzenie; pełny opis jest w menu → **Pomoc** albo w bąbelku „Wprowadzenie”.
 
-Migracje można odpalać ponownie. Brakującą migrację CRM pokazuje na pasku u góry z przyciskiem „Kopiuj SQL”.
-Po każdym ponownym odpaleniu `v2-v3-all.sql` odpal też `v4-team-timeline.sql` (v2-v3 przywraca starsze polityki dostępu).
+**Zasada migracji:** każdą można odpalać wielokrotnie, ale po ponownym odpaleniu starszej (np. v2–v3) trzeba odpalić jeszcze raz wszystkie nowsze, po kolei (v4–v8). Starsza migracja potrafi przywrócić stare polityki dostępu albo funkcje. CRM pilnuje tego sam: każda migracja zapisuje znacznik w `crm_migrations`, a gdy starsza poszła po nowszej, żółty pasek każe powtórzyć kolejne i daje gotowy SQL.
+
+### Supabase CLI (zamiast wklejania)
+
+Migracje są w `supabase/migrations/` w formacie Supabase CLI:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <ref>   # ref = część adresu https://<ref>.supabase.co
+npm run db:push                          # = npx supabase db push
+```
+
+Na bazie, w której migracje odpalałeś ręcznie, pierwszy `db push` odpali wszystkie pliki jeszcze raz, po kolei — to bezpieczne (każda jest powtarzalna, a kolejność przywraca aktualne uprawnienia). Kopia zapasowa: Supabase → Database → Backups (na planie Pro włącz Point in Time Recovery przed wdrożeniem dla zespołu).
+
+### Przed wdrożeniem na Vercel (koszty AI)
+
+- Vercel → Environment Variables: `AI_ALLOWED_EMAILS` (adresy albo domeny handlowców). Bez tej listy AI na produkcji jest wyłączone.
+- Claude Console → Settings → Limits: miesięczny limit wydatków dla organizacji albo workspace’u z kluczem CRM.
+- OpenCode Zen (jeśli używasz `HOSTED_LLM_API_KEY`): limit salda w panelu Zen.
+- Supabase → Authentication → Hooks → **Before User Created** → Postgres → `public.crm_before_user_created` (z v8). Od tej chwili konto założy tylko osoba z linkiem zaproszenia (pierwsze konto w pustym projekcie przechodzi zawsze). Bez hooka ukryty przycisk rejestracji nie wystarcza — API Supabase przyjmie rejestrację.
+- Supabase: włączone **Confirm email** (punkt 1). Bez tego lista z domeną (`@lutra.pl`) nie chroni AI: ktoś założy konto `x@lutra.pl` bez dostępu do tej skrzynki.
 
 ## Dane firmy, terminy, raporty
 
@@ -54,7 +72,7 @@ Po każdym ponownym odpaleniu `v2-v3-all.sql` odpal też `v4-team-timeline.sql` 
 ## Testy
 
 - `npm test` — testy jednostkowe (zapis, konflikty, NIP, terminy, raporty, umowy, uprawnienia, duplikaty, warunki, porozumienie mailowe, opieka, maile po kontakcie, import typów).
-- `npm run test:sql` — migracje v2–v7 i RLS na PGlite (bez prawdziwego Supabase).
+- `npm run test:sql` — migracje v2–v8, ponowne odpalanie starszych migracji i RLS na PGlite (bez prawdziwego Supabase).
 - GitHub Actions (`.github/workflows/ci.yml`) uruchamia lint, typecheck, oba zestawy testów i build przy każdym pushu.
 
 ## Zespół

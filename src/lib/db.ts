@@ -1,6 +1,18 @@
+import type { MigrationRow } from "./migrations";
 import { isValidNip, normalizeNip } from "./company";
-import { loadMissionCore, syncMissionCore } from "./mission-core";
+import {
+  bundlePayload,
+  loadMissionCore,
+  needsLegacyRows,
+  nextStepTaskOf,
+  planMissionCore,
+  removeContractFiles,
+  syncMissionCore,
+  type PlannedMissionCore,
+} from "./mission-core";
 import { mergeCare, mergeTerms } from "./terms";
+import { fitLevel } from "./fit";
+import { MONTH_RE } from "./health";
 import { nextPriorityForDb, normalizePartnerPriority, priorityForDb } from "./partner-priority";
 import { OBJECTION_KEYS } from "./playbook";
 import { fetchAll, groupBy, selectIn } from "./fetch-all";
@@ -20,6 +32,8 @@ import type {
   NewPartnerInput,
   Partner,
   PartnerContact,
+  PartnerMetrics,
+  PartnerMetricsInput,
   StageId,
   InvitePeek,
   TaskItem,
@@ -166,6 +180,9 @@ function mapPartner(
     notes: string | null;
     owner_user_id?: string | null;
     capacity?: number | null;
+    fit_dead_hours?: number | null;
+    fit_capacity?: number | null;
+    fit_area?: number | null;
     legal_name?: string | null;
     nip?: string | null;
     regon?: string | null;
@@ -206,6 +223,11 @@ function mapPartner(
     },
     contacts,
     consents,
+    fit: {
+      deadHours: fitLevel(row.fit_dead_hours),
+      capacity: fitLevel(row.fit_capacity),
+      area: fitLevel(row.fit_area),
+    },
   };
 }
 
@@ -678,12 +700,20 @@ function partnerColumns(partner: Partner): Record<string, unknown> {
     billing_email: c.billingEmail || null,
     segment: partner.segment,
     capacity: partner.capacity && partner.capacity > 0 ? Math.round(partner.capacity) : null,
+    fit_dead_hours: fitLevel(partner.fit?.deadHours),
+    fit_capacity: fitLevel(partner.fit?.capacity),
+    fit_area: fitLevel(partner.fit?.area),
   };
 }
 
 const COMPANY_COLUMNS = ["legal_name", "nip", "regon", "legal_address", "mailing_address", "billing_email"];
 /** Kolumny z migracji v7 (typ partnera i pojemność). */
 const V7_PARTNER_COLUMNS = ["segment", "capacity"];
+/** Kolumny z migracji v8 (wynik dopasowania lokalu). */
+const V8_PARTNER_COLUMNS = ["fit_dead_hours", "fit_capacity", "fit_area"];
+
+/** Zabrakło kolumn dopasowania albo tabeli metryk — trzeba uruchomić migrację v8. */
+export const V8_MISSING = "Baza nie ma jeszcze wyniku dopasowania i metryk partnera. Uruchom migrację v8 z paska u góry strony.";
 
 /** Zabrakło kolumn typu partnera / pojemności — trzeba uruchomić migrację v7. */
 export const V7_MISSING = "Baza nie ma jeszcze pól typu partnera i pojemności. Uruchom migrację v7 z paska u góry strony.";
@@ -698,8 +728,8 @@ export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrac
 export async function persistPartner(
   partner: Partner,
   before?: Partner,
-): Promise<{ dropped: ("company" | "priority" | "v7")[]; conflicts: string[] }> {
-  const dropped: ("company" | "priority" | "v7")[] = [];
+): Promise<{ dropped: ("company" | "priority" | "v7" | "v8")[]; conflicts: string[] }> {
+  const dropped: ("company" | "priority" | "v7" | "v8")[] = [];
   /** Kontakty zmienione w międzyczasie przez kogoś innego — ich nie zapisujemy. */
   const conflicts: string[] = [];
   const sb = getSupabase();
@@ -722,7 +752,7 @@ export async function persistPartner(
   const prev = before ? partnerColumns(before) : null;
   const changed = Object.fromEntries(
     Object.entries(next).filter(([key, value]) => {
-      if (!prev) return !([...COMPANY_COLUMNS, "capacity"].includes(key) && value === null);
+      if (!prev) return !([...COMPANY_COLUMNS, ...V8_PARTNER_COLUMNS, "capacity"].includes(key) && value === null);
       return JSON.stringify(prev[key]) !== JSON.stringify(value);
     }),
   );
@@ -732,9 +762,17 @@ export async function persistPartner(
         ? (await sb.from("partners").update(changed).eq("id", partner.id)).error
         : null;
     let error = await send();
-    for (let attempt = 0; error && attempt < 5; attempt++) {
+    for (let attempt = 0; error && attempt < 6; attempt++) {
       const missing = missingColumnName(error);
-      if ("priority" in changed && /partner_priority/i.test(error.message ?? "")) {
+      if (
+        isMissingColumn(error) &&
+        Object.keys(changed).some((key) => V8_PARTNER_COLUMNS.includes(key)) &&
+        (!missing || V8_PARTNER_COLUMNS.includes(missing))
+      ) {
+        // Bez migracji v8 nie ma gdzie zapisać wyniku dopasowania — reszta karty się zapisuje.
+        for (const key of V8_PARTNER_COLUMNS) delete changed[key];
+        if (!dropped.includes("v8")) dropped.push("v8");
+      } else if ("priority" in changed && /partner_priority/i.test(error.message ?? "")) {
         // Starsza baza ma inny zestaw priorytetów — reszta zmian i tak ma się zapisać.
         delete changed.priority;
         dropped.push("priority");
@@ -867,6 +905,8 @@ export function replaceMissionVersions(versions: Map<string, string>) {
 /** Po wylogowaniu wersje z poprzedniej sesji nie są już nic warte. */
 export function clearMissionVersions() {
   missionVersions.clear();
+  // Po ponownym logowaniu sprawdzamy od nowa, czy jest zapis w jednej transakcji (np. po wgraniu v8).
+  missionBundleAvailable = null;
 }
 
 export class MissionConflictError extends Error {
@@ -878,16 +918,14 @@ export class MissionConflictError extends Error {
   }
 }
 
-export async function persistMission(
-  mission: Mission,
-  workspaceId: string,
-  userId: string,
-  segment: Partner["segment"] = "venue",
-): Promise<{ nextStepTask: TaskItem | null }> {
-  const sb = getSupabase();
-  if (!sb) return { nextStepTask: null };
-  const slim = coreTablesAvailable === true;
-  const changes = {
+/**
+ * Czy w bazie jest `save_mission_bundle` (v8): zapis misji w jednej transakcji.
+ * `false` po odpowiedzi „brak funkcji” — wtedy zapis po staremu, do ponownego logowania.
+ */
+let missionBundleAvailable: boolean | null = null;
+
+function missionColumns(mission: Mission, workspaceId: string, userId: string, details: MissionDetails) {
+  return {
     workspace_id: workspaceId,
     partner_id: mission.partnerId,
     // Właściciel zostaje ten sam, nawet gdy misję zapisuje ktoś inny z zespołu.
@@ -898,9 +936,127 @@ export async function persistMission(
     next_step_at: dateOrNull(mission.nextStepAt),
     outcome: mission.outcome,
     loss_reason: mission.lossReason || null,
-    details: slim ? uiDetailsOf(mission) : detailsOf(mission),
+    details,
     closed_at: mission.status === "active" ? null : (mission.closedAt ?? null),
   };
+}
+
+function isMissionConflict(error: { code?: string; message?: string }) {
+  return error.code === "P0001" && /mission_conflict/.test(error.message ?? "");
+}
+
+/** JSON z posortowanymi kluczami — porównanie wiersza z bazy z tym, co wysłaliśmy. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** Pola misji, po których rozpoznajemy własny zapis (odpowiedź zginęła, a baza go przyjęła). */
+function missionFingerprint(row: Record<string, unknown>) {
+  const time = (value: unknown) => (value ? new Date(String(value)).toISOString() : null);
+  return stableJson({
+    owner_user_id: row.owner_user_id ?? null,
+    status: row.status ?? null,
+    current_stage: row.current_stage ?? null,
+    next_step_label: row.next_step_label ?? "",
+    next_step_at: row.next_step_at ? String(row.next_step_at).slice(0, 10) : null,
+    outcome: row.outcome ?? null,
+    loss_reason: row.loss_reason ?? null,
+    closed_at: time(row.closed_at),
+    details: row.details ?? null,
+  });
+}
+
+/** Ostatnio wysłany zapis misji, którego wyniku nie znamy (błąd sieci) — klucz: id misji. */
+const unconfirmedSaves = new Map<string, string>();
+
+/**
+ * Zapis misji i jej tabel jedną transakcją (`save_mission_bundle`). Wersja sprawdzana w tej samej
+ * transakcji: albo zapisuje się wszystko, albo nic. `null` = funkcji nie ma, trzeba po staremu.
+ */
+async function persistMissionBundle(
+  sb: NonNullable<ReturnType<typeof getSupabase>>,
+  mission: Mission,
+  workspaceId: string,
+  userId: string,
+  plan: PlannedMissionCore,
+): Promise<{ nextStepTask: TaskItem | null } | null> {
+  const columns = missionColumns(mission, workspaceId, userId, uiDetailsOf(mission));
+  const mine = missionFingerprint(columns);
+  const call = (legacy: boolean) =>
+    sb.rpc("save_mission_bundle", {
+      p_mission_id: mission.id,
+      // Bez znanej wersji funkcja tylko zakłada nową misję — istniejącej nie nadpisze w ciemno.
+      p_expected_version: missionVersions.get(mission.id) ?? null,
+      p_mission: columns,
+      p_ops: bundlePayload(plan.ops, legacy),
+    });
+  const previous = unconfirmedSaves.get(mission.id);
+  unconfirmedSaves.set(mission.id, mine);
+  let { data, error } = await call(false);
+  if (needsLegacyRows(plan.ops, error)) ({ data, error } = await call(true));
+  if (error && isMissionConflict(error)) {
+    // Konflikt może być pozorny: poprzedni zapis doszedł do bazy, tylko odpowiedź zginęła (sieć).
+    // Wtedy wiersz w bazie = to, co wysłaliśmy (teraz albo poprzednio) — przejmujemy wersję i zapisujemy dalej.
+    const { data: row } = await sb.from("missions").select("*").eq("id", mission.id).maybeSingle();
+    const server = row ? missionFingerprint(row as Record<string, unknown>) : null;
+    if (row && server && (server === mine || server === previous)) {
+      setMissionVersion(mission.id, (row as { updated_at?: string }).updated_at ? String((row as { updated_at?: string }).updated_at) : undefined);
+      if (server === mine) {
+        unconfirmedSaves.delete(mission.id);
+        missionBundleAvailable = true;
+        return { nextStepTask: null };
+      }
+      ({ data, error } = await call(false));
+      if (needsLegacyRows(plan.ops, error)) ({ data, error } = await call(true));
+    }
+  }
+  if (error) {
+    if (isMissingFunction(error)) {
+      unconfirmedSaves.delete(mission.id);
+      missionBundleAvailable = false;
+      return null;
+    }
+    if (isMissionConflict(error)) {
+      unconfirmedSaves.delete(mission.id);
+      throw new MissionConflictError(mission.id);
+    }
+    throw error;
+  }
+  unconfirmedSaves.delete(mission.id);
+  missionBundleAvailable = true;
+  coreTablesAvailable = true;
+  const result = (data ?? {}) as { version?: string | null; returned?: Record<string, Record<string, unknown>[]> };
+  setMissionVersion(mission.id, result.version ? String(result.version) : undefined);
+  // Storage nie jest częścią transakcji: stare pliki umowy kasujemy dopiero po udanym zapisie.
+  await removeContractFiles(plan.staleFiles);
+  return { nextStepTask: nextStepTaskOf(plan, result.returned) };
+}
+
+export async function persistMission(
+  mission: Mission,
+  workspaceId: string,
+  userId: string,
+  segment: Partner["segment"] = "venue",
+): Promise<{ nextStepTask: TaskItem | null }> {
+  const sb = getSupabase();
+  if (!sb) return { nextStepTask: null };
+  const plan = await planMissionCore(mission, workspaceId, userId, segment);
+  if (plan.status === "planned" && missionBundleAvailable !== false) {
+    const saved = await persistMissionBundle(sb, mission, workspaceId, userId, plan);
+    if (saved) return saved;
+  }
+
+  // Po staremu (baza bez v8): misja, potem tabele misji zapytanie po zapytaniu, na końcu domknięcie wersji.
+  const slim = coreTablesAvailable === true;
+  const changes = missionColumns(mission, workspaceId, userId, slim ? uiDetailsOf(mission) : detailsOf(mission));
 
   const version = missionVersions.get(mission.id);
   let claimed: string | undefined;
@@ -925,7 +1081,7 @@ export async function persistMission(
   }
   setMissionVersion(mission.id, claimed);
 
-  const core = await syncMissionCore(mission, workspaceId, userId, segment);
+  const core = await syncMissionCore(mission, workspaceId, userId, segment, plan);
   if (core.status === "synced") {
     if (claimed) {
       // Domknięcie zapisu: nowa wersja dopiero po zapisaniu tabel misji. Kto wczytał misję
@@ -980,7 +1136,7 @@ function isMissingFunction(error: { code?: string; message?: string } | null) {
 }
 
 export const V4_MISSING =
-  "Brakuje migracji v4 w bazie. Otwórz SQL Editor w Supabase, wklej supabase/v4-team-timeline.sql i kliknij Run.";
+  "Brakuje migracji v4 w bazie. Otwórz SQL Editor w Supabase, wklej supabase/migrations/20261001000004_v4_team_timeline.sql i kliknij Run.";
 
 /** `true` gdy w bazie są kolumny dziennika kontaktów z migracji v4. `null` gdy nie wiadomo. */
 export async function detectSchemaV4(): Promise<boolean | null> {
@@ -1215,6 +1371,79 @@ export async function detectSchemaV7(): Promise<boolean | null> {
   if (!wsError) return true;
   if (isMissingColumn(wsError)) return false;
   return null;
+}
+
+/** Migracja v8 (znaczniki wersji, jakość AI, opieka). Zwraca też znaczniki, żeby wykryć zły porządek migracji. */
+export async function detectSchemaV8(): Promise<{ has: boolean | null; rows: MigrationRow[] }> {
+  const sb = getSupabase();
+  if (!sb) return { has: null, rows: [] };
+  const { data, error } = await sb.from("crm_migrations").select("version, applied_at");
+  if (error) return { has: isMissingCrmTable(error) || isMissingColumn(error) ? false : null, rows: [] };
+  const rows = (data ?? []) as MigrationRow[];
+  return { has: rows.some((row) => row.version === "v8"), rows };
+}
+
+function intOrNull(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
+}
+
+function metricsFromRow(row: Record<string, unknown>): PartnerMetrics {
+  return {
+    id: String(row.id),
+    partnerId: String(row.partner_id),
+    month: String(row.month),
+    events: intOrNull(row.events),
+    attendees: intOrNull(row.attendees),
+    redemptions: intOrNull(row.redemptions),
+    notes: typeof row.notes === "string" ? row.notes : "",
+    updatedAt: row.updated_at ? String(row.updated_at) : undefined,
+  };
+}
+
+/** Wartości z formularza → wiersz bazy (liczby całkowite ≥ 0, notatka do 1000 znaków). */
+export function metricsPayload(values: PartnerMetricsInput) {
+  return {
+    events: intOrNull(values.events),
+    attendees: intOrNull(values.attendees),
+    redemptions: intOrNull(values.redemptions),
+    notes: values.notes.trim().slice(0, 1000) || null,
+  };
+}
+
+/** Metryki partnerów (migracja v8). `missing` — tabeli jeszcze nie ma. */
+export async function loadPartnerMetrics(partnerIds: string[]): Promise<{ metrics: PartnerMetrics[]; missing: boolean }> {
+  const sb = getSupabase();
+  if (!sb || !partnerIds.length) return { metrics: [], missing: false };
+  const { data, error } = await selectIn(sb, "partner_metrics", "partner_id", partnerIds);
+  if (error) {
+    if (isMissingCrmTable(error) || isMissingColumn(error)) return { metrics: [], missing: true };
+    throw error;
+  }
+  return { metrics: data.map(metricsFromRow), missing: false };
+}
+
+/** Zapis metryk za miesiąc (jeden wiersz na partnera i miesiąc). */
+export async function savePartnerMetricsRow(
+  partnerId: string,
+  month: string,
+  values: PartnerMetricsInput,
+): Promise<PartnerMetrics> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  if (!MONTH_RE.test(month)) throw new Error("Miesiąc w formacie RRRR-MM.");
+  const { data, error } = await sb
+    .from("partner_metrics")
+    .upsert(
+      { partner_id: partnerId, month, ...metricsPayload(values), updated_at: new Date().toISOString() },
+      { onConflict: "partner_id,month" },
+    )
+    .select("*")
+    .single();
+  if (error) {
+    if (isMissingCrmTable(error) || isMissingColumn(error)) throw new Error(V8_MISSING);
+    throw error;
+  }
+  return metricsFromRow(data as Record<string, unknown>);
 }
 
 /** Szablon porozumienia mailowego zespołu (admin, migracja v7). */

@@ -1,0 +1,117 @@
+{
+  "id": "v02-planszowkarnia-kostka",
+  "title": "Planszówkarnia Kostka — handlowiec proponuje 20%, partner daje 10%",
+  "segment": "venue",
+  "callDate": "2026-10-21",
+  "partner": {
+    "name": "Kostka",
+    "city": "Wrocław",
+    "category": "planszówkarnia",
+    "contacts": [
+      {
+        "name": "Tomasz Lis",
+        "role": "właściciel"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Spinach AI — Notatka ze spotkania\nSpotkanie: Lutra / Kostka\nData: 21.10.2026, 16:00\nUczestnicy: Kuba Zborowski (Lutra), Tomasz Lis (Kostka)\n\nKuba Zborowski: Cześć Tomek, jak tam w Kostce?\nTomasz Lis: W weekendy nie ma gdzie usiąść, ale w poniedziałki i wtorki wieczorem gra u nas może jeden stolik.\nKuba Zborowski: My możemy przyprowadzać grupy na wieczory planszówkowe. Myślałem o 20 procent zniżki na wejście.\nTomasz Lis: Dwadzieścia procent to za dużo, przy opłacie za stolik prawie nic mi nie zostaje.\nKuba Zborowski: Rozumiem, ale grupa zamawia też jedzenie i napoje, a w poniedziałek i tak masz pusto.\nTomasz Lis: No tak, puste stoliki też kosztują. Dobra, mogę dać 10 procent na opłatę za stolik.\nKuba Zborowski: W poniedziałki i wtorki?\nTomasz Lis: Tak, w poniedziałki i wtorki od 17 do 22, dla grup od pięciu osób.\nTomasz Lis: Promocja nie obejmuje turniejów i wydarzeń biletowanych.\nKuba Zborowski: Jak chcesz realizować zniżkę? Kod QR, kod w kasie albo hasło?\nTomasz Lis: Hasło, obsługa i tak pyta każdego przy wejściu.\nTomasz Lis: Dla mnie sukces to dwa pełne stoliki w poniedziałek.\nKuba Zborowski: Wyślę ci w piątek szkic porozumienia na trzy miesiące.\nTomasz Lis: Okej, przeczytam w weekend i dam znać do środy.",
+  "gold": {
+    "cytat": "W weekendy nie ma gdzie usiąść, ale w poniedziałki i wtorki wieczorem gra u nas może jeden stolik.",
+    "problem": "W poniedziałki i wtorki wieczorem gra najwyżej jeden stolik.",
+    "kategoria": "off_peak",
+    "priorytet": 3,
+    "rezultat": "Dwa pełne stoliki w poniedziałek.",
+    "ograniczenia": [
+      "Pon–wt 17–22",
+      "Od 5 osób",
+      "Bez turniejów i wydarzeń biletowanych"
+    ],
+    "decydent": "Tomasz Lis",
+    "rola_decydenta": "właściciel",
+    "termin_decyzji": "do środy",
+    "termin_decyzji_data": "2026-10-28",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba wysyła w piątek szkic porozumienia na trzy miesiące.",
+    "data_nastepnego_kroku": "2026-10-23",
+    "potrzeby": [
+      {
+        "tytul": "Ruch w poniedziałki i wtorki wieczorem",
+        "kategoria": "off_peak",
+        "priorytet": 3,
+        "cytat": "W weekendy nie ma gdzie usiąść, ale w poniedziałki i wtorki wieczorem gra u nas może jeden stolik.",
+        "rezultat": "Dwa pełne stoliki w poniedziałek",
+        "ograniczenia": "Od 5 osób"
+      }
+    ],
+    "wnioski": [
+      "W poniedziałki i wtorki wieczorem gra najwyżej jeden stolik.",
+      "Partner odrzucił 20% i zgodził się na 10% na opłatę za stolik.",
+      "Pon–wt 17–22, grupy od 5 osób, bez turniejów i wydarzeń biletowanych, realizacja hasłem.",
+      "Decyzja do środy po przeczytaniu szkicu porozumienia."
+    ],
+    "warunki": {
+      "znizka_procent": 10,
+      "gratis": "",
+      "dni": [
+        "mon",
+        "tue"
+      ],
+      "godziny_od": "17:00",
+      "godziny_do": "22:00",
+      "min_grupa": 5,
+      "wylaczenia": "Turnieje i wydarzenia biletowane",
+      "realizacja": "password",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "margin",
+        "argument_zadzialal": true,
+        "cytat": "Dwadzieścia procent to za dużo, przy opłacie za stolik prawie nic mi nie zostaje."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "W weekendy nie ma gdzie usiąść, ale w poniedziałki i wtorki wieczorem gra u nas może jeden stolik.",
+      "rezultat": "Dla mnie sukces to dwa pełne stoliki w poniedziałek.",
+      "ograniczenia": "Promocja nie obejmuje turniejów i wydarzeń biletowanych.",
+      "decydent": "Okej, przeczytam w weekend i dam znać do środy.",
+      "termin_decyzji": "Okej, przeczytam w weekend i dam znać do środy.",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Okej, przeczytam w weekend i dam znać do środy.",
+      "znizka": "Dobra, mogę dać 10 procent na opłatę za stolik.",
+      "kiedy": "Tak, w poniedziałki i wtorki od 17 do 22, dla grup od pięciu osób.",
+      "grupa": "Tak, w poniedziałki i wtorki od 17 do 22, dla grup od pięciu osób.",
+      "wylaczenia": "Promocja nie obejmuje turniejów i wydarzeń biletowanych.",
+      "realizacja": "Hasło, obsługa i tak pyta każdego przy wejściu.",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Handlowiec proponuje 20%, partner zmienia na 10% — wygrywa liczba partnera (20 w dowodzie = błąd). Obiekcja margin z argumentem, który zadziałał. „Do środy” w środę = środa za tydzień; „w piątek” = 23.10. Okres „trzy miesiące” bez daty startu → puste okres_od/okres_do."
+}

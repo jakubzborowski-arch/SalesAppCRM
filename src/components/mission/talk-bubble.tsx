@@ -23,6 +23,9 @@ import {
 } from "@/lib/discovery-extract";
 import { buildMissionProposal, GROUPS, planMission, type MissionProposal } from "@/lib/mission-extract";
 import { activityChannelLabel, activityOutcomeLabel } from "@/lib/playbook";
+import { AI_NOTICE_SCRIPT, aiNoticeGiven, withAiNotice } from "@/lib/ai-notice";
+import { speakerView, type SpeakerView } from "@/lib/evidence";
+import { PROMPT_VERSION, saveAiSuggestion, suggestionRows, type AiEngine } from "@/lib/ai-log";
 import { useStore } from "@/lib/store";
 import { cleanTranscript, MAX_TRANSCRIPT_CHARS, TRANSCRIPT_FILE_ACCEPT, wordsLabel } from "@/lib/transcript";
 import type { Activity, CallRecord, Channel, Mission, Partner, StageId } from "@/lib/types";
@@ -122,7 +125,7 @@ export function TalkBubble({
             setMounted(true);
             setOpen(true);
           }}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-navy py-3 pl-4 pr-5 text-sm font-medium text-white shadow-[0_12px_32px_rgba(9,12,155,0.28)] transition hover:bg-ink"
+          className="fixed bottom-4 right-4 z-40 flex min-h-11 items-center gap-2 rounded-full bg-navy py-3 pl-4 pr-5 text-sm font-medium text-white shadow-[0_12px_32px_rgba(9,12,155,0.28)] transition hover:bg-ink sm:bottom-6 sm:right-6"
         >
           <MessageSquareText size={16} aria-hidden />
           Notatka z rozmowy
@@ -195,8 +198,8 @@ function TalkDrawer({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <aside className="flex h-full w-full max-w-xl flex-col bg-white shadow-[-12px_0_48px_rgba(9,12,155,0.18)]">
-        <header className="flex items-start justify-between gap-3 border-b border-line px-6 py-4">
+      <aside className="flex h-full w-full flex-col bg-white sm:max-w-xl shadow-[-12px_0_48px_rgba(9,12,155,0.18)]">
+        <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">Notatka z rozmowy</p>
             <h2 id="talk-title" className="mt-0.5 text-lg font-semibold">
@@ -212,7 +215,7 @@ function TalkDrawer({
             <X size={18} />
           </button>
         </header>
-        <div className="flex-1 space-y-8 overflow-y-auto px-6 py-5">
+        <div className="min-w-0 flex-1 space-y-8 overflow-y-auto px-4 py-5 sm:px-6">
           <section ref={noteRef} className="scroll-mt-4">
             <NoteBlock mission={mission} editable={editable} />
           </section>
@@ -649,9 +652,19 @@ type EngineInfo = {
 };
 
 /** Wynik odczytu rozmowy. Podgląd liczymy z niego na bieżąco względem aktualnej misji. */
+type ReadingMeta = {
+  engine: AiEngine;
+  model: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  durationMs: number | null;
+};
+
 type Reading = {
   extraction: DiscoveryExtraction;
   source: string;
+  view: SpeakerView;
+  meta: ReadingMeta;
   callDate: string;
   fromDate: string;
   origin: string;
@@ -678,9 +691,12 @@ const DISABLED_TEXT: Record<string, string> = {
     "W .env.local jest klucz administracyjny (sk-ant-admin…). Potrzebny jest zwykły klucz API z Claude Console — albo zrób to przez Claude poniżej.",
   login: "Automat jest wyłączony — sesja wygasła. Zaloguj się ponownie albo zrób to przez Claude poniżej.",
   not_allowed: "Twoje konto nie ma dostępu do automatu (AI_ALLOWED_EMAILS). Możesz to zrobić przez Claude poniżej.",
+  unconfirmed: "Automat działa po potwierdzeniu adresu e-mail — kliknij link z maila rejestracyjnego i zaloguj się ponownie.",
+  no_allowlist:
+    "Automat jest wyłączony: na serwerze nie ustawiono AI_ALLOWED_EMAILS (na produkcji lista jest obowiązkowa). Możesz to zrobić przez Claude poniżej.",
   offline: "Nie mogę sprawdzić serwera CRM. Możesz to zrobić przez Claude poniżej.",
   no_engine:
-    "Automat jest wyłączony — na serwerze CRM nie ma klucza Claude API. Możesz to zrobić przez Claude poniżej (bez dodatkowych kosztów w ramach Twojego planu) albo dodać ANTHROPIC_API_KEY do .env.local i uruchomić CRM ponownie.",
+    "Automat jest wyłączony — na serwerze CRM nie ma klucza Claude API. Dodaj ANTHROPIC_API_KEY do .env.local i uruchom CRM ponownie albo zrób to przez Claude poniżej.",
 };
 
 function privacyLine(info: EngineInfo) {
@@ -719,6 +735,8 @@ function FillBlock({
     toggleObjection,
   } = store;
   const seller = store.state.user.name;
+  // RODO: rozmowę wysyłamy do AI dopiero, gdy partner wie o transkrypcji i analizie przez AI.
+  const informed = aiNoticeGiven(partner);
   const [engine, setEngine] = useState<EngineInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -740,6 +758,7 @@ function FillBlock({
             source: reading.source,
             callDate: reading.callDate,
             fromDate: reading.fromDate,
+            view: reading.view,
           })
         : null,
     [reading, mission, partner],
@@ -782,10 +801,12 @@ function FillBlock({
     mission.conversationNote.trim().length >= 80;
   const totalChars = transcripts.reduce((sum, call) => sum + (call.transcriptText ?? "").length, 0);
 
-  const show = (raw: unknown, ctx: ExtractionContext, origin: string, clipped = false) => {
+  const show = (raw: unknown, ctx: ExtractionContext, origin: string, clipped: boolean, meta: ReadingMeta) => {
     setReading({
       extraction: normalizeExtraction(raw),
       source: sourceOf(ctx),
+      view: speakerView(ctx),
+      meta,
       callDate: ctx.callDate,
       fromDate: firstDateOf(ctx),
       origin,
@@ -796,6 +817,10 @@ function FillBlock({
   };
 
   const run = async () => {
+    if (!informed) {
+      setError("Najpierw zaznacz, że partner wie o transkrypcji i analizie przez AI.");
+      return;
+    }
     const ctx = context(limit);
     if (!hasMaterial(ctx)) {
       setError("Najpierw wklej transkrypt albo dopisz notatkę z rozmowy.");
@@ -816,6 +841,8 @@ function FillBlock({
         engine?: EngineInfo["engine"];
         model?: string | null;
         clipped?: boolean;
+        usage?: { input?: number; output?: number };
+        durationMs?: number;
       };
       if (!res.ok || !data.data) throw new Error(data.error ?? "Nie udało się odczytać rozmowy.");
       show(
@@ -823,6 +850,13 @@ function FillBlock({
         ctx,
         engineLabel({ enabled: true, engine: data.engine ?? null, model: data.model ?? null }),
         Boolean(data.clipped),
+        {
+          engine: data.engine ?? "manual",
+          model: data.model ?? null,
+          inputTokens: data.usage?.input ?? null,
+          outputTokens: data.usage?.output ?? null,
+          durationMs: typeof data.durationMs === "number" ? data.durationMs : null,
+        },
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -833,6 +867,10 @@ function FillBlock({
   };
 
   const copyPrompt = async () => {
+    if (!informed) {
+      setError("Najpierw zaznacz, że partner wie o transkrypcji i analizie przez AI.");
+      return;
+    }
     const ctx = context();
     if (!hasMaterial(ctx)) {
       setError("Najpierw wklej transkrypt albo dopisz notatkę z rozmowy.");
@@ -854,7 +892,13 @@ function FillBlock({
       return;
     }
     setError(null);
-    show(raw, context(), "Odpowiedź wklejona z Claude");
+    show(raw, context(), "Odpowiedź wklejona z Claude", false, {
+      engine: "manual",
+      model: null,
+      inputTokens: null,
+      outputTokens: null,
+      durationMs: null,
+    });
   };
 
   // Najnowsza wersja run() dla efektu auto-startu (bez odpalania przy każdym renderze).
@@ -866,13 +910,35 @@ function FillBlock({
   useEffect(() => {
     if (autoRun === lastAuto.current) return;
     lastAuto.current = autoRun;
-    if (!engine?.enabled || !editable || busy) return;
+    if (!engine?.enabled || !editable || busy || !informed) return;
     openTalk("fill");
     void runRef.current();
-  }, [autoRun, engine, editable, busy]);
+  }, [autoRun, engine, editable, busy, informed]);
 
   const toggle = (row: ProposalRow) =>
     setOverrides((prev) => ({ ...prev, [rowId(row)]: !(prev[rowId(row)] ?? row.checked) }));
+
+  /** Statystyka jakości: co AI zaproponowało, co handlowiec przyjął (bez treści pól — same klucze i decyzje). */
+  const logReading = (outcome: "applied" | "discarded", accepted: Set<string> = selected) => {
+    if (!proposal || !reading) return;
+    void saveAiSuggestion(
+      {
+        id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `ai-${Date.now()}`,
+        missionId: mission.id,
+        createdAt: new Date().toISOString(),
+        outcome,
+        engine: reading.meta.engine,
+        model: reading.meta.model,
+        promptVersion: PROMPT_VERSION,
+        inputTokens: reading.meta.inputTokens,
+        outputTokens: reading.meta.outputTokens,
+        durationMs: reading.meta.durationMs,
+        speakersKnown: reading.view.known,
+        rows: suggestionRows(proposal.rows, outcome === "applied" ? accepted : new Set()),
+      },
+      store.state.workspace.id,
+    );
+  };
 
   const apply = async () => {
     if (!proposal) return;
@@ -914,6 +980,8 @@ function FillBlock({
       setRecording(mission.id, { conversationNote: appendToNote(mission.conversationNote, plan.noteAppend) });
     }
     setBusy(false);
+    // Statystyka dopiero po wstawieniu (decydent, którego nie udało się dodać, nie liczy się jako przyjęty).
+    logReading("applied", makerError && plan.maker ? new Set([...selected].filter((key) => key !== "maker")) : selected);
     const count = selected.size - (makerError && plan.maker ? 1 : 0);
     setReading(null);
     setOverrides({});
@@ -940,11 +1008,30 @@ function FillBlock({
         <p className="mt-3 rounded-2xl bg-chip px-4 py-3 text-xs text-navy">Tylko podgląd — pola wypełnia osoba, która prowadzi misję.</p>
       ) : (
         <>
+          <label
+            className={cn(
+              "mt-3 flex items-start gap-2 rounded-2xl px-4 py-3 text-xs leading-5",
+              informed ? "bg-surface text-muted" : "bg-amber-50 text-amber-950",
+            )}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={informed}
+              onChange={(event) => updatePartner(partner.id, { consents: withAiNotice(partner, event.target.checked) })}
+            />
+            <span>
+              <strong className="font-semibold">Partner wie, że rozmowa jest transkrybowana i analizowana przez AI.</strong>{" "}
+              {informed ? "Zapisane w zgodach partnera." : (
+                <>Bez tego CRM nie wyśle rozmowy do AI. Możesz powiedzieć na początku rozmowy: „{AI_NOTICE_SCRIPT}”</>
+              )}
+            </span>
+          </label>
           {enabled ? (
             <div className="mt-3">
               <button
                 type="button"
-                disabled={busy || !ready}
+                disabled={busy || !ready || !informed}
                 onClick={() => void run()}
                 className="flex items-center gap-2 rounded-full bg-navy px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
@@ -982,12 +1069,17 @@ function FillBlock({
             {manualOpen || (engine !== null && !enabled) ? (
               <div className="space-y-3 border-t border-line px-4 py-4 text-xs leading-5">
                 <p className="text-muted">
-                  1. Skopiuj polecenie z rozmową i wklej je w Claude (claude.ai albo Cowork). Masz skill „Discovery do
-                  CRM”? Wtedy wystarczy wkleić w Claude sam transkrypt.
+                  1. Skopiuj polecenie z rozmową i wklej je w Claude (claude.ai albo Cowork). Polecenie jest już bez
+                  telefonów, maili i NIP-ów — nie wklejaj zamiast niego surowego transkryptu.
+                </p>
+                <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-950">
+                  Dane partnera wklejaj tylko do Claude w planie firmowym (Team albo Enterprise) albo z wyłączonym
+                  „Pomagaj ulepszać Claude” (claude.ai → Ustawienia → Prywatność). W planach prywatnych rozmowy mogą służyć
+                  do trenowania modeli i nie obejmuje ich umowa powierzenia danych.
                 </p>
                 <button
                   type="button"
-                  disabled={!ready}
+                  disabled={!ready || !informed}
                   onClick={() => void copyPrompt()}
                   className="rounded-full border border-lutra px-4 py-1.5 text-xs font-semibold text-lutra disabled:opacity-50"
                 >
@@ -1027,11 +1119,13 @@ function FillBlock({
           proposal={proposal}
           origin={reading.origin}
           clipped={reading.clipped}
+          speakersKnown={reading.view.known}
           selected={selected}
           busy={busy}
           onToggle={toggle}
           onApply={() => void apply()}
           onDiscard={() => {
+            logReading("discarded");
             setReading(null);
             setOverrides({});
           }}
@@ -1045,6 +1139,7 @@ function ProposalPreview({
   proposal,
   origin,
   clipped,
+  speakersKnown,
   selected,
   busy,
   onToggle,
@@ -1054,6 +1149,7 @@ function ProposalPreview({
   proposal: MissionProposal;
   origin: string;
   clipped: boolean;
+  speakersKnown: boolean;
   selected: Set<string>;
   busy: boolean;
   onToggle: (row: ProposalRow) => void;
@@ -1070,6 +1166,12 @@ function ProposalPreview({
       {clipped ? (
         <p className="border-b border-line bg-amber-50 px-4 py-2 text-xs leading-5 text-amber-900">
           Rozmowa była za długa na jedno zapytanie — AI dostało początek i koniec (bez środka) albo tylko nowsze rozmowy.
+        </p>
+      ) : null}
+      {!speakersKnown ? (
+        <p className="border-b border-line bg-amber-50 px-4 py-2 text-xs leading-5 text-amber-900">
+          Nie rozpoznałem w transkrypcie, kto jest handlowcem, a kto partnerem (brak „Imię Nazwisko: …” albo Twoje imię
+          nie pada). Warunki i dane do umowy są odznaczone — sprawdź, czy to mówił partner.
         </p>
       ) : null}
       {missing.length ? (

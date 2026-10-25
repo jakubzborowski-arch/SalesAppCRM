@@ -38,7 +38,7 @@ function when(item: AgendaItem) {
 
 /** Szybka akcja przy pozycji „Na dziś” (mail po kontakcie, potwierdzenie warunków). */
 function QuickAction({ item }: { item: AgendaItem }) {
-  const { state, logFollowUpMail, confirmTerms, canEditMission } = useStore();
+  const { state, logFollowUpMail, confirmTerms, canEditMission, closeMission } = useStore();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mission = state.missions.find((m) => m.id === item.missionId);
@@ -59,6 +59,28 @@ function QuickAction({ item }: { item: AgendaItem }) {
           className="mt-1 rounded-full bg-lutra px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
         >
           {busy ? "Zapisuję…" : "Mail wysłany"}
+        </button>
+        {error ? <span className="mt-1 max-w-[220px] text-right text-[11px] text-rose-600">{error}</span> : null}
+      </>
+    );
+  }
+  if (item.kind === "no_response") {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => {
+            const result = closeMission(item.missionId, {
+              status: "lost",
+              reason: "Brak kontaktu — nie odbiera",
+              note: "Zamknięte po kolejnych próbach kontaktu bez odpowiedzi.",
+              returnAt: "",
+            });
+            if (!result.ok) setError(result.reason ?? "Nie udało się zamknąć misji.");
+          }}
+          className="mt-1 rounded-full border border-line px-3 py-1 text-[11px] font-semibold text-navy"
+        >
+          Zamknij: brak kontaktu
         </button>
         {error ? <span className="mt-1 max-w-[220px] text-right text-[11px] text-rose-600">{error}</span> : null}
       </>
@@ -86,7 +108,7 @@ export function AgendaList({ limit = 8 }: { limit?: number }) {
   const team = state.team.length > 1;
 
   return (
-    <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold text-navy">Na dziś</h2>
@@ -205,7 +227,7 @@ export function RemindersSection() {
   };
 
   return (
-    <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-4 rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="font-semibold">Przypomnienia</h2>
       <p className="mt-1 text-sm text-muted">
         Pulpit pokazuje „Na dziś”, a menu — licznik przy Zadaniach. Powiadomienie systemowe wychodzi raz dziennie na

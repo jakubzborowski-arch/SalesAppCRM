@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { STAGE_HELP } from "@/lib/playbook";
@@ -18,15 +19,26 @@ export function MissionStepper({
   viewing?: StageId | null;
 }) {
   const currentIndex = STAGES.findIndex((s) => s.id === current);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  // Na wąskim ekranie pasek kroków przewija się w poziomie — bieżący (albo oglądany) krok na środek.
+  useEffect(() => {
+    const box = scroller.current;
+    if (!box || box.scrollWidth <= box.clientWidth) return;
+    const target = box.querySelector<HTMLElement>(`[data-stage="${viewing ?? current}"]`);
+    if (!target) return;
+    box.scrollLeft = target.offsetLeft - (box.clientWidth - target.offsetWidth) / 2;
+  }, [current, viewing]);
 
   return (
-    <ol className="flex items-start justify-between px-2 pt-2">
+    <div ref={scroller} className="relative -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+    <ol className="flex min-w-[560px] items-start justify-between px-2 pt-2">
       {STAGES.map((stage, index) => {
         const done = completed.includes(stage.id) || index < currentIndex;
         const active = stage.id === current;
         const peek = Boolean(viewing && viewing !== current && stage.id === viewing);
         return (
-          <li key={stage.id} className="relative flex flex-1 flex-col items-center">
+          <li key={stage.id} data-stage={stage.id} className="relative flex flex-1 flex-col items-center">
             {index < STAGES.length - 1 ? (
               <span
                 className={cn(
@@ -62,5 +74,6 @@ export function MissionStepper({
         );
       })}
     </ol>
+    </div>
   );
 }

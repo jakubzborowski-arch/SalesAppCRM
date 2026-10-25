@@ -1,0 +1,115 @@
+{
+  "id": "v03-klub-spirala-bez-mowcow",
+  "title": "Klub Spirala — transkrypt bez etykiet mówców, gratis zamiast rabatu",
+  "segment": "venue",
+  "callDate": "2026-10-14",
+  "partner": {
+    "name": "Klub Spirala",
+    "city": "Poznań",
+    "category": "klub muzyczny",
+    "contacts": [
+      {
+        "name": "Marek Sowa",
+        "role": "menadżer"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": false,
+  "transcript": "Dzień dobry, Kuba Zborowski z Lutry, dzwonię w sprawie grup.\nDzień dobry, Marek Sowa, jestem menadżerem klubu.\nW czwartki do 21 klub świeci pustkami, potem dopiero schodzą się ludzie na koncerty.\nRozumiem, a co mógłby pan zaproponować grupie, która przyjdzie wcześniej?\nProcentowej zniżki nie dam, ale każda osoba z grupy dostanie lemoniadę gratis.\nTo w czwartki od otwarcia do 21?\nTak, w czwartki od 18 do 21, grupa minimum sześć osób.\nObsługa dostanie od was kod numeryczny i wpisze go w kasie.\nA kto podejmuje decyzję o współpracy?\nO takich rzeczach decyduje właścicielka, pani Iwona Sowa, ale ona się zgodzi, jeśli ja to polecę.\nPrzedstawię jej to w poniedziałek i oddzwonię.",
+  "gold": {
+    "cytat": "W czwartki do 21 klub świeci pustkami, potem dopiero schodzą się ludzie na koncerty.",
+    "problem": "W czwartki do 21 klub świeci pustkami.",
+    "kategoria": "off_peak",
+    "priorytet": 3,
+    "rezultat": "",
+    "ograniczenia": [
+      "Czwartki 18–21",
+      "Od 6 osób"
+    ],
+    "decydent": "Iwona Sowa",
+    "rola_decydenta": "właścicielka",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Marek Sowa przedstawia propozycję właścicielce w poniedziałek i oddzwania.",
+    "data_nastepnego_kroku": "2026-10-19",
+    "potrzeby": [
+      {
+        "tytul": "Goście w czwartki przed koncertami",
+        "kategoria": "off_peak",
+        "priorytet": 3,
+        "cytat": "W czwartki do 21 klub świeci pustkami, potem dopiero schodzą się ludzie na koncerty.",
+        "rezultat": "",
+        "ograniczenia": "Czwartki 18–21, od 6 osób"
+      }
+    ],
+    "wnioski": [
+      "W czwartki do 21 klub jest pusty.",
+      "Zamiast rabatu lemoniada gratis dla każdej osoby z grupy, czwartki 18–21, od 6 osób.",
+      "Realizacja kodem numerycznym w kasie.",
+      "Decyduje właścicielka Iwona Sowa; menadżer przedstawi propozycję w poniedziałek."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "Lemoniada dla każdej osoby z grupy",
+      "dni": [
+        "thu"
+      ],
+      "godziny_od": "18:00",
+      "godziny_do": "21:00",
+      "min_grupa": 6,
+      "wylaczenia": "",
+      "realizacja": "code",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "ask_owner",
+        "argument_zadzialal": false,
+        "cytat": "O takich rzeczach decyduje właścicielka, pani Iwona Sowa, ale ona się zgodzi, jeśli ja to polecę."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "W czwartki do 21 klub świeci pustkami, potem dopiero schodzą się ludzie na koncerty.",
+      "rezultat": "",
+      "ograniczenia": "Tak, w czwartki od 18 do 21, grupa minimum sześć osób.",
+      "decydent": "O takich rzeczach decyduje właścicielka, pani Iwona Sowa, ale ona się zgodzi, jeśli ja to polecę.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Przedstawię jej to w poniedziałek i oddzwonię.",
+      "znizka": "Procentowej zniżki nie dam, ale każda osoba z grupy dostanie lemoniadę gratis.",
+      "kiedy": "Tak, w czwartki od 18 do 21, grupa minimum sześć osób.",
+      "grupa": "Tak, w czwartki od 18 do 21, grupa minimum sześć osób.",
+      "wylaczenia": "",
+      "realizacja": "Obsługa dostanie od was kod numeryczny i wpisze go w kasie.",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Brak etykiet mówców (np. dyktowana notatka / STT): model musi sam odróżnić handlowca; CRM odznacza warunki (SPEAKERS_UNKNOWN). Gratis zamiast procentów, decydent spoza karty (ta sama rodzina — Sowa), obiekcja ask_owner bez argumentu."
+}

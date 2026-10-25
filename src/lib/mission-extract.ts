@@ -15,6 +15,7 @@ import {
   type Proposal,
   type ProposalRow,
 } from "./discovery-extract";
+import { applyEvidence, numberInText } from "./evidence";
 import { OBJECTION_KEYS } from "./playbook";
 import { cycleSummary, discountSummary, periodText, pilotSummary, redemptionLabel, termsChecks } from "./terms";
 import type {
@@ -74,6 +75,7 @@ function termsRows(
   partner: Partner,
   check: (value: string) => string | undefined,
   dates: { fromDate: string; callDate: string },
+  source: string,
 ) {
   const rows: ProposalRow[] = [];
   const t = ext.terms;
@@ -99,7 +101,8 @@ function termsRows(
           label: "Zniżka",
           value: proposed,
           current: now,
-          warning: check(t.discountPercent ? `${t.discountPercent}` : t.freebie),
+          // Procent może paść słownie („trzydzieści procent”) — sprawdzamy liczbę, nie samo „30”.
+          warning: t.discountPercent ? (source.trim() && !numberInText(t.discountPercent, source) ? NOT_IN_TALK : undefined) : check(t.freebie),
           hint: "Wpisz tylko to, na co partner się zgodził.",
         });
       }
@@ -217,8 +220,13 @@ function objectionRows(ext: DiscoveryExtraction, mission: Mission, source: strin
       value: `${label}${item.worked ? " · argument zadziałał" : ""}`,
       current: state?.checked ? `zaznaczona${state.argumentWorked ? ", argument zadziałał" : ""}` : "",
       hint: item.quote && quoteOk ? `„${item.quote}”` : undefined,
-      warning: quoteOk ? undefined : "Nie znalazłem tego zdania w transkrypcie — sprawdź, czy padło.",
-      checked: quoteOk,
+      warning: !item.quote
+        ? "Brak cytatu partnera — zaznacz tylko, jeśli ta obiekcja naprawdę padła."
+        : quoteOk
+          ? undefined
+          : "Nie znalazłem tego zdania w transkrypcie — sprawdź, czy padło.",
+      // Bez dosłownego zdania partnera obiekcja (i „argument zadziałał”) nie wchodzi sama.
+      checked: Boolean(item.quote) && quoteOk,
     });
   }
   return { rows, objections };
@@ -303,8 +311,8 @@ export function buildMissionProposal(
 
   const talk = base.rows.filter((row) => row.key !== "summary").map((row) => ({ ...row, group: GROUPS.talk }));
   const note = base.rows.filter((row) => row.key === "summary").map((row) => ({ ...row, group: GROUPS.note }));
-  const offer = termsRows(ext, mission, partner, check, { fromDate, callDate });
-  const objections = objectionRows(ext, mission, source);
+  const offer = termsRows(ext, mission, partner, check, { fromDate, callDate }, source);
+  const objections = objectionRows(ext, mission, input.view?.known ? input.view.partnerText : source);
   const deal = dealRows(ext, mission, partner, check, source);
 
   // Czego w warunkach nadal brakuje, gdyby wstawić wszystko z podglądu.
@@ -321,9 +329,17 @@ export function buildMissionProposal(
     .filter((item) => !item.done)
     .map((item) => `warunki: ${item.label}`);
 
+  const all = [...talk, ...offer.rows, ...objections.rows, ...deal.rows, ...note];
+  // Każde pole musi mieć zdanie-dowód w słowach partnera; bez niego wiersz jest odznaczony.
+  const rows = input.view
+    ? applyEvidence(all, ext.evidence, input.view, quoteFound, {
+        discountPercent: ext.terms.discountPercent,
+        minGroup: ext.terms.minGroup,
+      })
+    : all;
   return {
     ...base,
-    rows: [...talk, ...offer.rows, ...objections.rows, ...deal.rows, ...note],
+    rows,
     missing: [...base.missing, ...termsMissing],
     mission: {
       terms: offer.terms,

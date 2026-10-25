@@ -10,9 +10,8 @@ import {
   sanitizeContext,
 } from "@/lib/discovery-extract";
 import { completeRaw, resolveDraftBackend } from "@/lib/draft-complete";
-import { isLocalCrmRequest } from "@/lib/local-llm";
-import { emailAllowed, salesUser } from "@/lib/sales-session";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { PROMPT_VERSION } from "@/lib/ai-log";
+import { AI_DENIED, aiAccess, logServer, quotaMessage, takeAiQuota } from "@/lib/ai-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -21,22 +20,6 @@ export const maxDuration = 120;
 const MAX_BODY_BYTES = 700_000;
 /** Mały lokalny model (Ollama) ma krótkie okno — wysyłamy mniej tekstu i podnosimy num_ctx. */
 const LOCAL_SOURCE_CHARS = 60_000;
-/** Limit zapytań na osobę: chroni klucz przed pętlą albo nadużyciem. */
-const RATE_LIMIT = 30;
-const RATE_WINDOW_MS = 60 * 60 * 1000;
-const hits = new Map<string, number[]>();
-
-function rateLimited(who: string, now = Date.now()) {
-  const recent = (hits.get(who) ?? []).filter((at) => now - at < RATE_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT) {
-    hits.set(who, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(who, recent);
-  return false;
-}
-
 type Engine =
   | { engine: "claude"; claude: NonNullable<ReturnType<typeof resolveClaude>> }
   | { engine: "mac" | "zen" };
@@ -48,29 +31,9 @@ function engineFor(request: Request): Engine | null {
   return backend ? { engine: backend.place } : null;
 }
 
-type Access = { ok: true; who: string } | { ok: false; reason: "login" | "not_allowed" | "local_only" };
-
-/**
- * Lokalny Qwen: tylko ten komputer. Claude / Zen z Supabase: zalogowany handlowiec (opcjonalnie z listy
- * AI_ALLOWED_EMAILS). Bez Supabase (demo) płatny klucz działa tylko po jawnym AI_ALLOW_WITHOUT_LOGIN=1.
- */
-async function access(request: Request, engine: Engine): Promise<Access> {
-  if (engine.engine === "mac") return isLocalCrmRequest(request) ? { ok: true, who: "local" } : { ok: false, reason: "local_only" };
-  if (isSupabaseConfigured()) {
-    const user = await salesUser(request);
-    if (!user) return { ok: false, reason: "login" };
-    if (!emailAllowed(user.email)) return { ok: false, reason: "not_allowed" };
-    return { ok: true, who: user.id };
-  }
-  const demo = process.env.AI_ALLOW_WITHOUT_LOGIN === "1" && isLocalCrmRequest(request);
-  return demo ? { ok: true, who: "demo" } : { ok: false, reason: "local_only" };
+async function access(request: Request, engine: Engine) {
+  return aiAccess(request, engine.engine);
 }
-
-const DENIED: Record<Exclude<Access, { ok: true }>["reason"], string> = {
-  login: "Zaloguj się ponownie, żeby odczytać rozmowę.",
-  not_allowed: "Twoje konto nie ma dostępu do AI w tym CRM (AI_ALLOWED_EMAILS).",
-  local_only: "AI działa tu tylko z logowaniem do CRM.",
-};
 
 /** Zamiast ogólnego „brak klucza” mówimy wprost, że w .env.local jest nie ten token. */
 const KEY_PROBLEM: Record<NonNullable<ReturnType<typeof claudeKeyProblem>>, string> = {
@@ -107,7 +70,7 @@ export async function POST(request: Request) {
     );
   }
   const allowed = await access(request, engine);
-  if (!allowed.ok) return Response.json({ error: DENIED[allowed.reason] }, { status: 401 });
+  if (!allowed.ok) return Response.json({ error: AI_DENIED[allowed.reason] }, { status: allowed.reason === "login" ? 401 : 403 });
 
   const length = Number(request.headers.get("content-length") ?? 0);
   if (length > MAX_BODY_BYTES) {
@@ -135,19 +98,35 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (rateLimited(allowed.who)) {
-    return Response.json({ error: `Limit ${RATE_LIMIT} odczytów rozmów na godzinę. Spróbuj później.` }, { status: 429 });
+  // Darmowy Qwen na tym komputerze nie zużywa limitu płatnego AI.
+  if (engine.engine !== "mac" && !(await takeAiQuota(request, allowed.who, "extract"))) {
+    return Response.json({ error: quotaMessage("extract") }, { status: 429 });
   }
 
   const user = extractionUserMessage(ctx);
+  const started = Date.now();
   if (engine.engine === "claude") {
     const done = await claudeStructured(engine.claude, { system: EXTRACTION_SYSTEM, user, schema: EXTRACTION_SCHEMA });
-    if (!done.ok) return Response.json({ error: done.error }, { status: done.status });
+    if (!done.ok) {
+      logServer("error", "extract_failed", { engine: "claude", status: done.status, ms: Date.now() - started });
+      return Response.json({ error: done.error }, { status: done.status });
+    }
+    logServer("info", "extract_done", {
+      engine: "claude",
+      model: done.model,
+      input_tokens: done.usage.input,
+      output_tokens: done.usage.output,
+      ms: Date.now() - started,
+      chars: user.length,
+      prompt: PROMPT_VERSION,
+    });
     return Response.json({
       ok: true,
       engine: "claude",
       model: done.model,
       usage: done.usage,
+      durationMs: Date.now() - started,
+      promptVersion: PROMPT_VERSION,
       clipped: Boolean(ctx.clipped),
       data: done.data,
     });
@@ -158,16 +137,29 @@ export async function POST(request: Request) {
   const done = await completeRaw(request, {
     system,
     user,
-    maxTokens: 2400,
+    // Pola + dowody (zdania partnera) to kilka tysięcy znaków JSON-u.
+    maxTokens: 4000,
     timeoutMs: engine.engine === "mac" ? 110_000 : 90_000,
     json: true,
     // Ok. 3 znaki na token po polsku + miejsce na odpowiedź; domyślne okno Ollamy ucina początek polecenia.
-    numCtx: Math.min(32_768, Math.ceil((system.length + user.length) / 3) + 3_000),
+    numCtx: Math.min(32_768, Math.ceil((system.length + user.length) / 3) + 4_500),
   });
-  if (!done.ok) return Response.json({ error: done.error }, { status: done.status });
+  if (!done.ok) {
+    logServer("error", "extract_failed", { engine: engine.engine, status: done.status, ms: Date.now() - started });
+    return Response.json({ error: done.error }, { status: done.status });
+  }
   const data = parseLooseJson(done.text);
   if (!data || typeof data !== "object") {
+    logServer("warn", "extract_bad_json", { engine: done.place, ms: Date.now() - started });
     return Response.json({ error: "Model nie oddał pól w formacie JSON. Spróbuj jeszcze raz." }, { status: 502 });
   }
-  return Response.json({ ok: true, engine: done.place, model: null, clipped: Boolean(ctx.clipped), data });
+  return Response.json({
+    ok: true,
+    engine: done.place,
+    model: null,
+    durationMs: Date.now() - started,
+    promptVersion: PROMPT_VERSION,
+    clipped: Boolean(ctx.clipped),
+    data,
+  });
 }

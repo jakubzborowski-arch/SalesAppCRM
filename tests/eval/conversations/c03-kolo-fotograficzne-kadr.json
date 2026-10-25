@@ -1,0 +1,122 @@
+{
+  "id": "c03-kolo-fotograficzne-kadr",
+  "title": "Koło Fotograficzne Kadr — co miesiąc, trzy osoby w rozmowie, komplet zgód",
+  "segment": "community",
+  "callDate": "2026-10-13",
+  "partner": {
+    "name": "Koło Fotograficzne Kadr",
+    "city": "Gdynia",
+    "category": "koło fotograficzne",
+    "contacts": [
+      {
+        "name": "Bartosz Lewicki",
+        "role": "prezes koła"
+      },
+      {
+        "name": "Zuzanna Pawlak",
+        "role": "skarbniczka"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Spinach AI — Notatka ze spotkania\nSpotkanie: Lutra × Koło Fotograficzne Kadr\nData: 13.10.2026\nUczestnicy: Kuba Zborowski (Lutra), Bartosz Lewicki (Kadr), Zuzanna Pawlak (Kadr)\n\nKuba Zborowski: Dzień dobry, opowiecie, jak wyglądają wasze wyjścia?\nBartosz Lewicki: Raz w miesiącu robimy plener w mieście, a potem idziemy gdzieś razem obejrzeć zdjęcia.\nZuzanna Pawlak: Problem w tym, że co miesiąc szukamy lokalu od nowa i nikt nie wie, ile osób przyjdzie.\nBartosz Lewicki: Mamy już grupę na Facebooku i konto na Meetupie, po co nam kolejna aplikacja?\nKuba Zborowski: Facebook zbiera chętnych, a my dokładamy rezerwację lokalu, potwierdzenia i podział rachunku po spotkaniu.\nBartosz Lewicki: Podział rachunku to faktycznie nasza zmora, okej, przekonałeś mnie.\nBartosz Lewicki: Zróbmy trzy spotkania po plenerach, raz w miesiącu.\nZuzanna Pawlak: Pierwszy plener mamy 14 listopada, więc od niego.\nBartosz Lewicki: Zdjęcia z naszych spotkań możecie publikować, posty w social mediach też, i logo koła w aplikacji.\nZuzanna Pawlak: Fajnie byłoby, gdyby na każde spotkanie przychodziło ze dwadzieścia osób.\nKuba Zborowski: To realne. W piątek wyślę wam propozycję lokali.\nBartosz Lewicki: Dobrze, decyzję podejmujemy we dwoje z Zuzą po twoim mailu.",
+  "gold": {
+    "cytat": "Problem w tym, że co miesiąc szukamy lokalu od nowa i nikt nie wie, ile osób przyjdzie.",
+    "problem": "Co miesiąc szukają lokalu od nowa i nie wiedzą, ile osób przyjdzie.",
+    "kategoria": "operations",
+    "priorytet": 3,
+    "rezultat": "Około dwudziestu osób na każdym spotkaniu.",
+    "ograniczenia": [],
+    "decydent": "Bartosz Lewicki",
+    "rola_decydenta": "prezes koła",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "Grupa na Facebooku i konto na Meetupie — nie rozwiązują rezerwacji lokalu i podziału rachunku.",
+    "nastepny_krok": "Kuba wysyła w piątek propozycję lokali, decyzja po mailu.",
+    "data_nastepnego_kroku": "2026-10-16",
+    "potrzeby": [
+      {
+        "tytul": "Stały lokal po plenerach",
+        "kategoria": "operations",
+        "priorytet": 3,
+        "cytat": "Problem w tym, że co miesiąc szukamy lokalu od nowa i nikt nie wie, ile osób przyjdzie.",
+        "rezultat": "20 osób na spotkaniu",
+        "ograniczenia": ""
+      },
+      {
+        "tytul": "Podział rachunku po spotkaniu",
+        "kategoria": "operations",
+        "priorytet": 2,
+        "cytat": "Podział rachunku to faktycznie nasza zmora, okej, przekonałeś mnie.",
+        "rezultat": "",
+        "ograniczenia": ""
+      }
+    ],
+    "wnioski": [
+      "Co miesiąc szukają lokalu od nowa i nie wiedzą, ile osób przyjdzie.",
+      "Mają grupę na Facebooku i Meetup; przekonał ich podział rachunku.",
+      "Cykl 3 spotkań raz w miesiącu, start 14 listopada; cel ok. 20 osób.",
+      "Zgoda na zdjęcia, posty i logo."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 3,
+      "cykl_czestotliwosc": "monthly",
+      "cykl_pierwsze": "2026-11-14",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "other_apps",
+        "argument_zadzialal": true,
+        "cytat": "Mamy już grupę na Facebooku i konto na Meetupie, po co nam kolejna aplikacja?"
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": true,
+      "zgoda_zdjecia": true,
+      "zgoda_social": true
+    },
+    "dowody": {
+      "problem": "Problem w tym, że co miesiąc szukamy lokalu od nowa i nikt nie wie, ile osób przyjdzie.",
+      "rezultat": "Fajnie byłoby, gdyby na każde spotkanie przychodziło ze dwadzieścia osób.",
+      "ograniczenia": "",
+      "decydent": "Dobrze, decyzję podejmujemy we dwoje z Zuzą po twoim mailu.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "Mamy już grupę na Facebooku i konto na Meetupie, po co nam kolejna aplikacja?",
+      "nastepny_krok": "Dobrze, decyzję podejmujemy we dwoje z Zuzą po twoim mailu.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "Zróbmy trzy spotkania po plenerach, raz w miesiącu.",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "Zdjęcia z naszych spotkań możecie publikować, posty w social mediach też, i logo koła w aplikacji.",
+      "zgoda_zdjecia": "Zdjęcia z naszych spotkań możecie publikować, posty w social mediach też, i logo koła w aplikacji.",
+      "zgoda_social": "Zdjęcia z naszych spotkań możecie publikować, posty w social mediach też, i logo koła w aplikacji."
+    }
+  },
+  "notes": "Społeczność, dwie osoby partnera w rozmowie. Cykl monthly (3, start 14.11), obiekcja other_apps — zadziałało, komplet zgód."
+}

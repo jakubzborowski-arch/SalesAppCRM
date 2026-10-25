@@ -66,7 +66,9 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
   const [fillError, setFillError] = useState<string | null>(null);
   const [factError, setFactError] = useState<string | null>(null);
   const klub = /klub/i.test(partner.category);
-  const checks = offerChecks(mission);
+  const checks = offerChecks(mission, partner);
+  // Lokal: rezultat, termin decyzji i wcześniejsze próby nie blokują oferty.
+  const venue = partner.segment === "venue";
   const discovery = mission.discovery;
   const factConfirmed = mission.needs.some((need) => need.confirmed && need.status === "fact");
 
@@ -182,8 +184,9 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
         <HelpLink anchor="rozmowa">Co zebrać w rozmowie?</HelpLink>
       </div>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        Zapisz, co partner powiedział: problem, rezultat, ograniczenia, decydenta i termin. Potwierdzony fakt otwiera
-        ofertę.
+        {venue
+          ? "Zapisz, co partner powiedział: problem, ograniczenia i decydenta. Rezultat, termin i wcześniejsze próby są dla lokalu opcjonalne. Potwierdzony fakt otwiera ofertę."
+          : "Zapisz, co partner powiedział: problem, rezultat, ograniczenia, decydenta i termin. Potwierdzony fakt otwiera ofertę."}
       </p>
       <div className="mt-4">
         <Requirements checks={checks} title="Do oferty brakuje" doneText="Komplet — możesz iść do oferty." />
@@ -271,7 +274,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
         if (slot === "result") {
           return (
             <div key={slot} className="mt-4">
-              <Field label="Oczekiwany rezultat">
+              <Field label="Oczekiwany rezultat" optional={venue}>
                 <input
                   className={inputClass}
                   placeholder="Po czym poznają, że to ma sens."
@@ -315,7 +318,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
                   ))}
                 </select>
               </Field>
-              <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2">
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
                 <input
                   className={inputClass}
                   placeholder="Imię i nazwisko"
@@ -345,6 +348,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
           return (
             <div key={slot} className="mt-4">
               <DeadlineField
+                optional={venue}
                 value={discovery.decisionDeadline || mission.decision.decisionDeadline}
                 onChange={(iso) => {
                   updateDiscovery(mission.id, { decisionDeadline: iso });
@@ -357,7 +361,7 @@ export function DiscoveryStep({ mission, partner }: { mission: Mission; partner:
         if (slot === "attempts") {
           return (
             <div key={slot} className="mt-4">
-              <Field label="Wcześniejsze próby">
+              <Field label="Wcześniejsze próby" optional={venue}>
                 <input
                   className={inputClass}
                   placeholder="Co nie zadziałało."

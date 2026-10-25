@@ -214,7 +214,8 @@ export type PartnerContact = {
 };
 
 export type Consent = {
-  channel: Channel;
+  /** „other” = zgoda niezwiązana z kanałem (np. informacja o analizie AI). */
+  channel: Channel | "other";
   purpose: "contact" | "recording" | "ai_analysis";
   status: ConsentStatus;
 };
@@ -228,6 +229,32 @@ export type CompanyData = {
   mailingAddress: string;
   billingEmail: string;
 };
+
+/** Ocena kryterium dopasowania lokalu: 0 / 1 / 2, `null` = nieocenione. */
+export type FitLevel = 0 | 1 | 2;
+
+/** Wynik dopasowania lokalu (0–6): martwe godziny, pojemność dla grup, dzielnica blisko użytkowników Lutry. */
+export type PartnerFit = {
+  deadHours: FitLevel | null;
+  capacity: FitLevel | null;
+  area: FitLevel | null;
+};
+
+/** Miesięczne metryki partnera (tabela `partner_metrics`, migracja v8). `null` = nie wpisano. */
+export type PartnerMetrics = {
+  id: string;
+  partnerId: string;
+  /** „2026-10” */
+  month: string;
+  events: number | null;
+  attendees: number | null;
+  /** Realizacje zniżki (lokale). */
+  redemptions: number | null;
+  notes: string;
+  updatedAt?: string;
+};
+
+export type PartnerMetricsInput = Pick<PartnerMetrics, "events" | "attendees" | "redemptions" | "notes">;
 
 export type Partner = {
   id: string;
@@ -254,6 +281,8 @@ export type Partner = {
   company: CompanyData;
   contacts: PartnerContact[];
   consents: Consent[];
+  /** Wynik dopasowania lokalu (migracja v8). Brak = nieoceniony. */
+  fit?: PartnerFit;
 };
 
 export type ChecklistState = Record<string, boolean>;
@@ -403,6 +432,8 @@ export type AppState = {
   missions: Mission[];
   tasks: TaskItem[];
   team: TeamMember[];
+  /** Miesięczne metryki partnerów (migracja v8; w trybie demo w przeglądarce). */
+  metrics?: PartnerMetrics[];
 };
 
 export type NewPartnerInput = {

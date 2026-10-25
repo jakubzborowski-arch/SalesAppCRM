@@ -226,6 +226,27 @@ Kwartalne potwierdzenie warunków.
 - reviewed_at, terms_still_valid
 - notes, next_review_at
 
+### partner_metrics (v8)
+Miesięczne liczby partnera z panelu Lutry — podstawa maila z podsumowaniem i wskaźnika zdrowia.
+
+- id, partner_id (kasowane z partnerem), month `RRRR-MM`, unique (partner_id, month)
+- events, attendees, redemptions (liczby ≥ 0, puste = nie wpisano), notes (do 1000 znaków, tylko dla zespołu)
+- created_by, updated_at
+- RLS: czyta zespół; zapis, poprawka i usunięcie — kto może edytować kartę partnera (`can_edit_partner`)
+
+### partners.fit_* (v8)
+Wynik dopasowania lokalu 0–6: `fit_dead_hours`, `fit_capacity`, `fit_area` (każde 0–2 albo puste).
+Sortowanie listy partnerów i remis w „najpilniejszej misji” (przy tej samej dacie kroku wyżej lokal z lepszym wynikiem).
+
+### save_mission_bundle (v8)
+Zapis misji w jednej transakcji: wiersz `missions` (warunek wersji `updated_at` w tej samej transakcji)
+i operacje na tabelach misji (decision_context, needs, mission_checklist_items, mission_objections, offers,
+contracts, activations, tasks) — wszystko albo nic. `security invoker`, więc obowiązuje to samo RLS co przy
+zapisie wprost; każdy wiersz musi należeć do zapisywanej misji (zadania także do jej zespołu).
+Nieznana wersja = tylko nowa misja; istniejącej nie nadpisuje (błąd `mission_conflict`).
+Bez tej funkcji CRM zapisuje po staremu, tabela po tabeli. Pliki umowy w Storage nie wchodzą do transakcji —
+zastąpione kasujemy dopiero po udanym zapisie.
+
 ---
 
 ## AI i uczenie

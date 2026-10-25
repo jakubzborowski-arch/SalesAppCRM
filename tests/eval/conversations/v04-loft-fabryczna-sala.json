@@ -1,0 +1,112 @@
+{
+  "id": "v04-loft-fabryczna-sala",
+  "title": "Loft Fabryczna — sala do wynajęcia, znaczniki czasu, hasło",
+  "segment": "venue",
+  "callDate": "2026-10-16",
+  "partner": {
+    "name": "Loft Fabryczna",
+    "city": "Łódź",
+    "category": "sala do wynajęcia",
+    "contacts": [
+      {
+        "name": "Joanna Pietrzak",
+        "role": "managerka obiektu"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "[00:00:05] Kuba Zborowski: Dzień dobry, pani Joanno, dzięki za oprowadzenie.\n[00:00:12] Joanna Pietrzak: Nie ma sprawy. Tak jak pan widział, mamy dużą salę i mniejszą salkę warsztatową.\n[00:01:40] Kuba Zborowski: Jak wygląda obłożenie?\n[00:01:52] Joanna Pietrzak: Wieczory i weekendy sprzedają się same, ale w dni robocze przed szesnastą sale stoją puste.\n[00:02:30] Joanna Pietrzak: Próbowaliśmy ogłoszeń na portalach z salami, ale przychodziły pojedyncze zapytania i nic z nich nie wychodziło.\n[00:03:10] Kuba Zborowski: Nasze grupy szukają miejsca na warsztaty i spotkania w ciągu dnia.\n[00:03:25] Joanna Pietrzak: Dla grup z Lutry mogę dać 25 procent rabatu na wynajem, od poniedziałku do czwartku, od 9 do 16.\n[00:04:02] Joanna Pietrzak: Chodzi o salkę warsztatową na 40 osób z rzutnikiem i flipchartem.\n[00:04:30] Joanna Pietrzak: Rabat nie obejmuje cateringu, catering liczymy osobno.\n[00:05:15] Kuba Zborowski: Na start dwa miesiące, porozumienie mailowe?\n[00:05:22] Joanna Pietrzak: Tak, od 2 listopada do 31 grudnia, potem zobaczymy.\n[00:05:40] Joanna Pietrzak: Przy rezerwacji grupa poda hasło, które ustalimy, i to wystarczy.\n[00:06:05] Joanna Pietrzak: Dla mnie wystarczy, jeśli w miesiącu będą cztery rezerwacje w ciągu dnia.\n[00:06:30] Kuba Zborowski: Kto podpisuje porozumienie po waszej stronie?\n[00:06:38] Joanna Pietrzak: Ja podpisuję, mam pełnomocnictwo od zarządu. Spółka nazywa się Fabryczna 12 sp. z o.o.\n[00:07:10] Kuba Zborowski: Świetnie, wyślę projekt do poniedziałku.\n[00:07:15] Joanna Pietrzak: Dobrze, odeślę podpisany w ciągu dwóch dni.",
+  "gold": {
+    "cytat": "Wieczory i weekendy sprzedają się same, ale w dni robocze przed szesnastą sale stoją puste.",
+    "problem": "W dni robocze przed 16 sale stoją puste.",
+    "kategoria": "off_peak",
+    "priorytet": 3,
+    "rezultat": "Cztery rezerwacje w ciągu dnia w miesiącu.",
+    "ograniczenia": [
+      "Pon–czw 9–16",
+      "Bez cateringu"
+    ],
+    "decydent": "Joanna Pietrzak",
+    "rola_decydenta": "managerka obiektu",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "Ogłoszenia na portalach z salami — pojedyncze zapytania, bez efektu.",
+    "nastepny_krok": "Kuba wysyła projekt porozumienia do poniedziałku, Joanna odsyła podpisany w ciągu dwóch dni.",
+    "data_nastepnego_kroku": "2026-10-19",
+    "potrzeby": [
+      {
+        "tytul": "Wynajem sal w dni robocze przed 16",
+        "kategoria": "off_peak",
+        "priorytet": 3,
+        "cytat": "Wieczory i weekendy sprzedają się same, ale w dni robocze przed szesnastą sale stoją puste.",
+        "rezultat": "Cztery rezerwacje w miesiącu",
+        "ograniczenia": "Pon–czw 9–16"
+      }
+    ],
+    "wnioski": [
+      "W dni robocze przed 16 sale stoją puste.",
+      "Rabat 25% na wynajem salki warsztatowej (40 osób), pon–czw 9–16, bez cateringu.",
+      "Okres 2 listopada – 31 grudnia, porozumienie mailowe, realizacja hasłem.",
+      "Podpisuje Joanna Pietrzak (pełnomocnictwo zarządu)."
+    ],
+    "warunki": {
+      "znizka_procent": 25,
+      "gratis": "",
+      "dni": [
+        "mon",
+        "tue",
+        "wed",
+        "thu"
+      ],
+      "godziny_od": "09:00",
+      "godziny_do": "16:00",
+      "min_grupa": 0,
+      "wylaczenia": "Catering",
+      "realizacja": "password",
+      "miejsce_na_wydarzenia": "Salka warsztatowa na 40 osób z rzutnikiem i flipchartem",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "2026-11-02",
+      "okres_do": "2026-12-31"
+    },
+    "obiekcje": [],
+    "umowa": {
+      "nazwa_firmy": "Fabryczna 12 sp. z o.o.",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Wieczory i weekendy sprzedają się same, ale w dni robocze przed szesnastą sale stoją puste.",
+      "rezultat": "Dla mnie wystarczy, jeśli w miesiącu będą cztery rezerwacje w ciągu dnia.",
+      "ograniczenia": "Rabat nie obejmuje cateringu, catering liczymy osobno.",
+      "decydent": "Ja podpisuję, mam pełnomocnictwo od zarządu.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "Próbowaliśmy ogłoszeń na portalach z salami, ale przychodziły pojedyncze zapytania i nic z nich nie wychodziło.",
+      "nastepny_krok": "Dobrze, odeślę podpisany w ciągu dwóch dni.",
+      "znizka": "Dla grup z Lutry mogę dać 25 procent rabatu na wynajem, od poniedziałku do czwartku, od 9 do 16.",
+      "kiedy": "Dla grup z Lutry mogę dać 25 procent rabatu na wynajem, od poniedziałku do czwartku, od 9 do 16.",
+      "grupa": "",
+      "wylaczenia": "Rabat nie obejmuje cateringu, catering liczymy osobno.",
+      "realizacja": "Przy rezerwacji grupa poda hasło, które ustalimy, i to wystarczy.",
+      "miejsce": "Chodzi o salkę warsztatową na 40 osób z rzutnikiem i flipchartem.",
+      "okres": "Tak, od 2 listopada do 31 grudnia, potem zobaczymy.",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "Spółka nazywa się Fabryczna 12 sp. z o.o.",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Przestrzeń do wynajęcia: miejsce na wydarzenia, rabat na wynajem, hasło, okres 2 mies. Format ze znacznikami czasu [hh:mm:ss]. „Do poniedziałku” w piątek = 19.10."
+}

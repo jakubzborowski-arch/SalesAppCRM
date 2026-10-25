@@ -8,10 +8,10 @@ export default function PartnerImportPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-end px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         CRM / Partnerzy / Import · {state.user.initials}
       </div>
-      <div className="px-8 pb-12">
+      <div className="px-4 pb-12 sm:px-6 lg:px-8">
         <CsvImport />
       </div>
     </div>

@@ -52,11 +52,11 @@ function TeamSection() {
 
   if (schemaV4 === false) {
     return (
-      <section className="mt-4 rounded-[28px] border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
+      <section className="mt-4 rounded-[28px] border border-amber-200 bg-amber-50 p-4 sm:p-6 text-sm text-amber-950">
         <h2 className="font-semibold">Zespół</h2>
         <p className="mt-2">
           Wspólny workspace wymaga migracji bazy v4. W Supabase otwórz SQL Editor, wklej cały plik
-          supabase/v4-team-timeline.sql i kliknij Run. Potem odśwież tę stronę.
+          supabase/migrations/20261001000004_v4_team_timeline.sql i kliknij Run. Potem odśwież tę stronę.
         </p>
       </section>
     );
@@ -81,7 +81,7 @@ function TeamSection() {
   };
 
   return (
-    <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-4 rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="font-semibold">Zespół</h2>
       <p className="mt-1 text-sm text-muted">
         Wszyscy w workspace widzą tych samych partnerów, misje, dziennik kontaktów i umowy.
@@ -260,7 +260,7 @@ function JoinSection() {
   if (schemaV4 === false) return null;
 
   return (
-    <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-4 rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="font-semibold">Masz zaproszenie do zespołu?</h2>
       <p className="mt-1 text-xs leading-5 text-muted">
         Wklej link albo kod. Najpierw zobaczysz, do jakiego zespołu dołączasz i co stanie się z Twoimi danymi.
@@ -314,10 +314,10 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-3 px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         CRM / Ustawienia
       </div>
-      <div className="max-w-3xl px-8 pb-10">
+      <div className="max-w-3xl px-4 pb-10 sm:px-6 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight">Ustawienia</h1>
         <p className="mt-2 text-sm text-muted">
           {cloud
@@ -325,7 +325,7 @@ export default function SettingsPage() {
             : "Tryb demo: dane zostają tylko w tej przeglądarce."}
         </p>
 
-        <section className="mt-6 rounded-[28px] border border-line bg-white p-6">
+        <section className="mt-6 rounded-[28px] border border-line bg-white p-4 sm:p-6">
           <h2 className="font-semibold">Połączenie</h2>
           <p className="mt-2 text-sm text-muted">
             Workspace: {state.workspace.name}. Konto: {authEmail ?? "—"}.
@@ -349,7 +349,7 @@ export default function SettingsPage() {
           </>
         ) : null}
 
-        <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
+        <section className="mt-4 rounded-[28px] border border-line bg-white p-4 sm:p-6">
           <h2 className="font-semibold">Wprowadzenie i pomoc</h2>
           <p className="mt-1 text-sm text-muted">
             Krótkie wprowadzenie pokazuje się raz. Możesz je obejrzeć ponownie albo zajrzeć do Pomocy.
@@ -374,7 +374,7 @@ export default function SettingsPage() {
         <ContractTemplateSection />
         <RemindersSection />
 
-        <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
+        <section className="mt-4 rounded-[28px] border border-line bg-white p-4 sm:p-6">
           <h2 className="font-semibold">Czego nie obiecywać</h2>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
             {FORBIDDEN_PROMISES.map((item) => (

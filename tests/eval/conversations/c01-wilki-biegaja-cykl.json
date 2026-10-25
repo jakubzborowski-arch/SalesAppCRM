@@ -1,0 +1,106 @@
+{
+  "id": "c01-wilki-biegaja-cykl",
+  "title": "Klub biegowy Wilki Biegają — cykl 6 śniadań co tydzień",
+  "segment": "community",
+  "callDate": "2026-10-16",
+  "partner": {
+    "name": "Wilki Biegają",
+    "city": "Kraków",
+    "category": "klub biegowy",
+    "contacts": [
+      {
+        "name": "Marta Górska",
+        "role": "liderka klubu"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Spinach AI — Notatka ze spotkania\nSpotkanie: Lutra × Wilki Biegają\nData: piątek, 16 października 2026\nUczestnicy: Kuba Zborowski (Lutra), Marta Górska (Wilki Biegają)\n\nKuba Zborowski: Cześć Marta, opowiedz, jak działa wasz klub.\nMarta Górska: Biegamy w każdą sobotę rano w Parku Jordana, przychodzi od 20 do 40 osób.\nMarta Górska: Po biegu wszyscy się rozchodzą, a ludzie piszą, że chcieliby razem zjeść śniadanie, tylko nikt tego nie ogarnia.\nMarta Górska: Próbowałam umawiać śniadania na Messengerze, ale zawsze kończyło się chaosem i trzema osobami przy stole.\nKuba Zborowski: Lutra może zebrać zapisy, znaleźć lokal blisko parku i podzielić rachunek.\nMarta Górska: To byłoby super. Zróbmy cykl sześciu śniadań po biegu, co tydzień w soboty.\nMarta Górska: Pierwsze śniadanie w sobotę 7 listopada, po treningu o dziesiątej.\nMarta Górska: Dla mnie sukces to piętnaście osób na każdym śniadaniu.\nKuba Zborowski: Możemy robić zdjęcia i wrzucać relacje na nasz Instagram?\nMarta Górska: Zdjęcia tak, posty też, ludzie lubią się oznaczać.\nKuba Zborowski: Do środy wyślę ci trzy lokale do wyboru.\nMarta Górska: Dobra, wybiorę od razu, decyzję podejmuję sama jako liderka.",
+  "gold": {
+    "cytat": "Po biegu wszyscy się rozchodzą, a ludzie piszą, że chcieliby razem zjeść śniadanie, tylko nikt tego nie ogarnia.",
+    "problem": "Po sobotnim biegu ludzie się rozchodzą, nikt nie organizuje wspólnego śniadania.",
+    "kategoria": "integration",
+    "priorytet": 3,
+    "rezultat": "Piętnaście osób na każdym śniadaniu.",
+    "ograniczenia": [
+      "Soboty po treningu"
+    ],
+    "decydent": "Marta Górska",
+    "rola_decydenta": "liderka klubu",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "Umawianie śniadań na Messengerze — chaos i trzy osoby przy stole.",
+    "nastepny_krok": "Kuba wysyła do środy trzy lokale do wyboru, Marta wybiera.",
+    "data_nastepnego_kroku": "2026-10-21",
+    "potrzeby": [
+      {
+        "tytul": "Wspólne śniadania po sobotnim biegu",
+        "kategoria": "integration",
+        "priorytet": 3,
+        "cytat": "Po biegu wszyscy się rozchodzą, a ludzie piszą, że chcieliby razem zjeść śniadanie, tylko nikt tego nie ogarnia.",
+        "rezultat": "15 osób na śniadaniu",
+        "ograniczenia": "Soboty po treningu"
+      }
+    ],
+    "wnioski": [
+      "Klub biega w soboty rano (20–40 osób), po biegu wszyscy się rozchodzą.",
+      "Umawianie śniadań na Messengerze się nie sprawdziło.",
+      "Cykl 6 śniadań co tydzień w soboty, start 7 listopada; cel 15 osób.",
+      "Zgoda na zdjęcia i posty."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 6,
+      "cykl_czestotliwosc": "weekly",
+      "cykl_pierwsze": "2026-11-07",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": true,
+      "zgoda_social": true
+    },
+    "dowody": {
+      "problem": "Po biegu wszyscy się rozchodzą, a ludzie piszą, że chcieliby razem zjeść śniadanie, tylko nikt tego nie ogarnia.",
+      "rezultat": "Dla mnie sukces to piętnaście osób na każdym śniadaniu.",
+      "ograniczenia": "Pierwsze śniadanie w sobotę 7 listopada, po treningu o dziesiątej.",
+      "decydent": "Dobra, wybiorę od razu, decyzję podejmuję sama jako liderka.",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "Próbowałam umawiać śniadania na Messengerze, ale zawsze kończyło się chaosem i trzema osobami przy stole.",
+      "nastepny_krok": "Dobra, wybiorę od razu, decyzję podejmuję sama jako liderka.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "Zróbmy cykl sześciu śniadań po biegu, co tydzień w soboty.",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "Zdjęcia tak, posty też, ludzie lubią się oznaczać.",
+      "zgoda_social": "Zdjęcia tak, posty też, ludzie lubią się oznaczać."
+    }
+  },
+  "notes": "Społeczność: cykl (6, weekly, pierwsze 7.11), pola zniżki puste. Zgody na zdjęcia i posty. „Do środy” z piątku 16.10 = 21.10."
+}

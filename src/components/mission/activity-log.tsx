@@ -199,7 +199,7 @@ function ActivityForm({
   };
 
   return (
-    <form onSubmit={submit} className="mt-4 rounded-[24px] border border-chip-mid bg-surface p-4">
+    <form onSubmit={submit} className="mt-4 rounded-[24px] border border-chip-mid bg-surface p-3 sm:p-4">
       <div className="flex flex-wrap gap-2">
         {ACTIVITY_CHANNELS.map((item) => (
           <button
@@ -207,7 +207,7 @@ function ActivityForm({
             type="button"
             onClick={() => pickChannel(item.id)}
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium",
+              "flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium",
               channel === item.id ? "bg-lutra text-white" : "bg-white text-lutra",
             )}
           >
@@ -222,7 +222,7 @@ function ActivityForm({
             type="button"
             onClick={() => pickDirection(item.id)}
             className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-medium",
+              "min-h-9 rounded-full px-3 py-1.5 text-xs font-medium",
               direction === item.id ? "bg-navy text-white" : "bg-white text-muted",
             )}
           >
@@ -340,15 +340,15 @@ function ActivityForm({
       </p>
 
       {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-      <div className="mt-3 flex items-center gap-3">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
           type="submit"
           disabled={saving}
-          className="rounded-full bg-lutra px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+          className="min-h-10 rounded-full bg-lutra px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
         >
           {saving ? "Zapisuję…" : "Zapisz w dzienniku"}
         </button>
-        <button type="button" onClick={onDone} className="text-sm text-muted">
+        <button type="button" onClick={onDone} className="min-h-10 text-sm text-muted">
           Anuluj
         </button>
       </div>
@@ -400,7 +400,7 @@ function ActivityItem({
       </div>
       {activity.subject ? <p className="mt-1 text-sm font-medium text-foreground">{activity.subject}</p> : null}
       {activity.summary ? (
-        <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-foreground">{activity.summary}</p>
+        <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-foreground">{activity.summary}</p>
       ) : null}
       <p className="mt-1 text-[11px] text-muted">
         {[
@@ -495,7 +495,7 @@ export function ActivityLog({
   const needsMigration = dbStatus === "ok" && schemaV4 === false;
 
   return (
-    <section id="dziennik" className="rounded-[28px] border border-line bg-white p-6">
+    <section id="dziennik" className="rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -504,8 +504,8 @@ export function ActivityLog({
             kroku Kontakt zostaje bez zmian.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs text-muted">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex min-h-10 items-center gap-1.5 text-xs text-muted">
             <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
             Zmiany etapów
           </label>
@@ -514,7 +514,7 @@ export function ActivityLog({
               type="button"
               onClick={() => onFormOpenChange(true)}
               disabled={needsMigration}
-              className="rounded-full bg-lutra px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+              className="min-h-10 rounded-full bg-lutra px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
             >
               + Zapisz kontakt
             </button>
@@ -524,7 +524,7 @@ export function ActivityLog({
 
       {needsMigration ? (
         <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-          Dziennik wymaga migracji bazy v4. W Supabase → SQL Editor wklej plik supabase/v4-team-timeline.sql i
+          Dziennik wymaga migracji bazy v4. W Supabase → SQL Editor wklej plik supabase/migrations/20261001000004_v4_team_timeline.sql i
           kliknij Run.
         </p>
       ) : null}

@@ -9,6 +9,7 @@ import { FollowUpBar } from "@/components/mission/follow-up-bar";
 import { MissionPanel } from "@/components/mission/mission-panel";
 import { TransferMission } from "@/components/mission/transfer-mission";
 import { DraftBubble } from "@/components/mission/draft-bubble";
+import { QuickVisitButton } from "@/components/mission/quick-visit";
 import { TalkBubble } from "@/components/mission/talk-bubble";
 import { MissionStepper } from "@/components/mission/stepper";
 import { ActivationStep } from "@/components/mission/steps/activation-step";
@@ -24,6 +25,7 @@ import { STAGES, type Mission, type Partner, type StageId } from "@/lib/types";
 import { MISSION_STATUS_LABEL, segmentLabel, STAGE_BADGE, STAGE_CTA, stageLabel } from "@/lib/playbook";
 import { canEnterStage, nextStage } from "@/lib/gates";
 import { careMissionOf } from "@/lib/care";
+import { quickVisitAvailable } from "@/lib/quick-visit";
 import { useStore } from "@/lib/store";
 
 function formatDate(iso?: string) {
@@ -50,11 +52,11 @@ function NoActiveMission({ partner, latest }: { partner: Partner; latest?: Missi
   };
 
   return (
-    <div className="p-8">
+    <div className="px-4 py-6 sm:p-6 lg:p-8">
       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
         {won ? "Partner aktywny" : "Misja pozyskania partnera"}
       </p>
-      <h1 className="mt-1 text-[32px] font-semibold leading-none tracking-tight">{partner.name}</h1>
+      <h1 className="mt-1 break-words text-[26px] font-semibold leading-tight tracking-tight sm:text-[32px] sm:leading-none">{partner.name}</h1>
       <p className="mt-2 text-sm text-muted">
         {segmentLabel(partner.segment)}
         {partner.city ? ` · ${partner.city}` : ""}
@@ -82,7 +84,7 @@ function NoActiveMission({ partner, latest }: { partner: Partner; latest?: Missi
           ) : null}
         </div>
       ) : latest ? (
-        <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-6">
+        <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-4 sm:p-6">
           <p className="text-sm font-semibold text-foreground">
             Ostatnia misja: {MISSION_STATUS_LABEL[latest.status]}
             {latest.closedAt ? ` · zamknięta ${formatDate(latest.closedAt)}` : ""}
@@ -278,22 +280,22 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-end px-8 pb-2 pt-6">
-        <div className="flex items-center gap-3 text-sm text-muted">
-          <span>CRM / Partnerzy / {partner.name}</span>
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-xs font-semibold text-navy">
+      <header className="flex items-center justify-end px-4 pb-2 pt-4 sm:px-6 lg:px-8 lg:pt-6">
+        <div className="flex min-w-0 items-center gap-3 text-sm text-muted">
+          <span className="min-w-0 break-words text-right">CRM / Partnerzy / {partner.name}</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-chip text-xs font-semibold text-navy">
             {store.state.user.initials}
           </span>
         </div>
       </header>
 
-      <div className="px-8">
+      <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
               Misja pozyskania partnera
             </p>
-            <h1 className="mt-1 text-[32px] font-semibold leading-none tracking-tight">
+            <h1 className="mt-1 break-words text-[26px] font-semibold leading-tight tracking-tight sm:text-[32px] sm:leading-none">
               {partner.name}
             </h1>
             <p className="mt-2 text-sm text-muted">
@@ -305,19 +307,30 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {editable ? <TransferMission mission={mission} /> : null}
+            {editable && quickVisitAvailable(mission, partner) ? (
+              <QuickVisitButton
+                mission={mission}
+                partner={partner}
+                onDone={() => {
+                  setView(null);
+                  setError(null);
+                  window.scrollTo({ top: 0 });
+                }}
+              />
+            ) : null}
             {editable ? (
             <>
             <button
               type="button"
               onClick={openLog}
-              className="rounded-full border border-lutra px-4 py-1.5 text-xs font-semibold text-lutra"
+              className="min-h-10 rounded-full border border-lutra px-4 py-1.5 text-xs font-semibold text-lutra lg:min-h-0"
             >
               + Zapisz kontakt
             </button>
             <button
               type="button"
               onClick={() => setClosing((open) => !open)}
-              className="rounded-full border border-line px-4 py-1.5 text-xs font-semibold text-muted hover:border-rose-200 hover:text-rose-700"
+              className="min-h-10 rounded-full border border-line px-4 py-1.5 text-xs font-semibold text-muted hover:border-rose-200 hover:text-rose-700 lg:min-h-0"
             >
               Zamknij misję
             </button>
@@ -364,8 +377,9 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
         </div>
       </div>
 
-      <div className="mt-6 flex flex-1 gap-6 px-8">
-        <section className="min-w-0 flex-1 rounded-[28px] border border-line bg-white p-6 shadow-[0_8px_40px_rgba(9,12,155,0.06)]">
+      {/* Poniżej lg panel „Ta misja” ląduje pod treścią kroku. */}
+      <div className="mt-6 flex flex-1 flex-col gap-6 px-4 sm:px-6 lg:flex-row lg:px-8">
+        <section className="min-w-0 rounded-[28px] border border-line bg-white p-4 sm:p-6 lg:flex-1 shadow-[0_8px_40px_rgba(9,12,155,0.06)]">
           {viewing ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue/30 bg-chip px-4 py-3 text-sm">
               <p className="text-navy">
@@ -395,19 +409,19 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
 
           {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
 
-          <div className="mt-8 flex items-center justify-between border-t border-line pt-4">
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
             <p className="text-xs text-muted">
               {viewing ? `Podgląd: krok ${stageIndex + 1} z 8` : `Krok ${stageIndex + 1} z 8`}
             </p>
-            <div className="flex items-center gap-4">
-              <button type="button" onClick={onBack} className="text-sm text-muted">
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+              <button type="button" onClick={onBack} className="min-h-10 text-sm text-muted">
                 ← Wstecz
               </button>
               {editable || viewing ? (
                 <button
                   type="button"
                   onClick={onNext}
-                  className="rounded-full bg-lutra px-5 py-2.5 text-sm font-medium text-white hover:bg-lutra-dark"
+                  className="min-h-10 rounded-full bg-lutra px-5 py-2.5 text-sm font-medium text-white hover:bg-lutra-dark"
                 >
                   {viewing ? `Wróć do kroku: ${stageLabel(current)}` : STAGE_CTA[stage]}
                 </button>
@@ -422,7 +436,7 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
         )}
       </div>
 
-      <div className="px-8 pb-8 pt-6">
+      <div className="px-4 pb-8 pt-6 sm:px-6 lg:px-8">
         <ActivityLog
           partner={partner}
           missions={[mission]}

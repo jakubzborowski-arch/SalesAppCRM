@@ -1,0 +1,105 @@
+{
+  "id": "v09-bar-pod-kogutem-nic",
+  "title": "Bar Pod Kogutem — prawie nic nie ustalono",
+  "segment": "venue",
+  "callDate": "2026-10-20",
+  "partner": {
+    "name": "Bar Pod Kogutem",
+    "city": "Toruń",
+    "category": "bar",
+    "contacts": [
+      {
+        "name": "Roman Kowal",
+        "role": "właściciel"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba Zborowski: Dzień dobry, Kuba Zborowski z Lutry, ma pan pięć minut?\nRoman Kowal: Szczerze mówiąc, mam teraz dostawę, więc krótko.\nKuba Zborowski: Przyprowadzamy grupy znajomych do lokali w godzinach, kiedy jest luźniej. Czy u pana bywają takie godziny?\nRoman Kowal: Jakoś sobie radzimy, nie narzekam.\nKuba Zborowski: A gdyby pojawiały się grupy we wtorki albo środy?\nRoman Kowal: Nie wiem, ile osób wy w ogóle macie w tej aplikacji w Toruniu?\nKuba Zborowski: Startujemy w Toruniu, na razie mamy kilkaset osób na liście.\nRoman Kowal: To wróćcie, jak będzie was więcej, wtedy pogadamy.\nKuba Zborowski: Rozumiem. Mogę wysłać krótki opis mailem?\nRoman Kowal: Może pan wysłać, ale niczego nie obiecuję.",
+  "gold": {
+    "cytat": "To wróćcie, jak będzie was więcej, wtedy pogadamy.",
+    "problem": "",
+    "kategoria": "",
+    "priorytet": 0,
+    "rezultat": "",
+    "ograniczenia": [],
+    "decydent": "",
+    "rola_decydenta": "",
+    "termin_decyzji": "",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba wysyła krótki opis Lutry mailem.",
+    "data_nastepnego_kroku": "",
+    "potrzeby": [],
+    "wnioski": [
+      "Partner nie zgłasza problemu („jakoś sobie radzimy”).",
+      "Pyta, ilu użytkowników Lutra ma w Toruniu.",
+      "Prosi o powrót, gdy użytkowników będzie więcej; opis mailem przyjmie bez zobowiązań."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "",
+      "pilotaz_osoby": 0,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "how_many",
+        "argument_zadzialal": false,
+        "cytat": "Nie wiem, ile osób wy w ogóle macie w tej aplikacji w Toruniu?"
+      },
+      {
+        "klucz": "come_back",
+        "argument_zadzialal": false,
+        "cytat": "To wróćcie, jak będzie was więcej, wtedy pogadamy."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "",
+      "rezultat": "",
+      "ograniczenia": "",
+      "decydent": "",
+      "termin_decyzji": "",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Może pan wysłać, ale niczego nie obiecuję.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Prawie nic nie ustalono: oczekujemy pustych warunków, decydenta, terminu, problemu. Wypełnione tylko obiekcje (how_many, come_back — bez argumentu) i następny krok (opis mailem). Każde inne pole to fałszywe wypełnienie."
+}

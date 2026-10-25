@@ -175,6 +175,59 @@ export async function loadMissionCore(missionIds: string[]): Promise<{
   return { byMission, tasks };
 }
 
+type Row = Record<string, unknown>;
+
+/** Tabele misji, które zapisuje się razem z misją (ta sama lista co w `save_mission_bundle`). */
+export type CoreTable =
+  | "decision_context"
+  | "needs"
+  | "mission_checklist_items"
+  | "mission_objections"
+  | "offers"
+  | "contracts"
+  | "activations"
+  | "tasks";
+
+/**
+ * Jedna operacja zapisu misji. Te same operacje wykonuje funkcja `save_mission_bundle`
+ * (jedna transakcja, v8) albo — w starszej bazie — klient, zapytanie po zapytaniu.
+ */
+export type BundleOp = {
+  table: CoreTable;
+  op: "upsert" | "insert" | "update" | "delete";
+  rows?: Row[];
+  set?: Row;
+  ids?: string[];
+  /** Kolumna = id oferty/umowy tej misji, odczytane w chwili zapisu (po wcześniejszych operacjach). */
+  refs?: Record<string, "offers" | "contracts">;
+  /** Kolumny, których może brakować w starszej bazie — wtedy zapis bez nich. */
+  optional?: string[];
+  /** Zapisane wiersze wracają pod tym kluczem. */
+  key?: string;
+  /** Dokładnie jeden wiersz (jak `.single()`). */
+  single?: boolean;
+  /** Wiersze dla bazy bez v6 (umowa bez etapów podpisu) — gdy baza odrzuci nowe kolumny albo status. */
+  legacyRows?: Row[];
+  /** Tylko zapis po staremu: błąd nie przerywa zapisu (jak dotąd przy usuwaniu potrzeb). */
+  bestEffort?: boolean;
+};
+
+const NEXT_STEP_KEY = "next_step";
+
+export type PlannedMissionCore = {
+  status: "planned";
+  ops: BundleOp[];
+  /** Zadanie „następny krok”: znane już z odczytu albo zwrócone przez zapis. */
+  nextStep: { task: TaskItem | null } | { key: string };
+  /**
+   * Pliki umowy zastąpione nowymi. Storage nie wchodzi do transakcji: w jednej transakcji kasujemy je
+   * dopiero po udanym zapisie, po staremu — zaraz po zapisie umowy.
+   */
+  staleFiles: string[];
+};
+
+export type MissionCorePlan = { status: "skipped" } | PlannedMissionCore;
+
 export type CoreSyncResult = { status: "synced" | "skipped"; nextStepTask: TaskItem | null };
 
 function taskFromRow(row: Record<string, unknown>): TaskItem {
@@ -188,59 +241,95 @@ function taskFromRow(row: Record<string, unknown>): TaskItem {
   };
 }
 
-export async function syncMissionCore(
+/**
+ * Plan zapisu tabel misji: odczyty, których zapis potrzebuje (kto i kiedy potwierdził fakt,
+ * daty odhaczenia, zatwierdzenie oferty, poprzednie pliki umowy, otwarte kroki), i lista operacji.
+ * Sam niczego nie zapisuje.
+ */
+export async function planMissionCore(
   mission: Mission,
   workspaceId: string,
   userId: string,
   segment: PartnerSegment = "venue",
-): Promise<CoreSyncResult> {
+): Promise<MissionCorePlan> {
   const sb = getSupabase();
-  if (!sb) return { status: "skipped", nextStepTask: null };
+  if (!sb) return { status: "skipped" };
   const ownerId = uuidOrNull(mission.ownerUserId) ?? userId;
   const now = new Date().toISOString();
   const d = mission.decision;
   const makerId = uuidOrNull(d.decisionMakerId);
-  let decisionMakerId: string | null = null;
-  if (makerId) {
-    const { data: existingContact } = await sb
-      .from("partner_contacts")
-      .select("id")
-      .eq("id", makerId)
-      .maybeSingle();
-    decisionMakerId = (existingContact?.id as string) ?? null;
-  }
-  const { error: decisionError } = await sb.from("decision_context").upsert({
-    mission_id: mission.id,
-    problem: d.problem || null,
-    expected_result: d.expectedResult || null,
-    constraint_summary: d.constraintSummary || null,
-    decision_maker_contact_id: decisionMakerId,
-    decision_deadline: d.decisionDeadline || null,
-    previous_attempts: d.previousAttempts || null,
-    next_step: d.nextStep || null,
-  });
-  if (decisionError) {
-    if (optionalTable(decisionError)) return { status: "skipped", nextStepTask: null };
-    throw decisionError;
-  }
+  const c = mission.contract;
+  const hasContract =
+    c.companyName.trim() ||
+    c.nip.trim() ||
+    c.signedByHuman ||
+    c.documentPath ||
+    c.startAt ||
+    c.endAt ||
+    c.sentAt ||
+    c.partnerSignedAt;
 
-  const { data: existingNeeds, error: listNeedsError } = await sb
-    .from("needs")
-    .select("id, confirmed_at, confirmed_by")
-    .eq("mission_id", mission.id);
-  if (listNeedsError) throw listNeedsError;
+  const [makerRes, needsRes, checklistRes, libraryRes, offerRes, tasksRes, previousRes] = await Promise.all([
+    makerId ? sb.from("partner_contacts").select("id").eq("id", makerId).maybeSingle() : null,
+    sb.from("needs").select("id, confirmed_at, confirmed_by").eq("mission_id", mission.id),
+    sb.from("mission_checklist_items").select("stage, item_key, done_at").eq("mission_id", mission.id),
+    mission.selectedVariant
+      ? sb
+          .from("offer_library")
+          .select("id")
+          .eq("segment", segment)
+          .eq("variant", mission.selectedVariant)
+          .maybeSingle()
+      : null,
+    mission.selectedVariant
+      ? sb.from("offers").select("variant, approved_at, approved_by").eq("mission_id", mission.id).maybeSingle()
+      : null,
+    sb
+      .from("tasks")
+      .select("*")
+      .eq("mission_id", mission.id)
+      .eq("source", "next_step")
+      .order("done_at", { ascending: false, nullsFirst: true }),
+    hasContract ? sb.from("contracts").select("*").eq("mission_id", mission.id).maybeSingle() : null,
+  ]);
+  // Baza bez tabel misji (przed v3): misja żyje tylko w `details`.
+  if (optionalTable(needsRes.error) || optionalTable(tasksRes.error)) return { status: "skipped" };
+  if (needsRes.error) throw needsRes.error;
+  if (tasksRes.error) throw tasksRes.error;
+
+  const ops: BundleOp[] = [];
+  ops.push({
+    table: "decision_context",
+    op: "upsert",
+    rows: [
+      {
+        mission_id: mission.id,
+        problem: d.problem || null,
+        expected_result: d.expectedResult || null,
+        constraint_summary: d.constraintSummary || null,
+        decision_maker_contact_id: (makerRes?.data?.id as string) ?? null,
+        decision_deadline: d.decisionDeadline || null,
+        previous_attempts: d.previousAttempts || null,
+        next_step: d.nextStep || null,
+      },
+    ],
+  });
+
+  const existingNeeds = (needsRes.data ?? []) as Row[];
   // Kto i kiedy potwierdził fakt — zostaje przy kolejnych zapisach, nie przeskakuje na „teraz”.
   const confirmedBefore = new Map(
-    (existingNeeds ?? [])
+    existingNeeds
       .filter((n) => n.confirmed_at)
       .map((n) => [n.id as string, { at: n.confirmed_at as string, by: (n.confirmed_by as string | null) ?? null }]),
   );
   const keep = new Set(mission.needs.map((n) => persistNeedId(n.id)));
-  const stale = (existingNeeds ?? []).map((n) => n.id as string).filter((id) => !keep.has(id));
-  if (stale.length) await sb.from("needs").delete().in("id", stale);
+  const stale = existingNeeds.map((n) => n.id as string).filter((id) => !keep.has(id));
+  if (stale.length) ops.push({ table: "needs", op: "delete", ids: stale, bestEffort: true });
   if (mission.needs.length) {
-    const { error } = await sb.from("needs").upsert(
-      mission.needs.map((need) => {
+    ops.push({
+      table: "needs",
+      op: "upsert",
+      rows: mission.needs.map((need) => {
         const id = persistNeedId(need.id);
         const before = confirmedBefore.get(id);
         return {
@@ -259,16 +348,11 @@ export async function syncMissionCore(
           source: "manual",
         };
       }),
-    );
-    if (error) throw error;
+    });
   }
 
-  const { data: existingChecklist } = await sb
-    .from("mission_checklist_items")
-    .select("stage, item_key, done_at")
-    .eq("mission_id", mission.id);
   const doneBefore = new Map(
-    (existingChecklist ?? [])
+    ((checklistRes.data ?? []) as Row[])
       .filter((row) => row.done_at)
       .map((row) => [`${row.stage}:${row.item_key}`, row.done_at as string]),
   );
@@ -284,88 +368,67 @@ export async function syncMissionCore(
       done_at: isDone ? (doneBefore.get(fullKey) ?? now) : null,
     };
   });
-  if (checklistRows.length) {
-    const { error } = await sb.from("mission_checklist_items").upsert(checklistRows, {
-      onConflict: "mission_id,stage,item_key",
+  if (checklistRows.length) ops.push({ table: "mission_checklist_items", op: "upsert", rows: checklistRows });
+
+  if (mission.objections.length) {
+    ops.push({
+      table: "mission_objections",
+      op: "upsert",
+      rows: mission.objections.map((item) => ({
+        mission_id: mission.id,
+        library_key: item.key,
+        checked: item.checked,
+        argument_worked: item.argumentWorked,
+      })),
     });
-    if (error) throw error;
   }
 
-  const { error: objError } = await sb.from("mission_objections").upsert(
-    mission.objections.map((item) => ({
-      mission_id: mission.id,
-      library_key: item.key,
-      checked: item.checked,
-      argument_worked: item.argumentWorked,
-    })),
-    { onConflict: "mission_id,library_key" },
-  );
-  if (objError) throw objError;
-
   if (mission.selectedVariant) {
-    const { data: library } = await sb
-      .from("offer_library")
-      .select("id")
-      .eq("segment", segment)
-      .eq("variant", mission.selectedVariant)
-      .maybeSingle();
-    const { data: existingOffer } = await sb
-      .from("offers")
-      .select("variant, approved_at, approved_by")
-      .eq("mission_id", mission.id)
-      .maybeSingle();
+    const existingOffer = (offerRes?.data ?? null) as Row | null;
     // Zatwierdzenie tego samego wariantu zachowuje pierwotną datę i osobę.
     const keepApproval =
       mission.offerApproved && existingOffer?.approved_at && existingOffer.variant === mission.selectedVariant;
     const status = mission.offerSentAt ? "sent" : mission.offerApproved ? "approved" : "draft";
-    const { error } = await sb.from("offers").upsert(
-      {
-        mission_id: mission.id,
-        library_id: library?.id ?? null,
-        variant: mission.selectedVariant,
-        custom_terms: {
-          constraints: mission.decision.constraintSummary,
-          nextStep: mission.decision.nextStep,
-          // Ustalone warunki (zniżka, miejsce, cykl, pilotaż) — do odczytu także poza CRM.
-          segment,
-          terms: mission.terms,
-          period: { from: mission.contract.startAt || null, to: mission.contract.endAt || null },
-          agreementForm: agreementFormOf(mission),
+    ops.push({
+      table: "offers",
+      op: "upsert",
+      rows: [
+        {
+          mission_id: mission.id,
+          library_id: (libraryRes?.data?.id as string) ?? null,
+          variant: mission.selectedVariant,
+          custom_terms: {
+            constraints: mission.decision.constraintSummary,
+            nextStep: mission.decision.nextStep,
+            // Ustalone warunki (zniżka, miejsce, cykl, pilotaż) — do odczytu także poza CRM.
+            segment,
+            terms: mission.terms,
+            period: { from: mission.contract.startAt || null, to: mission.contract.endAt || null },
+            agreementForm: agreementFormOf(mission),
+          },
+          recommended_by: "human",
+          approved_by: mission.offerApproved
+            ? keepApproval
+              ? ((existingOffer?.approved_by as string | null) ?? null)
+              : userId
+            : null,
+          approved_at: mission.offerApproved ? (keepApproval ? (existingOffer?.approved_at as string) : now) : null,
+          sent_at: mission.offerSentAt || null,
+          status,
         },
-        recommended_by: "human",
-        approved_by: mission.offerApproved
-          ? keepApproval
-            ? ((existingOffer?.approved_by as string | null) ?? null)
-            : userId
-          : null,
-        approved_at: mission.offerApproved ? (keepApproval ? (existingOffer?.approved_at as string) : now) : null,
-        sent_at: mission.offerSentAt || null,
-        status,
-      },
-      { onConflict: "mission_id" },
-    );
-    if (error) throw error;
+      ],
+    });
   }
 
-  const nextStepTask = await syncNextStepTask(mission, workspaceId, ownerId);
+  const nextStep = planNextStep(mission, workspaceId, ownerId, (tasksRes.data ?? []) as Row[], now);
+  ops.push(...nextStep.ops);
 
-  const c = mission.contract;
-  const hasContract =
-    c.companyName.trim() ||
-    c.nip.trim() ||
-    c.signedByHuman ||
-    c.documentPath ||
-    c.startAt ||
-    c.endAt ||
-    c.sentAt ||
-    c.partnerSignedAt;
+  let staleFiles: string[] = [];
   if (hasContract) {
-    const { data: offer } = await sb.from("offers").select("id").eq("mission_id", mission.id).maybeSingle();
-    const { data: previous } = await sb.from("contracts").select("*").eq("mission_id", mission.id).maybeSingle();
+    const previous = (previousRes?.data ?? null) as Row | null;
     const status = contractStatus(c, agreementFormOf(mission));
     const base = {
       mission_id: mission.id,
-      offer_id: offer?.id ?? null,
       company_name: c.companyName.trim() || null,
       nip: c.nip.trim() || null,
       address: c.address.trim() || null,
@@ -374,41 +437,33 @@ export async function syncMissionCore(
       change_rules: c.changeRules.trim() || null,
       signed_by_human: c.signedByHuman,
       document_path: c.documentPath || null,
-      signed_at: c.signedByHuman ? (c.signedAt ?? new Date().toISOString()) : null,
+      signed_at: c.signedByHuman ? (c.signedAt ?? now) : null,
     };
-    let { error } = await sb.from("contracts").upsert(
-      {
-        ...base,
-        sent_at: c.sentAt ?? null,
-        partner_signed_at: c.partnerSignedAt ?? null,
-        signed_document_path: c.signedDocumentPath ?? null,
-        status,
-      },
-      { onConflict: "mission_id" },
-    );
-    if (error && /sent_at|partner_signed_at|signed_document_path|contracts_status_check/.test(error.message ?? "")) {
+    ops.push({
+      table: "contracts",
+      op: "upsert",
+      refs: { offer_id: "offers" },
+      optional: ["sent_at", "partner_signed_at", "signed_document_path"],
+      rows: [
+        {
+          ...base,
+          sent_at: c.sentAt ?? null,
+          partner_signed_at: c.partnerSignedAt ?? null,
+          signed_document_path: c.signedDocumentPath ?? null,
+          status,
+        },
+      ],
       // Baza bez v6: zapisujemy po staremu (bez etapów podpisu).
-      ({ error } = await sb.from("contracts").upsert(
-        { ...base, status: status === "signed" ? "signed" : c.documentPath ? "ready" : "draft" },
-        { onConflict: "mission_id" },
-      ));
-    }
-    if (error) throw error;
+      legacyRows: [{ ...base, status: status === "signed" ? "signed" : c.documentPath ? "ready" : "draft" }],
+    });
     // Zastąpione pliki PDF nie zostają w Storage jako sieroty.
-    const stale = [previous?.document_path, previous?.signed_document_path].filter(
+    staleFiles = [previous?.document_path, previous?.signed_document_path].filter(
       (path): path is string =>
         typeof path === "string" &&
         !path.startsWith("local/") &&
         path !== c.documentPath &&
         path !== c.signedDocumentPath,
     );
-    if (stale.length) {
-      try {
-        await sb.storage.from("contracts").remove(stale);
-      } catch {
-        // Sprzątanie jest najlepszym wysiłkiem — zapis umowy już się udał.
-      }
-    }
   }
 
   const a = mission.activation;
@@ -420,32 +475,28 @@ export async function syncMissionCore(
     a.opsContactName.trim() ||
     a.checkInAt;
   if (hasActivation) {
-    const { data: contract } = await sb
-      .from("contracts")
-      .select("id")
-      .eq("mission_id", mission.id)
-      .maybeSingle();
-    const payload = {
-      mission_id: mission.id,
-      contract_id: contract?.id ?? null,
-      partner_code: a.partnerCode.trim() || null,
-      hours_confirmed: a.hoursConfirmed,
-      ops_contact_name: a.opsContactName.trim() || null,
-      ops_contact_phone: a.opsContactPhone.trim() || null,
-      test_passed: a.testPassed,
-      test_notes: a.testNotes?.trim() || null,
-      check_in_at: a.checkInAt || null,
-      activated_at: a.activatedAt || (mission.status === "won" ? new Date().toISOString() : null),
-    };
-    let { error } = await sb.from("activations").upsert(payload, { onConflict: "mission_id" });
-    if (error && /test_notes/i.test(error.message ?? "")) {
-      const { test_notes: _notes, ...withoutNotes } = payload;
-      ({ error } = await sb.from("activations").upsert(withoutNotes, { onConflict: "mission_id" }));
-    }
-    if (error) throw error;
+    ops.push({
+      table: "activations",
+      op: "upsert",
+      refs: { contract_id: "contracts" },
+      optional: ["test_notes"],
+      rows: [
+        {
+          mission_id: mission.id,
+          partner_code: a.partnerCode.trim() || null,
+          hours_confirmed: a.hoursConfirmed,
+          ops_contact_name: a.opsContactName.trim() || null,
+          ops_contact_phone: a.opsContactPhone.trim() || null,
+          test_passed: a.testPassed,
+          test_notes: a.testNotes?.trim() || null,
+          check_in_at: a.checkInAt || null,
+          activated_at: a.activatedAt || (mission.status === "won" ? now : null),
+        },
+      ],
+    });
   }
 
-  return { status: "synced", nextStepTask };
+  return { status: "planned", ops, nextStep: nextStep.result, staleFiles };
 }
 
 /**
@@ -453,76 +504,203 @@ export async function syncMissionCore(
  * pojawia się nowy, dopisujemy nowe zadanie (historia kroków zostaje).
  * Przegrana albo brak dopasowania zamyka otwarte kroki.
  */
-async function syncNextStepTask(
+function planNextStep(
   mission: Mission,
   workspaceId: string,
   ownerId: string,
-): Promise<TaskItem | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
+  rows: Row[],
+  now: string,
+): { ops: BundleOp[]; result: PlannedMissionCore["nextStep"] } {
   const title = mission.nextStepLabel.trim();
   // Przegrana, brak dopasowania albo pauza bez terminu powrotu: otwarte kroki się zamykają.
   const closing =
     mission.status === "lost" ||
     mission.status === "no_fit" ||
     (mission.status !== "active" && mission.status !== "won" && !title);
-
-  const { data: rows, error: listError } = await sb
-    .from("tasks")
-    .select("*")
-    .eq("mission_id", mission.id)
-    .eq("source", "next_step")
-    .order("done_at", { ascending: false, nullsFirst: true });
-  if (listError) throw listError;
-  const open = (rows ?? []).filter((row) => !row.done_at);
+  const open = rows.filter((row) => !row.done_at);
 
   if (closing) {
-    if (open.length) {
-      const { error } = await sb
-        .from("tasks")
-        .update({ done_at: new Date().toISOString() })
-        .in(
-          "id",
-          open.map((row) => row.id as string),
-        );
-      if (error) throw error;
-    }
-    return null;
+    const ops: BundleOp[] = open.length
+      ? [{ table: "tasks", op: "update", set: { done_at: now }, ids: open.map((row) => row.id as string) }]
+      : [];
+    return { ops, result: { task: null } };
   }
 
-  if (!title) return null;
+  if (!title) return { ops: [], result: { task: null } };
   const dueAt = dateOrNull(mission.nextStepAt);
   const current = open[0];
 
   if (current) {
-    if (current.title === title && (current.due_at ?? null) === dueAt) return taskFromRow(current);
-    const { data, error } = await sb
-      .from("tasks")
-      .update({ title, due_at: dueAt })
-      .eq("id", current.id)
-      .select("*")
-      .single();
-    if (error) throw error;
-    return taskFromRow(data);
+    if (current.title === title && (current.due_at ?? null) === dueAt) {
+      return { ops: [], result: { task: taskFromRow(current) } };
+    }
+    return {
+      ops: [
+        {
+          table: "tasks",
+          op: "update",
+          set: { title, due_at: dueAt },
+          ids: [current.id as string],
+          key: NEXT_STEP_KEY,
+          single: true,
+        },
+      ],
+      result: { key: NEXT_STEP_KEY },
+    };
   }
 
-  const alreadyDone = (rows ?? []).some((row) => row.title === title && (row.due_at ?? null) === dueAt);
-  if (alreadyDone) return null;
+  const alreadyDone = rows.some((row) => row.title === title && (row.due_at ?? null) === dueAt);
+  if (alreadyDone) return { ops: [], result: { task: null } };
 
-  const { data, error } = await sb
-    .from("tasks")
-    .insert({
-      workspace_id: workspaceId,
-      mission_id: mission.id,
-      owner_user_id: ownerId,
-      title,
-      due_at: dueAt,
-      source: "next_step",
-    })
-    .select("*")
-    .single();
-  if (error) throw error;
-  return taskFromRow(data);
+  return {
+    ops: [
+      {
+        table: "tasks",
+        op: "insert",
+        rows: [
+          {
+            workspace_id: workspaceId,
+            mission_id: mission.id,
+            owner_user_id: ownerId,
+            title,
+            due_at: dueAt,
+            source: "next_step",
+          },
+        ],
+        key: NEXT_STEP_KEY,
+        single: true,
+      },
+    ],
+    result: { key: NEXT_STEP_KEY },
+  };
+}
+
+/** Zadanie „następny krok” po zapisie: z odczytu planu albo z wierszy zwróconych przez zapis. */
+export function nextStepTaskOf(
+  plan: PlannedMissionCore,
+  returned: Record<string, Row[] | undefined> | null | undefined,
+): TaskItem | null {
+  if ("task" in plan.nextStep) return plan.nextStep.task;
+  const row = returned?.[plan.nextStep.key]?.[0];
+  return row ? taskFromRow(row) : null;
+}
+
+/** Operacje w postaci dla `save_mission_bundle` (bez pól, które zna tylko zapis po staremu). */
+export function bundlePayload(ops: BundleOp[], legacy = false) {
+  return ops.map((op) => {
+    const { legacyRows, bestEffort: _bestEffort, ...rest } = op;
+    return legacy && legacyRows ? { ...rest, rows: legacyRows } : rest;
+  });
+}
+
+/** Czy baza odrzuciła umowę w nowym formacie (brak v6) — wtedy powtórka z `legacyRows`. */
+export function needsLegacyRows(ops: BundleOp[], error: { message?: string } | null) {
+  return Boolean(error && ops.some((op) => op.legacyRows) && /contracts_status_check/.test(error.message ?? ""));
+}
+
+const ON_CONFLICT: Partial<Record<CoreTable, string>> = {
+  mission_checklist_items: "mission_id,stage,item_key",
+  mission_objections: "mission_id,library_key",
+  offers: "mission_id",
+  contracts: "mission_id",
+  activations: "mission_id",
+};
+
+function pick(row: Row | undefined, keys: string[]): Row {
+  return Object.fromEntries(keys.filter((k) => row && k in row).map((k) => [k, row![k]]));
+}
+
+function omit(row: Row, keys: string[]): Row {
+  return Object.fromEntries(Object.entries(row).filter(([k]) => !keys.includes(k)));
+}
+
+/**
+ * Zapis po staremu (baza bez `save_mission_bundle`): te same operacje, zapytanie po zapytaniu.
+ * Nie jest atomowy — dlatego wersję misji domyka dopiero `persistMission`.
+ */
+export async function executeMissionCore(
+  missionId: string,
+  ops: BundleOp[],
+  staleFiles: string[] = [],
+): Promise<{ status: "synced" | "skipped"; returned: Record<string, Row[]> }> {
+  const sb = getSupabase();
+  const returned: Record<string, Row[]> = {};
+  if (!sb) return { status: "skipped", returned };
+  for (const op of ops) {
+    if ((op.op === "upsert" || op.op === "insert") && !op.rows?.length) continue;
+    let rows = op.rows;
+    if (rows && op.refs) {
+      for (const [column, table] of Object.entries(op.refs)) {
+        const { data } = await sb.from(table).select("id").eq("mission_id", missionId).maybeSingle();
+        const id = (data?.id as string) ?? null;
+        rows = rows.map((row) => ({ ...row, [column]: id }));
+      }
+    }
+    const write = async (payload: Row[] | undefined) => {
+      const q = sb.from(op.table);
+      if (op.op === "delete") return q.delete().in("id", op.ids ?? []);
+      if (op.op === "update") {
+        const updated = q.update(op.set ?? {}).in("id", op.ids ?? []);
+        return op.key ? (op.single ? updated.select("*").single() : updated.select("*")) : updated;
+      }
+      const conflict = ON_CONFLICT[op.table];
+      const written =
+        op.op === "insert"
+          ? q.insert(payload ?? [])
+          : q.upsert(payload ?? [], conflict ? { onConflict: conflict } : undefined);
+      return op.key ? (op.single ? written.select("*").single() : written.select("*")) : written;
+    };
+    let { data, error } = await write(rows);
+    const message = error?.message ?? "";
+    const optional = op.optional ?? [];
+    const mentionsOptional = optional.some((column) => new RegExp(column, "i").test(message));
+    if (error && op.legacyRows && (mentionsOptional || message.includes(`${op.table}_status_check`))) {
+      // Baza bez nowych kolumn albo statusów: wiersze w starym formacie (z odczytanymi odwołaniami).
+      const refKeys = Object.keys(op.refs ?? {});
+      ({ data, error } = await write(op.legacyRows.map((row, i) => ({ ...row, ...pick(rows?.[i], refKeys) }))));
+    } else if (error && mentionsOptional && rows) {
+      ({ data, error } = await write(rows.map((row) => omit(row, optional))));
+    }
+    if (error) {
+      if (op.table === "decision_context" && optionalTable(error)) return { status: "skipped", returned };
+      if (op.bestEffort) continue;
+      throw error;
+    }
+    if (op.key) {
+      const list = Array.isArray(data) ? (data as Row[]) : data ? [data as Row] : [];
+      returned[op.key] = [...(returned[op.key] ?? []), ...list];
+    }
+    // Bez transakcji umowa wskazuje nowe pliki już teraz — stare kasujemy od razu (jak dotąd),
+    // inaczej nieudany dalszy zapis zostawiłby je w Storage bez odwołania.
+    if (op.table === "contracts") await removeContractFiles(staleFiles);
+  }
+  return { status: "synced", returned };
+}
+
+/** Tabele misji po staremu (bez jednej transakcji): plan, potem zapytanie po zapytaniu. */
+export async function syncMissionCore(
+  mission: Mission,
+  workspaceId: string,
+  userId: string,
+  segment: PartnerSegment = "venue",
+  planned?: MissionCorePlan,
+): Promise<CoreSyncResult> {
+  const plan = planned ?? (await planMissionCore(mission, workspaceId, userId, segment));
+  if (plan.status === "skipped") return { status: "skipped", nextStepTask: null };
+  const { status, returned } = await executeMissionCore(mission.id, plan.ops, plan.staleFiles);
+  if (status === "skipped") return { status, nextStepTask: null };
+  return { status, nextStepTask: nextStepTaskOf(plan, returned) };
+}
+
+/** Sprzątanie zastąpionych plików umowy — najlepszym wysiłkiem, gdy umowa już wskazuje nowe pliki. */
+export async function removeContractFiles(paths: string[]) {
+  const sb = getSupabase();
+  if (!sb || !paths.length) return;
+  try {
+    await sb.storage.from("contracts").remove(paths);
+  } catch {
+    // Sprzątanie jest najlepszym wysiłkiem — zapis umowy już się udał.
+  }
 }
 
 export async function insertTask(

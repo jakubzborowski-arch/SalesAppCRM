@@ -236,7 +236,7 @@ export function CsvImport() {
           Import z pliku
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Gotowe</h1>
-        <div className="mt-6 space-y-3 rounded-[28px] border border-line bg-white p-6 text-sm">
+        <div className="mt-6 space-y-3 rounded-[28px] border border-line bg-white p-4 sm:p-6 text-sm">
           <p>
             Zapisano <span className="font-semibold text-foreground">{result.created}</span> partnerów.
           </p>

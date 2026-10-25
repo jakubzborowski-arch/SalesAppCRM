@@ -208,4 +208,5 @@ export const seedState: AppState = {
     },
   ],
   team: [],
+  metrics: [],
 };

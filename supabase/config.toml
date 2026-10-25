@@ -1,0 +1,3 @@
+# Supabase CLI (npx supabase …). Migracje: supabase/migrations — każdą można odpalać wielokrotnie.
+# Połączenie z projektem: npx supabase login && npx supabase link --project-ref <ref z adresu projektu>
+project_id = "lutra-crm"

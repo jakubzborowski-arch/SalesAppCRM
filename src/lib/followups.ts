@@ -57,3 +57,59 @@ export function pendingFollowUps(mission: Pick<Mission, "activities">, today = n
   }
   return [...latest.values()].sort((a, b) => a.due.localeCompare(b.due));
 }
+
+// ---------------------------------------------------------------------------
+// Rytm ponowień, gdy partner nie odpowiada
+
+/** Odstępy kolejnych prób od pierwszej próby bez odpowiedzi (dni): 2, 5, 10. Po czwartej próbie — decyzja. */
+export const RETRY_OFFSETS = [2, 5, 10] as const;
+/** Po ilu dniach bez żadnego kontaktu aktywna misja „stygnie”. */
+export const STALE_DAYS = 7;
+
+/** Wyniki, po których partner się odezwał — rytm liczymy od nowa. */
+const RESPONDED = new Set(["connected", "callback", "replied", "meeting_booked"]);
+
+export type Retry =
+  | { kind: "retry"; attempt: number; due: string; title: string; lastAt: string }
+  | { kind: "no_response"; attempts: number; due: string; title: string; lastAt: string };
+
+function responded(activity: Activity) {
+  if (activity.direction === "inbound") return true;
+  if (activity.channel === "in_person") return activity.outcome !== "no_answer" && activity.outcome !== "refused";
+  return Boolean(activity.outcome && RESPONDED.has(activity.outcome));
+}
+
+/**
+ * Próby kontaktu bez odpowiedzi od ostatniej odpowiedzi partnera. 1. próba → ponów po 2 dniach,
+ * 2. → po 5, 3. → po 10 (licząc od pierwszej). Po 4 próbach bez odpowiedzi CRM proponuje zamknięcie
+ * z powodem „Brak kontaktu” albo zmianę kanału.
+ */
+export function retryCadence(mission: Pick<Mission, "activities" | "status">): Retry | null {
+  if (mission.status !== "active") return null;
+  const history = [...mission.activities].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+  const lastResponse = history.map(responded).lastIndexOf(true);
+  const attempts = history.slice(lastResponse + 1).filter((a) => a.direction === "outbound" && a.outcome !== "refused");
+  if (!attempts.length) return null;
+  const first = new Date(attempts[0].occurredAt);
+  const last = attempts[attempts.length - 1].occurredAt;
+  if (attempts.length > RETRY_OFFSETS.length) {
+    return {
+      kind: "no_response",
+      attempts: attempts.length,
+      due: toIsoDate(new Date(last)),
+      title: `${attempts.length} próby bez odpowiedzi — spróbuj innym kanałem albo zamknij misję („Brak kontaktu”)`,
+      lastAt: last,
+    };
+  }
+  const offset = RETRY_OFFSETS[attempts.length - 1];
+  const dueDate = new Date(first.getFullYear(), first.getMonth(), first.getDate() + offset);
+  const channels = new Set(attempts.map((a) => a.channel));
+  const hint = channels.size === 1 && channels.has("phone") ? " — tym razem może mail albo SMS" : "";
+  return {
+    kind: "retry",
+    attempt: attempts.length + 1,
+    due: toIsoDate(dueDate),
+    title: `Ponów kontakt (próba ${attempts.length + 1} z ${RETRY_OFFSETS.length + 1})${hint}`,
+    lastAt: last,
+  };
+}

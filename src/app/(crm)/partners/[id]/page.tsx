@@ -7,6 +7,9 @@ import { CompanyCard } from "@/components/partners/company-card";
 import { MissionDossier } from "@/components/partners/mission-dossier";
 import { ContactForm, PartnerBasicsForm } from "@/components/partners/partner-edit";
 import { PriorityChecks } from "@/components/partners/priority-checks";
+import { FitEditor } from "@/components/partners/fit-editor";
+import { HealthBadge } from "@/components/partners/health-badge";
+import { healthFor } from "@/lib/health";
 import { CONTACT_CHANNELS, segmentLabel } from "@/lib/playbook";
 import { careMissionOf } from "@/lib/care";
 import { socialUrl, type SocialKind } from "@/lib/social";
@@ -61,19 +64,21 @@ export default function PartnerDetailPage({
   }
 
   const owner = partner.contacts.find((c) => c.isDecisionMaker);
+  const caring = careMissionOf(state.missions, partner.id);
+  const health = caring ? healthFor(state, partner) : null;
   const editable = canEditPartner(partner);
   // Usunięcie kasuje też misje — tylko opiekun/admin i bez cudzych misji (tak samo pilnuje baza).
   const canDelete = canDeletePartner(partner);
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-3 px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         <span>CRM / Partnerzy / {partner.name}</span>
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-xs font-semibold text-navy">
           {state.user.initials}
         </span>
       </div>
-      <div className="px-8 pb-10">
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
           <div className="min-w-0">
             <p className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-navy">
@@ -81,11 +86,12 @@ export default function PartnerDetailPage({
               <span className="rounded-full bg-chip px-2.5 py-0.5 text-[10px] tracking-[0.08em] text-lutra">
                 {segmentLabel(partner.segment)}
               </span>
-              {careMissionOf(state.missions, partner.id) ? (
+              {caring ? (
                 <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] tracking-[0.08em] text-emerald-700">
                   Aktywny partner
                 </span>
               ) : null}
+              {health ? <HealthBadge health={health} /> : null}
             </p>
             <h1 className="mt-1 text-4xl font-bold tracking-tight text-navy">{partner.name}</h1>
             <p className="mt-2 text-sm font-semibold text-foreground">
@@ -332,6 +338,8 @@ export default function PartnerDetailPage({
               <p className="mt-4 text-xs text-amber-700">Brak oznaczonego decydenta.</p>
             )}
           </section>
+
+          {partner.segment === "venue" ? <FitEditor partner={partner} editable={editable} /> : null}
 
           <CompanyCard key={partner.id} partner={partner} />
 

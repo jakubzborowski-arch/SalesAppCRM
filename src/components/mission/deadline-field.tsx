@@ -11,7 +11,15 @@ const QUICK: { label: string; text: string }[] = [
 ];
 
 /** Termin decyzji partnera jako data. Stare wpisy tekstowe („Czwartek”) pokazuje do zamiany. */
-export function DeadlineField({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
+export function DeadlineField({
+  value,
+  onChange,
+  optional,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  optional?: boolean;
+}) {
   const legacy = value.trim() && !isIsoDate(value) ? value.trim() : "";
   // Zwrot typu „czwartek” liczony od dziś dałby zły dzień, jeśli wpisano go tydzień temu.
   const suggestion = legacy && hasExplicitDate(legacy) ? parseDeadline(legacy) : null;
@@ -20,7 +28,7 @@ export function DeadlineField({ value, onChange }: { value: string; onChange: (i
 
   return (
     <div>
-      <Field label="Termin decyzji">
+      <Field label="Termin decyzji" optional={optional}>
         <input
           type="date"
           className={inputClass}

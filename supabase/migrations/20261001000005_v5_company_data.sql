@@ -62,4 +62,16 @@ alter table public.partners validate constraint partners_regon_format;
 -- Wyszukiwanie partnera po NIP (kilka lokali jednej spółki może mieć ten sam NIP).
 create index if not exists partners_workspace_nip_idx on public.partners (workspace_id, nip) where nip is not null;
 
+-- Znacznik wersji: CRM wykrywa, gdy starsza migracja została odpalona po nowszej (trzeba wtedy powtórzyć kolejne).
+create table if not exists public.crm_migrations (
+  version text primary key,
+  applied_at timestamptz not null default now()
+);
+alter table public.crm_migrations enable row level security;
+drop policy if exists "crm_migrations_select" on public.crm_migrations;
+create policy "crm_migrations_select" on public.crm_migrations for select to authenticated using (true);
+grant select on public.crm_migrations to authenticated;
+insert into public.crm_migrations (version, applied_at) values ('v5', clock_timestamp())
+  on conflict (version) do update set applied_at = excluded.applied_at;
+
 notify pgrst, 'reload schema';

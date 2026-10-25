@@ -10,10 +10,34 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { activationBlockers, canEnterStage, contractBlockers, nextStage, offerBlockers } from "./gates";
-import { categoryLabel, suggestVariant } from "./playbook";
+import { activationBlockers, canEnterStage, contractBlockers } from "./gates";
+import { categoryLabel } from "./playbook";
+import {
+  advanceGate,
+  approveGate,
+  stepForward,
+  withAgreementForm,
+  withChecklistItem,
+  withConsent,
+  withContract,
+  withDecision,
+  withDiscovery,
+  withNeed,
+  withRecommended,
+  withTerms,
+} from "./mission-ops";
+import {
+  applyQuickVisit,
+  partnerAfterVisit,
+  QUICK_VISIT_SUBJECT,
+  quickVisitAvailable,
+  quickVisitErrors,
+  type QuickVisitInput,
+  type QuickVisitResult,
+} from "./quick-visit";
+import { toIsoDate } from "./dates";
 import { emptyCompany } from "./company";
-import { agreementFormOf, changeRulesFor, isDefaultChangeRules, isShortTerm, mergeCare, mergeTerms, termsChecks } from "./terms";
+import { discountSummary, mergeCare, mergeTerms } from "./terms";
 import {
   canDeletePartner as canDeletePartnerIn,
   canEditMission as canEditMissionIn,
@@ -42,9 +66,13 @@ import {
   detectSchemaV5,
   detectSchemaV6,
   detectSchemaV7,
+  detectSchemaV8,
   saveAgreementTemplate as saveAgreementTemplateRow,
   saveContractTemplate as saveContractTemplateRow,
   V7_MISSING,
+  V8_MISSING,
+  loadPartnerMetrics,
+  savePartnerMetricsRow,
   transferMission as transferMissionRow,
   V5_MISSING,
   loadPartner,
@@ -68,6 +96,9 @@ import {
   contractStatus,
   uploadContractPdf,
 } from "./mission-core";
+import { migrationDrift, type MigrationDrift } from "./migrations";
+import { fitOf, pickUrgentMission } from "./fit";
+import { MONTH_RE } from "./health";
 import { getSupabase, isMissingCrmTable, isSupabaseConfigured } from "./supabase";
 import type {
   MissionTerms,
@@ -86,6 +117,8 @@ import type {
   OfferVariant,
   Partner,
   PartnerContact,
+  PartnerMetrics,
+  PartnerMetricsInput,
   StageId,
   TaskItem,
   TeamInvite,
@@ -144,6 +177,10 @@ type Store = {
   saveAgreementTemplate: (template: string) => Promise<Result>;
   /** Czy baza ma typ partnera, pojemność i szablon porozumienia (migracja v7). */
   schemaV7: boolean | null;
+  /** Czy baza ma v8 (znaczniki wersji, jakość AI, opieka). */
+  schemaV8: boolean | null;
+  /** Starsza migracja odpalona po nowszej — trzeba powtórzyć kolejne. */
+  migrationDrift: MigrationDrift | null;
   /** Zmiana warunków współpracy: zniżka, miejsce, cykl albo pilotaż. */
   updateTerms: <K extends keyof MissionTerms>(missionId: string, section: K, patch: Partial<MissionTerms[K]>) => void;
   /** Forma zawarcia: porozumienie mailowe (do 3 miesięcy) albo umowa. */
@@ -156,6 +193,10 @@ type Store = {
   confirmTerms: (missionId: string) => void;
   /** Opieka: wysłana miesięczna informacja o liczbie realizacji. */
   reportRedemptions: (missionId: string, month: string, count: number | null) => void;
+  /** Miesięczne metryki partnera (wydarzenia, uczestnicy, realizacje zniżki, notatka). */
+  savePartnerMetrics: (partnerId: string, month: string, values: PartnerMetricsInput) => Promise<Result>;
+  /** Baza nie ma jeszcze tabeli metryk (migracja v8). */
+  metricsMissing: boolean;
   /** Zapisuje w dzienniku wysłany mail po telefonie albo spotkaniu. */
   logFollowUpMail: (missionId: string, afterActivityId: string) => Promise<Result>;
   /** Generuje PDF umowy z szablonu i podpina go do misji. */
@@ -170,7 +211,7 @@ type Store = {
     email: string,
     password: string,
     name: string,
-  ) => Promise<{ ok: boolean; error?: string }>;
+  ) => Promise<{ ok: boolean; error?: string; confirm?: boolean }>;
   signOut: () => Promise<void>;
   retryCloud: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -215,6 +256,11 @@ type Store = {
   startMission: (partnerId: string) => string | null;
   goToStage: (missionId: string, stage: StageId) => GateResult;
   advance: (missionId: string) => GateResult;
+  /**
+   * Szybka ścieżka po wizycie w lokalu: wpis w dzienniku, rozmowa, fakt, decydent, warunki, okres, zgoda na logo,
+   * zatwierdzony wariant i przejście do Umowy. Bramki jak w krokach — gdy coś blokuje, zwraca listę braków.
+   */
+  quickVisit: (missionId: string, input: QuickVisitInput) => Promise<QuickVisitResult>;
   closeMission: (missionId: string, input: CloseMissionInput) => GateResult;
   reopenMission: (missionId: string) => GateResult;
   logActivity: (input: NewActivityInput) => Promise<Result>;
@@ -277,6 +323,7 @@ const emptyState: AppState = {
   missions: [],
   tasks: [],
   team: [],
+  metrics: [],
 };
 
 /** Wyciąga kod zaproszenia z linku (`…/login?invite=KOD`) albo z samego kodu. */
@@ -343,33 +390,11 @@ function mergeTasks(current: TaskItem[], incoming: TaskItem[]) {
   return next;
 }
 
-function syncDecisionFromDiscovery(mission: Mission): Mission {
-  const d = mission.discovery;
-  return {
-    ...mission,
-    decision: {
-      ...mission.decision,
-      problem: d.description || mission.decision.problem,
-      constraintSummary: d.constraints.join(", ") || mission.decision.constraintSummary,
-      decisionMakerId: d.decisionMakerId || mission.decision.decisionMakerId,
-      decisionDeadline: d.decisionDeadline || mission.decision.decisionDeadline,
-      previousAttempts: d.previousAttempts || mission.decision.previousAttempts,
-    },
-  };
-}
-
 /** Typ albo pojemność z formularza nie wróciły z bazy (brak migracji v7). */
 function lostV7Fields(input: NewPartnerInput, partner: Partner) {
   const segmentLost = Boolean(input.segment && input.segment !== partner.segment);
   const capacityLost = Boolean(input.capacity && input.capacity > 0 && partner.capacity !== Math.round(input.capacity));
   return segmentLost || capacityLost;
-}
-
-function withRecommended(mission: Mission, segment: Partner["segment"] = "venue"): Mission {
-  const cats = mission.needs
-    .filter((n) => n.confirmed && n.status === "fact")
-    .map((n) => n.category);
-  return { ...mission, recommendedVariant: suggestVariant(cats, segment) };
 }
 
 function readLocal(): AppState {
@@ -392,7 +417,9 @@ function readLocal(): AppState {
         company: { ...emptyCompany(), ...(p.company ?? {}) },
         segment: p.segment ?? "venue",
         capacity: p.capacity ?? null,
+        fit: fitOf(p),
       })),
+      metrics: (parsed.metrics ?? []).filter((m) => m && typeof m.partnerId === "string" && MONTH_RE.test(m.month)),
       missions: (parsed.missions ?? []).map((m) => {
         const base = emptyMission(m.partnerId, m.id);
         return {
@@ -447,6 +474,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [schemaV5, setSchemaV5] = useState<boolean | null>(null);
   const [schemaV6, setSchemaV6] = useState<boolean | null>(null);
   const [schemaV7, setSchemaV7] = useState<boolean | null>(null);
+  const [schemaV8, setSchemaV8] = useState<boolean | null>(null);
+  const [metricsMissing, setMetricsMissing] = useState(false);
+  const [drift, setDrift] = useState<MigrationDrift | null>(null);
   const storeRef = useRef<Store | null>(null);
   /** Uprawnienia egzekwujemy w widoku tylko, gdy baza ma v6 (inaczej baza też nikogo nie ogranicza). */
   const enforceRef = useRef(false);
@@ -473,6 +503,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /** W trakcie wczytywania workspace nie zapisujemy (stan zaraz zostanie podmieniony). */
   const hydrating = useRef(false);
   const flushChain = useRef<Promise<void>>(Promise.resolve());
+  /** Ponawianie nieudanego zapisu (sieć, chwilowy błąd bazy): 2 s, 5 s, 15 s, 30 s, potem co minutę. */
+  const retryAttempt = useRef(0);
+  const retryTimer = useRef<number | null>(null);
+  const retryFlush = useRef<() => void>(() => {});
 
   useEffect(() => {
     latest.current = state;
@@ -519,6 +553,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (dropped.includes("v7")) {
           setSchemaV7(false);
           setNotice({ kind: "error", text: `${partner.name}: ${V7_MISSING}` });
+        }
+        if (dropped.includes("v8")) {
+          setSchemaV8(false);
+          setNotice({ kind: "error", text: `${partner.name}: ${V8_MISSING}` });
         }
         if (dropped.includes("priority")) {
           setNotice({ kind: "error", text: `${partner.name}: baza nie przyjęła tego priorytetu. Reszta zmian zapisana.` });
@@ -637,10 +675,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     if (firstError) {
       if (isMissingPartnersTable(firstError)) setDbStatus("need-sql");
-      else setDbError(firstError.message ?? "Nie udało się zapisać zmian.");
+      else {
+        setDbError(firstError.message ?? "Nie udało się zapisać zmian.");
+        // Zmiany zostają w pamięci karty — spróbujemy jeszcze raz, zamiast czekać na kolejną edycję.
+        const delays = [2_000, 5_000, 15_000, 30_000, 60_000];
+        const delay = delays[Math.min(retryAttempt.current, delays.length - 1)];
+        retryAttempt.current += 1;
+        if (retryTimer.current) window.clearTimeout(retryTimer.current);
+        retryTimer.current = window.setTimeout(() => {
+          retryTimer.current = null;
+          retryFlush.current();
+        }, delay);
+      }
       setSaveState("error");
       return;
     }
+    retryAttempt.current = 0;
     setDbError(null);
     setSaveState(conflicts.length ? "error" : "saved");
   }, []);
@@ -649,6 +699,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     flushChain.current = flushChain.current.then(flush, flush);
     return flushChain.current;
   }, [flush]);
+
+  useEffect(() => {
+    retryFlush.current = () => void scheduleFlush();
+  }, [scheduleFlush]);
+
+  /** Czy w karcie są zmiany, których baza jeszcze nie ma (Supabase; w demo zapis jest od razu w przeglądarce). */
+  const hasUnsaved = useCallback(() => {
+    if (dbStatusRef.current !== "ok" || !workspaceIdRef.current) return false;
+    const snapshot = latest.current;
+    return (
+      snapshot.missions.some((m) => savedMissions.current.get(m.id) !== m) ||
+      snapshot.partners.some((p) => savedPartners.current.get(p.id) !== p)
+    );
+  }, []);
 
   /** Sprawdza zaproszenie i pokazuje potwierdzenie. Nic nie przyjmuje bez kliknięcia „Dołącz”. */
   const inspectInvite = useCallback(async (token: string) => {
@@ -675,6 +739,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadCrm(ctx.workspaceId),
           loadTeam().catch(() => undefined),
         ]);
+        const metricsResult = await loadPartnerMetrics(partners.map((p) => p.id)).catch(() => null);
+        setMetricsMissing(Boolean(metricsResult?.missing));
         const me = team?.find((member) => member.isMe);
         const name = fullName || me?.fullName || ctx.fullName;
         const next: AppState = {
@@ -695,6 +761,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           missions,
           tasks,
           team: team ?? [],
+          // Błąd odczytu ≠ brak metryk: bez danych zdrowie partnera jest „nie wiadomo”, a nie czerwone.
+          metrics: metricsResult ? metricsResult.metrics : undefined,
         };
         // Workspace, stan do zapisu i „zapisane” przestawiamy razem — zapis w tle nie zobaczy pół stanu.
         workspaceIdRef.current = ctx.workspaceId;
@@ -706,6 +774,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         void detectSchemaV5().then(setSchemaV5);
         void detectSchemaV6().then(setSchemaV6);
         void detectSchemaV7().then(setSchemaV7);
+        void detectSchemaV8().then(({ has, rows }) => {
+          setSchemaV8(has);
+          setDrift(migrationDrift(rows));
+        });
         setState(next);
         // Dane są w Supabase. Stara kopia w przeglądarce (z kontaktami) nie jest potrzebna.
         clearLocalCopy();
@@ -751,7 +823,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         loadCrm(workspaceId),
         loadTeam().catch(() => undefined),
       ]);
+      const metricsResult = await loadPartnerMetrics(partners.map((p) => p.id)).catch(() => null);
       if (workspaceIdRef.current !== workspaceId || hydrating.current) return;
+      if (metricsResult) setMetricsMissing(metricsResult.missing);
       lastLoadAt.current = Date.now();
       setState((prev) => {
         // Zostawiamy lokalną wersję, gdy ma niezapisane zmiany albo zapisała się już po starcie wczytywania.
@@ -794,6 +868,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           missions: nextMissions,
           tasks,
           team: team ?? prev.team,
+          metrics: metricsResult && !metricsResult.missing ? metricsResult.metrics : prev.metrics,
         };
         // Zapis w tle porównuje z tym samym stanem, który właśnie oznaczyliśmy jako zapisany.
         latest.current = next;
@@ -894,14 +969,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [refreshData]);
 
   useEffect(() => {
-    // Ostrzeżenie przed zamknięciem karty, gdy zmiany jeszcze się zapisują.
+    // Ostrzeżenie przed zamknięciem karty, gdy zmiany się zapisują, czekają na zapis (0,5 s) albo zapis się nie udał.
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (saveState !== "saving") return;
+      if (saveState !== "saving" && !hasUnsaved()) return;
+      void scheduleFlush();
       event.preventDefault();
+      event.returnValue = "";
+    };
+    // Karta chowa się (inna aplikacja, telefon blokuje ekran) — zapisujemy od razu, bez czekania.
+    const onHidden = () => {
+      if (document.visibilityState === "hidden" && hasUnsaved()) void scheduleFlush();
+    };
+    // Wraca sieć po błędzie zapisu — próbujemy od razu.
+    const onOnline = () => {
+      if (hasUnsaved()) void scheduleFlush();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [saveState]);
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [saveState, hasUnsaved, scheduleFlush]);
+
+  useEffect(
+    () => () => {
+      if (retryTimer.current) window.clearTimeout(retryTimer.current);
+    },
+    [],
+  );
 
   const patchMission = (missionId: string, fn: (m: Mission) => Mission) => {
     setState((prev) => {
@@ -1076,22 +1174,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return result;
       },
       schemaV7,
+      schemaV8,
+      migrationDrift: drift,
       updateTerms: (missionId, section, patch) => {
-        patchMission(missionId, (m) => ({
-          ...m,
-          terms: { ...m.terms, [section]: { ...m.terms[section], ...patch } },
-        }));
+        patchMission(missionId, (m) => withTerms(m, section, patch));
       },
       setAgreementForm: (missionId, form) => {
-        patchMission(missionId, (m) => {
-          const next = { ...m, agreementForm: form };
-          return { ...next, contract: { ...m.contract, status: contractStatus(m.contract, agreementFormOf(next)) } };
-        });
+        patchMission(missionId, (m) => withAgreementForm(m, form));
       },
       setChecklistItem: (missionId, key, done) => {
-        patchMission(missionId, (m) =>
-          Boolean(m.checklist[key]) === done ? m : { ...m, checklist: { ...m.checklist, [key]: done } },
-        );
+        patchMission(missionId, (m) => withChecklistItem(m, key, done));
       },
       addCareReview: (missionId, review) => {
         if (!review.attendance.trim() && !review.feedback.trim() && !review.note.trim()) {
@@ -1131,6 +1223,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ].sort((a, b) => b.month.localeCompare(a.month)),
           },
         }));
+      },
+      metricsMissing,
+      savePartnerMetrics: async (partnerId, month, values) => {
+        const partner = latest.current.partners.find((p) => p.id === partnerId);
+        if (!partner) return { ok: false, error: "Nie ma takiego partnera." };
+        if (!canEditPartnerIn(latest.current, partner, enforceRef.current)) {
+          return { ok: false, error: "Metryki wpisuje opiekun partnera, prowadzący misję albo administrator." };
+        }
+        if (!MONTH_RE.test(month)) return { ok: false, error: "Wybierz miesiąc." };
+        const numbers = [values.events, values.attendees, values.redemptions];
+        if (numbers.some((v) => v !== null && (!Number.isFinite(v) || v < 0))) {
+          return { ok: false, error: "Liczby nie mogą być ujemne." };
+        }
+        if (numbers.every((v) => v === null) && !values.notes.trim()) {
+          return { ok: false, error: "Wpisz przynajmniej jedną liczbę albo notatkę." };
+        }
+        const clean: PartnerMetricsInput = {
+          events: values.events === null ? null : Math.round(values.events),
+          attendees: values.attendees === null ? null : Math.round(values.attendees),
+          redemptions: values.redemptions === null ? null : Math.round(values.redemptions),
+          notes: values.notes.trim().slice(0, 1000),
+        };
+        let saved: PartnerMetrics;
+        if (isSupabaseConfigured() && userIdRef.current) {
+          try {
+            saved = await savePartnerMetricsRow(partnerId, month, clean);
+            setMetricsMissing(false);
+          } catch (err) {
+            const error = errorText(err, "Nie udało się zapisać metryk.");
+            if (error === V8_MISSING) setMetricsMissing(true);
+            return { ok: false, error };
+          }
+        } else {
+          // Tryb demo: metryki w przeglądarce razem z resztą stanu.
+          const existing = (latest.current.metrics ?? []).find((m) => m.partnerId === partnerId && m.month === month);
+          saved = { id: existing?.id ?? crypto.randomUUID(), partnerId, month, ...clean, updatedAt: new Date().toISOString() };
+        }
+        setState((prev) => {
+          const next = {
+            ...prev,
+            metrics: [...(prev.metrics ?? []).filter((m) => !(m.partnerId === partnerId && m.month === month)), saved],
+          };
+          latest.current = next;
+          return next;
+        });
+        return { ok: true };
       },
       logFollowUpMail: async (missionId, afterActivityId) => {
         const mission = latest.current.missions.find((m) => m.id === missionId);
@@ -1195,19 +1333,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       signUp: async (email, password, name) => {
         const sb = getSupabase();
         if (!sb) return { ok: false, error: "Brak konfiguracji Supabase." };
+        // Kod zaproszenia idzie do Supabase: hook „Before User Created” (v8) wpuszcza tylko z ważnym zaproszeniem.
+        const inviteToken = readPendingInvite();
         const { data, error } = await sb.auth.signUp({
           email,
           password,
-          options: { data: { full_name: name } },
+          options: {
+            data: { full_name: name, ...(inviteToken ? { invite_token: inviteToken } : {}) },
+            emailRedirectTo: `${window.location.origin}/login`,
+          },
         });
         if (error) return { ok: false, error: error.message };
-        if (!data.session) {
-          return {
-            ok: false,
-            error:
-              "Konto utworzone, ale wymaga potwierdzenia e-maila. W Supabase: Authentication → Providers → wyłącz Confirm email.",
-          };
-        }
+        // Z włączonym „Confirm email” sesja powstaje dopiero po kliknięciu linku w mailu.
+        if (!data.session) return { ok: true, confirm: true };
         return { ok: true };
       },
       signOut: async () => {
@@ -1568,15 +1706,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       latestMissionByPartner,
       missionsOfPartner,
       memberName,
-      urgentMission: () => {
-        const mission = [...state.missions]
-          .filter((m) => m.status === "active")
-          .sort((a, b) => a.nextStepAt.localeCompare(b.nextStepAt))[0];
-        if (!mission) return undefined;
-        const partner = partnerById(mission.partnerId);
-        if (!partner) return undefined;
-        return { partner, mission };
-      },
+      urgentMission: () => pickUrgentMission(state),
       startMission: (partnerId) => {
         const partner = partnerById(partnerId);
         if (!partner) return null;
@@ -1617,39 +1747,89 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const mission = state.missions.find((m) => m.id === missionId);
         const partner = mission ? partnerById(mission.partnerId) : undefined;
         if (!mission || !partner) return { ok: false, reason: "Brak misji." };
-        if (mission.status !== "active") return { ok: false, reason: "Misja jest zamknięta. Najpierw ją wznów." };
-        const nxt = nextStage(mission.currentStage);
-        if (!nxt) {
-          patchMission(missionId, (m) => ({
-            ...m,
-            status: "won",
-            outcome: "won",
-            closedAt: m.closedAt ?? new Date().toISOString(),
-            nextStepLabel: "Opieka: check-in 30 dni",
-          }));
-          return { ok: true };
-        }
-        if (mission.currentStage === "discovery") {
-          const toNeeds = canEnterStage("needs", mission, partner);
-          if (!toNeeds.ok) return toNeeds;
-          const missing = offerBlockers(mission);
-          if (missing.length) return { ok: false, reason: `Brakuje: ${missing.join(", ")}.` };
-          patchMission(missionId, (m) => ({
-            ...m,
-            completedStages: [...new Set([...m.completedStages, "discovery" as const, "needs" as const])],
-            currentStage: "offer",
-          }));
-          return { ok: true };
-        }
-        const gate = canEnterStage(nxt, mission, partner);
+        const gate = advanceGate(mission, partner);
         if (!gate.ok) return gate;
-        patchMission(missionId, (m) => ({
-          ...m,
-          completedStages: m.completedStages.includes(m.currentStage)
-            ? m.completedStages
-            : [...m.completedStages, m.currentStage],
-          currentStage: nxt,
-        }));
+        patchMission(missionId, stepForward);
+        return { ok: true };
+      },
+      quickVisit: async (missionId, input) => {
+        const fresh = () => {
+          const current = latest.current;
+          const mission = current.missions.find((m) => m.id === missionId);
+          const partner = mission ? current.partners.find((p) => p.id === mission.partnerId) : undefined;
+          return { current, mission, partner };
+        };
+        const before = fresh();
+        if (!before.mission || !before.partner) return { ok: false, reason: "Brak misji." };
+        if (!canEditMissionIn(before.current, before.mission, enforceRef.current)) return { ok: false, reason: READ_ONLY };
+        if (!quickVisitAvailable(before.mission, before.partner)) {
+          return { ok: false, reason: "Szybka wizyta działa dla lokalu w toku, na krokach od Kontaktu do Negocjacji." };
+        }
+        const errors = quickVisitErrors(input);
+        if (Object.keys(errors).length) return { ok: false, reason: "Popraw zaznaczone pola.", errors };
+        const today = toIsoDate(new Date());
+        const needId = crypto.randomUUID();
+        const partnerId = before.partner.id;
+        // Najpierw próba na sucho: jeśli bramka coś zablokuje, nic nie zapisujemy.
+        const dry = applyQuickVisit(before.mission, partnerAfterVisit(before.partner), input, {
+          makerId: input.makerId || "nowy-decydent",
+          needId,
+          today,
+        });
+        if (!dry.ok) return { ok: false, reason: dry.reason };
+
+        const actions = storeRef.current!;
+        let makerId = input.makerId;
+        if (makerId) {
+          const contact = before.partner.contacts.find((c) => c.id === makerId);
+          if (!contact) return { ok: false, reason: "Tej osoby nie ma już na karcie partnera.", errors: { maker: "Wybierz osobę jeszcze raz." } };
+          if (!contact.isDecisionMaker) actions.updatePartnerContact(partnerId, makerId, { isDecisionMaker: true });
+        } else {
+          const added = await actions.addPartnerContact(partnerId, {
+            name: input.makerName,
+            role: input.makerRole,
+            isDecisionMaker: true,
+          });
+          if (!added.ok || !added.id) return { ok: false, reason: added.error ?? "Nie udało się dodać decydenta." };
+          makerId = added.id;
+        }
+
+        const summary = [
+          input.problem.trim(),
+          input.quote.trim() ? `„${input.quote.trim()}”` : "",
+          discountSummary(input.discount) ? `Zniżka: ${discountSummary(input.discount)}` : "",
+          input.note.trim(),
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const occurredAt =
+          input.visitDate === today ? new Date().toISOString() : new Date(`${input.visitDate}T12:00:00`).toISOString();
+        const logged = await actions.logActivity({
+          missionId,
+          channel: "in_person",
+          direction: "outbound",
+          outcome: "connected",
+          subject: QUICK_VISIT_SUBJECT,
+          summary,
+          contactId: makerId,
+          occurredAt,
+          durationMin: null,
+        });
+        if (!logged.ok) return { ok: false, reason: logged.error ?? "Nie udało się zapisać wizyty w dzienniku." };
+
+        const after = fresh();
+        if (!after.mission || !after.partner) return { ok: false, reason: "Brak misji." };
+        const visitPartner = partnerAfterVisit(after.partner);
+        if (visitPartner !== after.partner) actions.setConsent(partnerId, "in_person", "granted");
+        const opts = { makerId, needId, today };
+        const result = applyQuickVisit(after.mission, visitPartner, input, opts);
+        if (!result.ok) {
+          return { ok: false, reason: `Wizyta jest w dzienniku, ale misja nie przeszła dalej. ${result.reason}` };
+        }
+        patchMission(missionId, (m) => {
+          const next = applyQuickVisit(m, visitPartner, input, opts);
+          return next.ok ? next.mission : m;
+        });
         return { ok: true };
       },
       closeMission: (missionId, input) => {
@@ -1827,15 +2007,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       setConsent: (partnerId, channel, status) => {
-        patchPartner(partnerId, (p) => {
-            const exists = p.consents.some((c) => c.channel === channel && c.purpose === "contact");
-            const consents = exists
-              ? p.consents.map((c) =>
-                  c.channel === channel && c.purpose === "contact" ? { ...c, status } : c,
-                )
-              : [...p.consents, { channel, purpose: "contact" as const, status }];
-            return { ...p, consents };
-        });
+        patchPartner(partnerId, (p) => withConsent(p, channel, status));
       },
       setChannel: (missionId, channel) => {
         patchMission(missionId, (m) => ({ ...m, selectedChannel: channel }));
@@ -1844,12 +2016,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         patchMission(missionId, (m) => ({ ...m, ...patch }));
       },
       updateDiscovery: (missionId, patch) => {
-        patchMission(missionId, (m) =>
-          syncDecisionFromDiscovery({
-            ...m,
-            discovery: { ...m.discovery, ...patch },
-          }),
-        );
+        patchMission(missionId, (m) => withDiscovery(m, patch));
       },
       seedNeedsIfEmpty: (missionId) => {
         patchMission(missionId, (m) => {
@@ -1873,17 +2040,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       },
       upsertNeed: (missionId, need) => {
-        patchMission(missionId, (m) =>
-          withRecommended(
-            {
-              ...m,
-              needs: m.needs.some((n) => n.id === need.id)
-                ? m.needs.map((n) => (n.id === need.id ? need : n))
-                : [...m.needs, need],
-            },
-            segmentFor(m.partnerId),
-          ),
-        );
+        patchMission(missionId, (m) => withNeed(m, need, segmentFor(m.partnerId)));
       },
       removeNeed: (missionId, needId) => {
         patchMission(missionId, (m) =>
@@ -1910,11 +2067,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
       },
       updateDecision: (missionId, patch) => {
-        patchMission(missionId, (m) => ({
-          ...m,
-          nextStepLabel: patch.nextStep !== undefined ? patch.nextStep : m.nextStepLabel,
-          decision: { ...m.decision, ...patch },
-        }));
+        patchMission(missionId, (m) => withDecision(m, patch));
       },
       setNextStepAt: (missionId, at) => {
         patchMission(missionId, (m) => ({ ...m, nextStepAt: at }));
@@ -1925,13 +2078,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       approveOffer: (missionId) => {
         const mission = state.missions.find((m) => m.id === missionId);
         if (!mission) return { ok: false, reason: "Brak misji." };
-        if (!mission.selectedVariant) return { ok: false, reason: "Wybierz wariant A, B albo C." };
-        const missing = offerBlockers(mission);
-        if (missing.length) return { ok: false, reason: `Brakuje: ${missing.join(", ")}.` };
-        const terms = termsChecks(mission, segmentFor(mission.partnerId)).filter((check) => !check.done);
-        if (terms.length) {
-          return { ok: false, reason: `Ustal warunki: ${terms.map((check) => check.label).join(", ")}.` };
-        }
+        const gate = approveGate(mission, segmentFor(mission.partnerId));
+        if (!gate.ok) return gate;
         patchMission(missionId, (m) => ({ ...m, offerApproved: true }));
         return { ok: true };
       },
@@ -1954,24 +2102,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       },
       updateContract: (missionId, patch) => {
-        patchMission(missionId, (m) => {
-          const form = agreementFormOf({ ...m, contract: { ...m.contract, ...patch } });
-          // Umowę podpisuje się na dokumencie; porozumienie mailowe zatwierdza się bez PDF.
-          if (patch.signedByHuman === true && form === "contract" && !m.contract.documentPath && !patch.documentPath) {
-            return m;
-          }
-          const contract = { ...m.contract, ...patch };
-          if (patch.signedByHuman === true) contract.signedAt = new Date().toISOString();
-          if (patch.signedByHuman === false) contract.signedAt = undefined;
-          // Okres ustalony, zasady puste albo gotowy wzór → zasady zgodne z okresem i typem partnera (7 dni).
-          const datesChanged = patch.startAt !== undefined || patch.endAt !== undefined;
-          const short = isShortTerm(contract.startAt, contract.endAt);
-          if (datesChanged && short !== null && isDefaultChangeRules(contract.changeRules) && patch.changeRules === undefined) {
-            contract.changeRules = changeRulesFor(short, segmentFor(m.partnerId));
-          }
-          contract.status = contractStatus(contract, agreementFormOf({ ...m, contract }));
-          return { ...m, contract };
-        });
+        patchMission(missionId, (m) => withContract(m, patch, segmentFor(m.partnerId)));
       },
       uploadContract: uploadContractFile,
       updateActivation: (missionId, patch) => {
@@ -2143,6 +2274,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     schemaV5,
     schemaV6,
     schemaV7,
+    schemaV8,
+    metricsMissing,
+    drift,
     notice,
     invite,
     inspectInvite,

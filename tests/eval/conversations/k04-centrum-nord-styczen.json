@@ -1,0 +1,112 @@
+{
+  "id": "k04-centrum-nord-styczen",
+  "title": "Centrum Logistyczne Nord — budżet zamrożony, wróćcie w styczniu",
+  "segment": "company",
+  "callDate": "2026-10-09",
+  "partner": {
+    "name": "Centrum Logistyczne Nord",
+    "city": "Stryków",
+    "category": "logistyka",
+    "contacts": [
+      {
+        "name": "Renata Sikora",
+        "role": "HR manager"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Kuba Zborowski: Dzień dobry, pani Renato. Dzwonię w sprawie pilotażu wyjść integracyjnych.\nRenata Sikora: Dzień dobry. Temat mi się podoba, ale budżety na przyszły rok są zamrożone do stycznia.\nRenata Sikora: Na start widziałabym zmianę biurową, to jakieś 15 osób.\nRenata Sikora: Ludzie z biura i z magazynu w ogóle się nie znają, jedni przychodzą na szóstą, drudzy na dziewiątą.\nKuba Zborowski: A kto decyduje o budżecie?\nRenata Sikora: Zarząd zatwierdza budżet w styczniu, wtedy mogę to zgłosić.\nRenata Sikora: Wróćcie do mnie na początku stycznia, teraz nic nie ruszę.\nKuba Zborowski: Rozumiem. Odezwę się w pierwszym tygodniu stycznia.\nRenata Sikora: Dobrze, zapiszę sobie.",
+  "gold": {
+    "cytat": "Ludzie z biura i z magazynu w ogóle się nie znają, jedni przychodzą na szóstą, drudzy na dziewiątą.",
+    "problem": "Ludzie z biura i z magazynu się nie znają, bo pracują w innych godzinach.",
+    "kategoria": "integration",
+    "priorytet": 0,
+    "rezultat": "",
+    "ograniczenia": [
+      "Budżet zamrożony do stycznia"
+    ],
+    "decydent": "",
+    "rola_decydenta": "zarząd",
+    "termin_decyzji": "w styczniu",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "",
+    "nastepny_krok": "Kuba odzywa się w pierwszym tygodniu stycznia.",
+    "data_nastepnego_kroku": "",
+    "potrzeby": [
+      {
+        "tytul": "Integracja biura z magazynem",
+        "kategoria": "integration",
+        "priorytet": 0,
+        "cytat": "Ludzie z biura i z magazynu w ogóle się nie znają, jedni przychodzą na szóstą, drudzy na dziewiątą.",
+        "rezultat": "",
+        "ograniczenia": ""
+      }
+    ],
+    "wnioski": [
+      "Pracownicy biura i magazynu się nie znają (różne godziny pracy).",
+      "Budżety zamrożone do stycznia, zarząd zatwierdza budżet w styczniu.",
+      "Na start możliwy pilotaż zmiany biurowej, ok. 15 osób.",
+      "Kontakt ponownie na początku stycznia."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "Zmiana biurowa",
+      "pilotaz_osoby": 15,
+      "pilotaz_feedback": "",
+      "okres_od": "",
+      "okres_do": ""
+    },
+    "obiekcje": [
+      {
+        "klucz": "come_back",
+        "argument_zadzialal": false,
+        "cytat": "Wróćcie do mnie na początku stycznia, teraz nic nie ruszę."
+      }
+    ],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Ludzie z biura i z magazynu w ogóle się nie znają, jedni przychodzą na szóstą, drudzy na dziewiątą.",
+      "rezultat": "",
+      "ograniczenia": "Temat mi się podoba, ale budżety na przyszły rok są zamrożone do stycznia.",
+      "decydent": "Zarząd zatwierdza budżet w styczniu, wtedy mogę to zgłosić.",
+      "termin_decyzji": "Zarząd zatwierdza budżet w styczniu, wtedy mogę to zgłosić.",
+      "wczesniejsze_proby": "",
+      "nastepny_krok": "Wróćcie do mnie na początku stycznia, teraz nic nie ruszę.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "",
+      "cykl": "",
+      "pilotaz": "Na start widziałabym zmianę biurową, to jakieś 15 osób.",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Terminy bez konkretnego dnia („w styczniu”, „na początku stycznia”) → daty puste. Pilotaż zaproponowany przez partnerkę (zespół, 15 osób), bez daty feedbacku. Priorytet nieznany (0). come_back bez argumentu."
+}

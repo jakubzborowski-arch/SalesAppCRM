@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { monthLabel, nextTermsConfirmation, previousMonth } from "@/lib/agenda";
+import { nextTermsConfirmation, previousMonth, reportDone } from "@/lib/agenda";
+import { healthFor } from "@/lib/health";
 import { daysUntil, formatPlDate, isIsoDate, relativeDeadline, toIsoDate } from "@/lib/dates";
 import { periodText } from "@/lib/terms";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/cn";
 import type { CareReview, Mission, Partner } from "@/lib/types";
-import { Field, inputClass, Note, NumberInput, Pills, Section } from "@/components/ui";
+import { Field, inputClass, Note, Pills, Section } from "@/components/ui";
+import { HealthBadge } from "@/components/partners/health-badge";
+import { PartnerMetricsPanel } from "@/components/mission/partner-metrics";
 import { TermsSummary } from "@/components/mission/steps/offer-step";
 import { FollowUpBar } from "@/components/mission/follow-up-bar";
 
@@ -92,47 +95,14 @@ function ReviewForm({ mission }: { mission: Mission }) {
   );
 }
 
-function RedemptionReportForm({ mission }: { mission: Mission }) {
-  const { reportRedemptions } = useStore();
-  const month = previousMonth();
-  const existing = mission.care.reports.find((report) => report.month === month);
-  const [count, setCount] = useState<number | null>(existing?.count ?? null);
-  return (
-    <div>
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="w-[220px]">
-          <Field label={`Realizacje za ${monthLabel(month)}`}>
-            <NumberInput value={count} min={0} max={100000} onChange={setCount} placeholder="z panelu Lutry" />
-          </Field>
-        </div>
-        <button
-          type="button"
-          onClick={() => reportRedemptions(mission.id, month, count === null ? null : Math.max(0, Math.round(count)))}
-          className="rounded-full bg-lutra px-4 py-3 text-sm font-medium text-white"
-        >
-          {existing ? "Popraw wpis" : "Wysłałem informację partnerowi"}
-        </button>
-      </div>
-      {mission.care.reports.length ? (
-        <ul className="mt-3 space-y-1 text-xs text-muted">
-          {mission.care.reports.slice(0, 6).map((report) => (
-            <li key={report.month}>
-              {monthLabel(report.month)}: {report.count ?? "—"} realizacji · wysłane {dateOf(report.sentAt)}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
 /**
  * Opieka po aktywacji: przegląd po pierwszym cyklu, kwartalne potwierdzenie warunków,
  * miesięczna informacja o realizacjach (lokale) i koniec współpracy.
  */
 export function CarePanel({ mission, partner }: { mission: Mission; partner: Partner }) {
-  const { confirmTerms, canEditMission } = useStore();
+  const { confirmTerms, canEditMission, canEditPartner, state } = useStore();
   const editable = canEditMission(mission);
+  const health = healthFor(state, partner);
   const care = mission.care;
   const a = mission.activation;
   const lastReview = care.reviews[0];
@@ -148,12 +118,12 @@ export function CarePanel({ mission, partner }: { mission: Mission; partner: Par
     partner.segment === "venue" &&
     activated &&
     toIsoDate(new Date(activated)).slice(0, 7) <= month &&
-    !care.reports.some((report) => report.month === month)
+    !reportDone(state, mission, month)
       ? `${toIsoDate(new Date()).slice(0, 7)}-01`
       : null;
 
   return (
-    <section className="mt-6 max-w-4xl rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-6 max-w-4xl rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">Aktywny partner · opieka</p>
@@ -166,6 +136,7 @@ export function CarePanel({ mission, partner }: { mission: Mission; partner: Par
             {a.partnerCode ? ` · kod ${a.partnerCode}` : ""}
           </p>
         </div>
+        <HealthBadge health={health} />
       </div>
       <TermsSummary mission={mission} partner={partner} />
       <FollowUpBar mission={mission} />
@@ -221,17 +192,22 @@ export function CarePanel({ mission, partner }: { mission: Mission; partner: Par
           </Section>
         )}
 
-        {partner.segment === "venue" && !ended ? (
-          <Section
-            title="3. Informacja o realizacjach (co miesiąc)"
-            hint="Raz w miesiącu wyślij partnerowi liczbę realizacji zniżki z poprzedniego miesiąca."
-            aside={<DueBadge due={reportDue} />}
-          >
-            <RedemptionReportForm mission={mission} />
-          </Section>
-        ) : null}
-
-        <Section title={partner.segment === "venue" && !ended ? "4. Koniec okresu" : "Koniec okresu"}>
+      </fieldset>
+      {ended ? null : (
+        <Section
+          title="3. Metryki i podsumowanie dla partnera (co miesiąc)"
+          hint={
+            partner.segment === "venue"
+              ? "Raz w miesiącu wpisz wydarzenia, uczestników i realizacje zniżki z panelu Lutry, potem wyślij partnerowi podsumowanie."
+              : "Raz w miesiącu wpisz wydarzenia i uczestników z panelu Lutry, potem wyślij partnerowi podsumowanie."
+          }
+          aside={<DueBadge due={reportDue} />}
+        >
+          <PartnerMetricsPanel partner={partner} mission={mission} editable={canEditPartner(partner)} />
+        </Section>
+      )}
+      <fieldset disabled={!editable} className="min-w-0">
+        <Section title={ended ? "Koniec okresu" : "4. Koniec okresu"}>
           <p className="text-sm text-muted">
             {isIsoDate(end)
               ? endDays !== null && endDays < 0

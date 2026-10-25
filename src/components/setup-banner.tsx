@@ -9,7 +9,7 @@ function NoticeBanner() {
   if (!notice) return null;
   return (
     <div
-      className={`mx-8 mt-4 flex items-start justify-between gap-4 rounded-2xl border px-5 py-3 text-sm ${
+      className={`mx-4 mt-4 sm:mx-6 lg:mx-8 flex items-start justify-between gap-4 rounded-2xl border px-5 py-3 text-sm ${
         notice.kind === "ok"
           ? "border-emerald-200 bg-emerald-50 text-emerald-900"
           : "border-rose-200 bg-rose-50 text-rose-900"
@@ -35,7 +35,7 @@ const INVITE_STATUS: Record<string, string> = {
 function InviteBanner() {
   const { invite, confirmInvite, dismissInvite, state } = useStore();
   if (!invite) return null;
-  const box = "mx-8 mt-4 rounded-2xl border px-5 py-4 text-sm";
+  const box = "mx-4 mt-4 sm:mx-6 lg:mx-8 rounded-2xl border px-5 py-4 text-sm";
 
   if (invite.loading) {
     return <div className={`${box} border-line bg-white text-muted`}>Sprawdzam zaproszenie do zespołu…</div>;
@@ -103,20 +103,30 @@ const MIGRATION_INFO = {
   v5: "dane firmy partnera (nazwa, NIP, REGON, adresy)",
   v6: "kto co edytuje, przekazywanie misji, obieg podpisu i szablon umowy",
   v7: "typ partnera (miejsce / społeczność / firma), pojemność miejsca i porozumienie mailowe",
+  v8: "jakość podpowiedzi AI, metryki i zdrowie partnera, wynik dopasowania, limity AI w bazie",
 } as const;
 
 type MigrationId = keyof typeof MIGRATION_INFO;
 
 export function SetupBanner() {
-  const { dbStatus, dbError, retryCloud, schemaV4, schemaV5, schemaV6, schemaV7 } = useStore();
+  const { dbStatus, dbError, retryCloud, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, migrationDrift } = useStore();
   const [copied, setCopied] = useState<string | null>(null);
   const flags: [MigrationId, boolean | null][] = [
     ["v4", schemaV4],
     ["v5", schemaV5],
     ["v6", schemaV6],
     ["v7", schemaV7],
+    ["v8", schemaV8],
   ];
-  const firstMissing = dbStatus === "ok" ? flags.find(([, has]) => has === false)?.[0] : undefined;
+  const missing = dbStatus === "ok" ? flags.find(([, has]) => has === false)?.[0] : undefined;
+  // Starsza migracja odpalona po nowszej (np. v2–v3 po v6) cofa uprawnienia — trzeba powtórzyć kolejne.
+  const driftFrom = dbStatus === "ok" && migrationDrift ? (migrationDrift.repeat[0] as MigrationId | undefined) : undefined;
+  const firstMissing =
+    missing && driftFrom
+      ? flags.findIndex(([id]) => id === driftFrom) < flags.findIndex(([id]) => id === missing)
+        ? driftFrom
+        : missing
+      : (missing ?? driftFrom);
   const pending = firstMissing ? flags.slice(flags.findIndex(([id]) => id === firstMissing)).map(([id]) => id) : [];
 
   const copy = async (from: MigrationId | "all") => {
@@ -133,10 +143,17 @@ export function SetupBanner() {
       <>
         <NoticeBanner />
         <InviteBanner />
-        <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
-          <p className="font-semibold">
-            Baza czeka na migrację {label}: {pending.map((id) => MIGRATION_INFO[id]).join("; ")}.
-          </p>
+        <div className="mx-4 mt-4 sm:mx-6 lg:mx-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+          {driftFrom === firstMissing && migrationDrift ? (
+            <p className="font-semibold">
+              Migracja {migrationDrift.rerun === "v3" ? "v2–v3" : migrationDrift.rerun} została odpalona po nowszych —
+              mogła cofnąć uprawnienia zespołu. Odpal ponownie {label}.
+            </p>
+          ) : (
+            <p className="font-semibold">
+              Baza czeka na migrację {label}: {pending.map((id) => MIGRATION_INFO[id]).join("; ")}.
+            </p>
+          )}
           <p className="mt-1 text-amber-900/80">
             CRM działa, ale bez tych funkcji. Skopiuj SQL, wklej w SQL Editorze, Run, potem Sprawdź ponownie. Skrypty
             można uruchamiać wielokrotnie.
@@ -183,9 +200,9 @@ export function SetupBanner() {
     <>
       <NoticeBanner />
       <InviteBanner />
-      <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+      <div className="mx-4 mt-4 sm:mx-6 lg:mx-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
         <p className="font-semibold">
-          {dbStatus === "need-sql" ? "Brakuje tabel CRM. Odpal skrypt v2–v7 w SQL Editorze." : `Błąd bazy: ${dbError}`}
+          {dbStatus === "need-sql" ? "Brakuje tabel CRM. Odpal skrypt v2–v8 w SQL Editorze." : `Błąd bazy: ${dbError}`}
         </p>
         <p className="mt-1 text-amber-900/80">
           To nowy skrypt (nie bootstrap crm_state). Wklej całość, Run, potem Sprawdź ponownie.
@@ -204,7 +221,7 @@ export function SetupBanner() {
             onClick={() => void copy("all")}
             className="rounded-full bg-lutra px-4 py-2 text-xs font-semibold text-white"
           >
-            {copied === "all" ? "Skopiowano" : "Kopiuj SQL v2–v7"}
+            {copied === "all" ? "Skopiowano" : "Kopiuj SQL v2–v8"}
           </button>
           <button
             type="button"

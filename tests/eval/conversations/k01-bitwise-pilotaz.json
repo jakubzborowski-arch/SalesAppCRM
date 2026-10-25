@@ -1,0 +1,108 @@
+{
+  "id": "k01-bitwise-pilotaz",
+  "title": "Bitwise — pilotaż zespołu backendu, nagłówek Spinach",
+  "segment": "company",
+  "callDate": "2026-10-14",
+  "partner": {
+    "name": "Bitwise",
+    "city": "Wrocław",
+    "category": "software house",
+    "contacts": [
+      {
+        "name": "Aleksandra Nowicka",
+        "role": "HR Business Partner"
+      },
+      {
+        "name": "Piotr Zieliński",
+        "role": "CTO"
+      }
+    ]
+  },
+  "seller": "Jakub Zborowski",
+  "labeled": true,
+  "transcript": "Spinach AI — Notatka ze spotkania\nSpotkanie: Lutra × Bitwise — pilotaż dla zespołu\nData: środa, 14 października 2026, 10:00–10:35\nUczestnicy: Kuba Zborowski (Lutra), Aleksandra Nowicka (Bitwise), Piotr Zieliński (Bitwise)\n\nKuba Zborowski: Dzień dobry, dziękuję za zaproszenie. Co skłoniło was do rozmowy?\nAleksandra Nowicka: Od kiedy pracujemy hybrydowo, ludzie z zespołu backendu prawie się nie znają.\nPiotr Zieliński: Nowe osoby po pół roku nie wiedzą, kto za co odpowiada, a to spowalnia pracę.\nAleksandra Nowicka: Robimy integracje raz na kwartał, ale przychodzi może jedna trzecia zespołu.\nKuba Zborowski: Lutra pozwala umawiać mniejsze, nieformalne wyjścia, z terminem, potwierdzeniami i podziałem rachunku.\nAleksandra Nowicka: Chcielibyśmy zacząć od pilotażu w zespole backendu, to 12 osób.\nPiotr Zieliński: Pilotaż od 2 listopada do 27 listopada, a 27 listopada siadamy do feedbacku.\nAleksandra Nowicka: Sukces to dla nas sytuacja, w której co najmniej połowa zespołu bierze udział w dwóch wyjściach w miesiącu.\nKuba Zborowski: Kto zatwierdza budżet na wdrożenie po pilotażu?\nPiotr Zieliński: Ja zatwierdzam budżet, decyzję podejmę po feedbacku.\nKuba Zborowski: Czy możemy wspomnieć o was w social mediach?\nAleksandra Nowicka: Na razie bez postów z naszą nazwą i bez zdjęć, najpierw pilotaż.\nKuba Zborowski: Rozumiem. W piątek wyślę agendę pilotażu.\nAleksandra Nowicka: Super, prześlij do mnie, rozpiszę to zespołowi.",
+  "gold": {
+    "cytat": "Od kiedy pracujemy hybrydowo, ludzie z zespołu backendu prawie się nie znają.",
+    "problem": "Przy pracy hybrydowej ludzie z zespołu backendu prawie się nie znają, co spowalnia pracę.",
+    "kategoria": "integration",
+    "priorytet": 4,
+    "rezultat": "Co najmniej połowa zespołu w dwóch wyjściach w miesiącu.",
+    "ograniczenia": [],
+    "decydent": "Piotr Zieliński",
+    "rola_decydenta": "CTO",
+    "termin_decyzji": "po feedbacku",
+    "termin_decyzji_data": "",
+    "wczesniejsze_proby": "Integracje raz na kwartał — przychodzi jedna trzecia zespołu.",
+    "nastepny_krok": "Kuba wysyła w piątek agendę pilotażu do Aleksandry Nowickiej.",
+    "data_nastepnego_kroku": "2026-10-16",
+    "potrzeby": [
+      {
+        "tytul": "Integracja zespołu w pracy hybrydowej",
+        "kategoria": "integration",
+        "priorytet": 4,
+        "cytat": "Od kiedy pracujemy hybrydowo, ludzie z zespołu backendu prawie się nie znają.",
+        "rezultat": "Połowa zespołu w dwóch wyjściach w miesiącu",
+        "ograniczenia": ""
+      }
+    ],
+    "wnioski": [
+      "Przy pracy hybrydowej zespół backendu prawie się nie zna; to spowalnia pracę.",
+      "Integracje raz na kwartał przyciągają jedną trzecią zespołu.",
+      "Pilotaż: zespół backendu, 12 osób, 2–27 listopada, feedback 27 listopada.",
+      "Budżet zatwierdza CTO po feedbacku; bez postów i zdjęć na razie."
+    ],
+    "warunki": {
+      "znizka_procent": 0,
+      "gratis": "",
+      "dni": [],
+      "godziny_od": "",
+      "godziny_do": "",
+      "min_grupa": 0,
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce_na_wydarzenia": "",
+      "cykl_wydarzenia": 0,
+      "cykl_czestotliwosc": "",
+      "cykl_pierwsze": "",
+      "pilotaz_zespol": "Zespół backendu",
+      "pilotaz_osoby": 12,
+      "pilotaz_feedback": "2026-11-27",
+      "okres_od": "2026-11-02",
+      "okres_do": "2026-11-27"
+    },
+    "obiekcje": [],
+    "umowa": {
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": false,
+      "zgoda_zdjecia": false,
+      "zgoda_social": false
+    },
+    "dowody": {
+      "problem": "Od kiedy pracujemy hybrydowo, ludzie z zespołu backendu prawie się nie znają.",
+      "rezultat": "Sukces to dla nas sytuacja, w której co najmniej połowa zespołu bierze udział w dwóch wyjściach w miesiącu.",
+      "ograniczenia": "",
+      "decydent": "Ja zatwierdzam budżet, decyzję podejmę po feedbacku.",
+      "termin_decyzji": "Ja zatwierdzam budżet, decyzję podejmę po feedbacku.",
+      "wczesniejsze_proby": "Robimy integracje raz na kwartał, ale przychodzi może jedna trzecia zespołu.",
+      "nastepny_krok": "Super, prześlij do mnie, rozpiszę to zespołowi.",
+      "znizka": "",
+      "kiedy": "",
+      "grupa": "",
+      "wylaczenia": "",
+      "realizacja": "",
+      "miejsce": "",
+      "okres": "Pilotaż od 2 listopada do 27 listopada, a 27 listopada siadamy do feedbacku.",
+      "cykl": "",
+      "pilotaz": "Chcielibyśmy zacząć od pilotażu w zespole backendu, to 12 osób.",
+      "nazwa_firmy": "",
+      "kontakt_awaryjny": "",
+      "godziny_otwarcia": "",
+      "zgoda_logo": "",
+      "zgoda_zdjecia": "",
+      "zgoda_social": ""
+    }
+  },
+  "notes": "Firma: pilotaż (zespół, 12 osób, feedback 27.11) i okres pilotażu. Decyzja „po feedbacku” bez konkretnego dnia (data pusta). Odmowa postów i zdjęć (zgody false)."
+}

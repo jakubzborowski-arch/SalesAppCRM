@@ -89,7 +89,7 @@ const FAQ: [string, ReactNode][] = [
 
 function Block({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-6 rounded-[28px] border border-line bg-white p-6">
+    <section id={id} className="scroll-mt-6 rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="text-lg font-semibold text-navy">{title}</h2>
       <div className="mt-3 space-y-3 text-sm leading-6 text-foreground">{children}</div>
     </section>
@@ -99,8 +99,8 @@ function Block({ id, title, children }: { id: string; title: string; children: R
 export default function HelpPage() {
   return (
     <div>
-      <div className="flex items-center justify-end px-8 py-6 text-sm text-muted">CRM / Pomoc</div>
-      <div className="px-8 pb-12">
+      <div className="flex flex-wrap items-center justify-end px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">CRM / Pomoc</div>
+      <div className="px-4 pb-12 sm:px-6 lg:px-8">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">Jak używać CRM</p>
         <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-3xl font-semibold tracking-tight">Pomoc</h1>
@@ -163,6 +163,12 @@ export default function HelpPage() {
                   </li>
                 ))}
               </ol>
+              <p>
+                <strong>Szybka wizyta (lokal).</strong> Domknąłeś warunki w jednej wizycie? W nagłówku misji kliknij
+                „Szybka wizyta”. Jeden formularz zapisuje wizytę w dzienniku, problem jako potwierdzony fakt, decydenta,
+                zniżkę, okres i zgodę na logo, zatwierdza rekomendowany wariant i przenosi misję do kroku Umowa. Przycisk
+                jest na krokach od Kontaktu do Negocjacji.
+              </p>
               <p className="text-muted">
                 Wcześniejsze kroki możesz oglądać i poprawiać — postęp misji się nie cofa. Misję, która nie idzie, zamykasz
                 z powodem („Zamknij misję”), żeby raport przegranych miał sens.
@@ -191,6 +197,12 @@ export default function HelpPage() {
                 Typ ustawiasz przy dodawaniu partnera i zmieniasz na karcie („Edytuj”). Od typu zależą research, warianty
                 oferty, wymagane warunki i lista kroków aktywacji.
               </p>
+              <p>
+                <strong>Dopasowanie lokalu (0–6).</strong> Na karcie lokalu oceniasz trzy rzeczy po 0–2: martwe godziny,
+                pojemność dla grup i dzielnicę blisko użytkowników Lutry. Na liście partnerów możesz sortować po
+                dopasowaniu, a pulpit przy równych terminach podsuwa najpierw lepiej dopasowane lokale — tam Lutra szybciej
+                zbuduje gęstość wydarzeń.
+              </p>
             </Block>
 
             <Block id="rozmowa" title="Rozmowa i mapa potrzeb">
@@ -201,6 +213,11 @@ export default function HelpPage() {
                 klikasz „Potwierdź jako fakt”.
               </p>
               <p>
+                <strong>Lokal:</strong> oczekiwany rezultat, termin decyzji i wcześniejsze próby są opcjonalne — kawiarnię
+                często zamykasz w jednej wizycie. Przed ofertą wymagane są problem, ograniczenie, decydent, następny krok i
+                potwierdzony fakt. Dla społeczności i firm wymagane są wszystkie siedem.
+              </p>
+              <p>
                 Na <strong>mapie potrzeb</strong> może być kilka potrzeb. Każda ma kategorię, priorytet i status: fakt
                 (partner to powiedział), obserwacja (Twoje spostrzeżenie) albo hipoteza (do sprawdzenia). Rekomendacja
                 wariantu liczy się tylko z faktów.
@@ -208,9 +225,16 @@ export default function HelpPage() {
               <p className="text-xs text-muted">Kategorie: {NEED_CATEGORIES.map((c) => c.label).join(", ")}.</p>
               <p>
                 <strong>Rozmowa nagrana w Spinach?</strong> Otwórz bąbelek „Notatka z rozmowy” w prawym dolnym rogu misji,
-                wklej transkrypt (albo wczytaj plik .txt / .vtt / .srt) i kliknij „Wypełnij pola z rozmowy”. AI proponuje
-                cytat, problem, ograniczenia, decydenta, terminy i potrzeby — każdą pozycję zaznaczasz sam, a fakt
-                potwierdzasz przyciskiem. Cytat, którego nie ma dosłownie w transkrypcie, jest oznaczony do sprawdzenia.
+                wklej transkrypt (albo wczytaj plik .txt / .vtt / .srt), zaznacz, że partner wie o transkrypcji i analizie
+                przez AI, i kliknij „Wypełnij pola z rozmowy”. AI proponuje pola całej misji: rozmowę i potrzeby, warunki
+                oferty, obiekcje i dane do porozumienia — każdą pozycję zaznaczasz sam, a fakt potwierdzasz przyciskiem.
+              </p>
+              <p>
+                <strong>Dowód przy każdym polu.</strong> Przy propozycji widzisz zdanie partnera z rozmowy, z którego
+                wynika („Dowód: …”). Bez dowodu, z dowodem powiedzianym przez handlowca albo z liczbą, której partner nie
+                powiedział, wiersz jest odznaczony i ma ostrzeżenie. Najlepiej działa transkrypt z mówcami („Imię Nazwisko:
+                …”) — wtedy CRM odróżnia Twoje słowa od słów partnera. Bez mówców warunki i dane do umowy są zawsze do
+                ręcznego sprawdzenia.
               </p>
             </Block>
 
@@ -315,8 +339,14 @@ export default function HelpPage() {
                   • <strong>Co kwartał:</strong> potwierdzenie z partnerem, że warunki, godziny i kontakt są aktualne.
                 </li>
                 <li>
-                  • <strong>Co miesiąc (miejsca):</strong> informacja dla partnera o liczbie realizacji zniżki z poprzedniego
-                  miesiąca.
+                  • <strong>Co miesiąc:</strong> metryki z panelu Lutry — wydarzenia, uczestnicy, a w lokalach realizacje
+                  zniżki. Z nich powstaje mail z podsumowaniem dla partnera (kopiujesz albo otwierasz w poczcie, CRM nic
+                  nie wysyła sam). Zapis za poprzedni miesiąc odhacza przypomnienie w „Na dziś”.
+                </li>
+                <li>
+                  • <strong>Zdrowie partnera:</strong> zielony — w porządku; żółty — brak liczb za poprzedni miesiąc albo
+                  spadek o połowę; czerwony — 2 miesiące bez liczb, 2 miesiące z zerem albo decyzja „kończymy”. Przez
+                  pierwsze 30 dni bez liczb — „za wcześnie”.
                 </li>
                 <li>
                   • <strong>Koniec okresu:</strong> 30 dni wcześniej przypomnienie o przedłużeniu. Odnowienie = nowa misja.
@@ -348,6 +378,12 @@ export default function HelpPage() {
                 „Na dziś” na Pulpicie zbiera zaległe i dzisiejsze: zadania i następne kroki, terminy decyzji, maile po
                 kontakcie, umowy czekające na podpis, przeglądy, kwartalne potwierdzenia, informacje o realizacjach i końce
                 umów. Liczba przy „Zadaniach” w menu to rzeczy do ruchu dziś.
+              </p>
+              <p>
+                <strong>Partner nie odpowiada?</strong> Po pierwszej próbie bez odpowiedzi CRM przypomina o kolejnej po 2
+                dniach, potem po 5 i 10 (licząc od pierwszej) — najlepiej innym kanałem. Po czwartej próbie proponuje
+                zamknięcie misji z powodem „Brak kontaktu” jednym kliknięciem. Misja bez żadnego kontaktu od 7 dni i bez
+                zaplanowanego kroku też trafia do „Na dziś”. Zaplanowany krok w przyszłości wycisza te przypomnienia.
               </p>
               <p>
                 Powiadomienia systemowe włączysz w{" "}

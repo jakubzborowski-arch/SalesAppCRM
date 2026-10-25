@@ -12,8 +12,13 @@ vi.mock("@supabase/supabase-js", () => ({
     auth: {
       getUser: async (token: string) =>
         token.startsWith("good-")
-          ? { data: { user: { id: `user-${token}`, email: `${token.slice(5)}` } }, error: null }
-          : { data: { user: null }, error: { message: "invalid token" } },
+          ? {
+              data: { user: { id: `user-${token}`, email: `${token.slice(5)}`, email_confirmed_at: "2026-10-01T10:00:00Z" } },
+              error: null,
+            }
+          : token.startsWith("new-")
+            ? { data: { user: { id: `user-${token}`, email: `${token.slice(4)}`, email_confirmed_at: null } }, error: null }
+            : { data: { user: null }, error: { message: "invalid token" } },
     },
   }),
 }));
@@ -203,7 +208,7 @@ describe("/api/discovery-extract", () => {
     expect(await (await GET(request("GET"))).json()).toEqual({ enabled: false, reason: "local_only" });
     process.env.AI_ALLOW_WITHOUT_LOGIN = "1";
     expect(await (await GET(request("GET", undefined, "crm.example.com"))).json()).toEqual({ enabled: false, reason: "local_only" });
-    expect((await POST(request("POST", { context: CONTEXT }, "crm.example.com"))).status).toBe(401);
+    expect((await POST(request("POST", { context: CONTEXT }, "crm.example.com"))).status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -222,7 +227,16 @@ describe("/api/discovery-extract", () => {
       enabled: false,
       reason: "not_allowed",
     });
-    expect((await POST(request("POST", { context: CONTEXT }, "crm.example.com", as("obcy@gmail.com")))).status).toBe(401);
+    expect((await POST(request("POST", { context: CONTEXT }, "crm.example.com", as("obcy@gmail.com")))).status).toBe(403);
+    // Konto założone na adres z listy, ale bez potwierdzenia maila — bez AI.
+    const fresh = { authorization: "Bearer new-ktos@lutra.pl" };
+    process.env.AI_ALLOWED_EMAILS = "szef@lutra.pl, @lutra.pl, @brandpixel.de";
+    expect(await (await GET(request("GET", undefined, "crm.example.com", fresh))).json()).toEqual({
+      enabled: false,
+      reason: "unconfirmed",
+    });
+    expect((await POST(request("POST", { context: CONTEXT }, "crm.example.com", fresh))).status).toBe(403);
+    process.env.AI_ALLOWED_EMAILS = "szef@lutra.pl, @brandpixel.de";
     expect((await (await GET(request("GET", undefined, "crm.example.com", as("szef@lutra.pl")))).json()).enabled).toBe(true);
 
     const statuses: number[] = [];
