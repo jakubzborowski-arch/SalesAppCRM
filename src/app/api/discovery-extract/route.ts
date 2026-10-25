@@ -10,6 +10,7 @@ import {
   sanitizeContext,
 } from "@/lib/discovery-extract";
 import { completeRaw, resolveDraftBackend } from "@/lib/draft-complete";
+import { PROMPT_VERSION } from "@/lib/ai-log";
 import { AI_DENIED, aiAccess, quotaMessage, takeMemoryQuota } from "@/lib/ai-access";
 
 export const runtime = "nodejs";
@@ -102,6 +103,7 @@ export async function POST(request: Request) {
   }
 
   const user = extractionUserMessage(ctx);
+  const started = Date.now();
   if (engine.engine === "claude") {
     const done = await claudeStructured(engine.claude, { system: EXTRACTION_SYSTEM, user, schema: EXTRACTION_SCHEMA });
     if (!done.ok) return Response.json({ error: done.error }, { status: done.status });
@@ -110,6 +112,8 @@ export async function POST(request: Request) {
       engine: "claude",
       model: done.model,
       usage: done.usage,
+      durationMs: Date.now() - started,
+      promptVersion: PROMPT_VERSION,
       clipped: Boolean(ctx.clipped),
       data: done.data,
     });
@@ -132,5 +136,13 @@ export async function POST(request: Request) {
   if (!data || typeof data !== "object") {
     return Response.json({ error: "Model nie oddał pól w formacie JSON. Spróbuj jeszcze raz." }, { status: 502 });
   }
-  return Response.json({ ok: true, engine: done.place, model: null, clipped: Boolean(ctx.clipped), data });
+  return Response.json({
+    ok: true,
+    engine: done.place,
+    model: null,
+    durationMs: Date.now() - started,
+    promptVersion: PROMPT_VERSION,
+    clipped: Boolean(ctx.clipped),
+    data,
+  });
 }

@@ -16,6 +16,7 @@ import {
   type ReportPeriod,
 } from "@/lib/reports";
 import { useStore } from "@/lib/store";
+import { AiQualitySection } from "@/components/reports/ai-quality";
 import type { Mission, PartnerSegment, StageId } from "@/lib/types";
 
 const PERIODS: { id: ReportPeriod; label: string }[] = [
@@ -322,6 +323,12 @@ export default function ReportsPage() {
                 }))}
               />
             </div>
+          </Section>
+          <Section
+            title="Podpowiedzi AI z rozmów"
+            hint="Ile pól z rozmowy przyjmujesz, które odrzucasz i ile to kosztuje. Bez treści rozmów — same decyzje."
+          >
+            <AiQualitySection period={period} ownerId={ownerId} />
           </Section>
         </div>
       </div>

@@ -25,6 +25,7 @@ import { buildMissionProposal, GROUPS, planMission, type MissionProposal } from 
 import { activityChannelLabel, activityOutcomeLabel } from "@/lib/playbook";
 import { AI_NOTICE_SCRIPT, aiNoticeGiven, withAiNotice } from "@/lib/ai-notice";
 import { speakerView, type SpeakerView } from "@/lib/evidence";
+import { PROMPT_VERSION, saveAiSuggestion, suggestionRows, type AiEngine } from "@/lib/ai-log";
 import { useStore } from "@/lib/store";
 import { cleanTranscript, MAX_TRANSCRIPT_CHARS, TRANSCRIPT_FILE_ACCEPT, wordsLabel } from "@/lib/transcript";
 import type { Activity, CallRecord, Channel, Mission, Partner, StageId } from "@/lib/types";
@@ -651,10 +652,19 @@ type EngineInfo = {
 };
 
 /** Wynik odczytu rozmowy. Podgląd liczymy z niego na bieżąco względem aktualnej misji. */
+type ReadingMeta = {
+  engine: AiEngine;
+  model: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  durationMs: number | null;
+};
+
 type Reading = {
   extraction: DiscoveryExtraction;
   source: string;
   view: SpeakerView;
+  meta: ReadingMeta;
   callDate: string;
   fromDate: string;
   origin: string;
@@ -791,11 +801,12 @@ function FillBlock({
     mission.conversationNote.trim().length >= 80;
   const totalChars = transcripts.reduce((sum, call) => sum + (call.transcriptText ?? "").length, 0);
 
-  const show = (raw: unknown, ctx: ExtractionContext, origin: string, clipped = false) => {
+  const show = (raw: unknown, ctx: ExtractionContext, origin: string, clipped: boolean, meta: ReadingMeta) => {
     setReading({
       extraction: normalizeExtraction(raw),
       source: sourceOf(ctx),
       view: speakerView(ctx),
+      meta,
       callDate: ctx.callDate,
       fromDate: firstDateOf(ctx),
       origin,
@@ -830,6 +841,8 @@ function FillBlock({
         engine?: EngineInfo["engine"];
         model?: string | null;
         clipped?: boolean;
+        usage?: { input?: number; output?: number };
+        durationMs?: number;
       };
       if (!res.ok || !data.data) throw new Error(data.error ?? "Nie udało się odczytać rozmowy.");
       show(
@@ -837,6 +850,13 @@ function FillBlock({
         ctx,
         engineLabel({ enabled: true, engine: data.engine ?? null, model: data.model ?? null }),
         Boolean(data.clipped),
+        {
+          engine: data.engine ?? "manual",
+          model: data.model ?? null,
+          inputTokens: data.usage?.input ?? null,
+          outputTokens: data.usage?.output ?? null,
+          durationMs: typeof data.durationMs === "number" ? data.durationMs : null,
+        },
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -872,7 +892,13 @@ function FillBlock({
       return;
     }
     setError(null);
-    show(raw, context(), "Odpowiedź wklejona z Claude");
+    show(raw, context(), "Odpowiedź wklejona z Claude", false, {
+      engine: "manual",
+      model: null,
+      inputTokens: null,
+      outputTokens: null,
+      durationMs: null,
+    });
   };
 
   // Najnowsza wersja run() dla efektu auto-startu (bez odpalania przy każdym renderze).
@@ -892,9 +918,32 @@ function FillBlock({
   const toggle = (row: ProposalRow) =>
     setOverrides((prev) => ({ ...prev, [rowId(row)]: !(prev[rowId(row)] ?? row.checked) }));
 
+  /** Statystyka jakości: co AI zaproponowało, co handlowiec przyjął (bez treści pól — same klucze i decyzje). */
+  const logReading = (outcome: "applied" | "discarded") => {
+    if (!proposal || !reading) return;
+    void saveAiSuggestion(
+      {
+        id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `ai-${Date.now()}`,
+        missionId: mission.id,
+        createdAt: new Date().toISOString(),
+        outcome,
+        engine: reading.meta.engine,
+        model: reading.meta.model,
+        promptVersion: PROMPT_VERSION,
+        inputTokens: reading.meta.inputTokens,
+        outputTokens: reading.meta.outputTokens,
+        durationMs: reading.meta.durationMs,
+        speakersKnown: reading.view.known,
+        rows: suggestionRows(proposal.rows, outcome === "applied" ? selected : new Set()),
+      },
+      store.state.workspace.id,
+    );
+  };
+
   const apply = async () => {
     if (!proposal) return;
     const plan = planMission(proposal, selected, mission);
+    logReading("applied");
     setBusy(true);
     let makerId = plan.maker?.id;
     let makerError = "";
@@ -1075,6 +1124,7 @@ function FillBlock({
           onToggle={toggle}
           onApply={() => void apply()}
           onDiscard={() => {
+            logReading("discarded");
             setReading(null);
             setOverrides({});
           }}

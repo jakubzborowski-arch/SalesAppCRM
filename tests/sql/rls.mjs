@@ -566,6 +566,18 @@ const snapshot = async () => {
   return new Map([...pol.map((r) => ["P " + r.k, r.v]), ...fn.map((r) => ["F " + r.k, r.v])]);
 };
 const versions = async () => (await all("select version from crm_migrations order by applied_at")).map((r) => r.version);
+// Podpowiedzi AI: zapis tylko we własnym zespole i jako ja; czyta zespół; obcy i anon — nic.
+const sugg = (ws, mission, user) =>
+  db.query("insert into ai_suggestions (workspace_id, mission_id, user_id, outcome, engine, prompt_version, rows) values ($1, $2, $3, 'applied', 'claude', 'p-1', '[]'::jsonb)", [ws, mission, user]);
+await as(H, () => sugg(wsG, mG, H.id));
+ok((await as(G, () => all("select id from ai_suggestions where workspace_id = $1", [wsG]))).length === 1, "zespół widzi podpowiedzi AI swoich misji");
+ok((await as(A, () => all("select id from ai_suggestions"))).length === 0, "obcy zespół nie widzi podpowiedzi AI");
+await expectError("podpowiedź AI do cudzego zespołu odrzucona", () => as(A, () => sugg(wsG, mG, A.id)), /row-level security/);
+await expectError("podpowiedź AI w cudzym imieniu odrzucona", () => as(H, () => sugg(wsG, mG, G.id)), /row-level security/);
+await expectError("podpowiedź AI do misji z innego zespołu odrzucona", () => as(A, () => sugg(wsA, mG, A.id)), /row-level security/);
+await expectError("anon nie zapisze podpowiedzi AI", () => as(null, () => sugg(wsG, mG, G.id)), /permission denied|row-level security/);
+await expectError("podpowiedzi AI nie da się poprawić po fakcie", () => as(H, () => db.query("update ai_suggestions set outcome = 'discarded'")), /permission denied/);
+
 const good = await snapshot();
 ok((await versions()).at(-1) === "v8", "v8 zapisuje znacznik wersji");
 await db.exec(v23);
