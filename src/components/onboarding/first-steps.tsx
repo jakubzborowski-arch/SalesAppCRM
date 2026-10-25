@@ -17,7 +17,7 @@ export function FirstSteps() {
   const next = steps.find((step) => !step.done);
 
   return (
-    <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-navy">Pierwsze kroki</h2>
@@ -25,7 +25,7 @@ export function FirstSteps() {
             {done}/{steps.length} — przejdź jedną misję od początku do końca, a resztę zrobisz z pamięci.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="button" onClick={openTour} className="text-xs font-semibold text-lutra">
             Wprowadzenie
           </button>

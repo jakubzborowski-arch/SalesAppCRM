@@ -30,10 +30,10 @@ export default function OffersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-end px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         CRM / Oferty
       </div>
-      <div className="px-8 pb-10">
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight">Oferty</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
           Warianty A/B/C z misji i ustalone warunki. Wysyłka tylko po Twoim zatwierdzeniu.

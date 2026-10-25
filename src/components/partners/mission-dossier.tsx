@@ -42,7 +42,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-[28px] border border-line bg-white p-6">
+    <section className="rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="font-semibold">{title}</h2>
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">{children}</dl>
     </section>
@@ -67,7 +67,7 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
       </div>
 
       {!mission ? (
-        <section className="rounded-[28px] border border-line bg-white p-6 text-sm text-muted">
+        <section className="rounded-[28px] border border-line bg-white p-4 sm:p-6 text-sm text-muted">
           Ten partner nie ma jeszcze misji. Dane z rozmowy pojawią się tutaj po „Zajmuję się partnerem”.
         </section>
       ) : (
@@ -103,7 +103,7 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
             </div>
           </Block>
 
-          <section className="rounded-[28px] border border-line bg-white p-6">
+          <section className="rounded-[28px] border border-line bg-white p-4 sm:p-6">
             <h2 className="font-semibold">Potrzeby</h2>
             {mission.needs.length ? (
               <ul className="mt-4 space-y-3 text-sm">
@@ -193,7 +193,7 @@ export function MissionDossier({ partner, mission }: { partner: Partner; mission
           </Block>
 
           {mission.calls.some((call) => call.transcriptText?.trim()) ? (
-            <section className="rounded-[28px] border border-line bg-white p-6">
+            <section className="rounded-[28px] border border-line bg-white p-4 sm:p-6">
               <h2 className="font-semibold">Transkrypty</h2>
               <ul className="mt-4 space-y-3 text-sm">
                 {mission.calls

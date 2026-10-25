@@ -120,13 +120,13 @@ export default function BoardPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-3 px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         <span>CRM / Tablica</span>
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-xs font-semibold text-navy">
           {state.user.initials}
         </span>
       </div>
-      <div className="px-8 pb-10">
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">Workspace</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Tablica misji</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted">
@@ -134,7 +134,7 @@ export default function BoardPage() {
           Karta nie zmienia etapu: bramki zostają w misji.
         </p>
 
-        <div className="mt-5 flex gap-2">
+        <div className="mt-5 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setView("open")}

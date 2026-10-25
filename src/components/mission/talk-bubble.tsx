@@ -125,7 +125,7 @@ export function TalkBubble({
             setMounted(true);
             setOpen(true);
           }}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-navy py-3 pl-4 pr-5 text-sm font-medium text-white shadow-[0_12px_32px_rgba(9,12,155,0.28)] transition hover:bg-ink"
+          className="fixed bottom-4 right-4 z-40 flex min-h-11 items-center gap-2 rounded-full bg-navy py-3 pl-4 pr-5 text-sm font-medium text-white shadow-[0_12px_32px_rgba(9,12,155,0.28)] transition hover:bg-ink sm:bottom-6 sm:right-6"
         >
           <MessageSquareText size={16} aria-hidden />
           Notatka z rozmowy
@@ -198,8 +198,8 @@ function TalkDrawer({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <aside className="flex h-full w-full max-w-xl flex-col bg-white shadow-[-12px_0_48px_rgba(9,12,155,0.18)]">
-        <header className="flex items-start justify-between gap-3 border-b border-line px-6 py-4">
+      <aside className="flex h-full w-full flex-col bg-white sm:max-w-xl shadow-[-12px_0_48px_rgba(9,12,155,0.18)]">
+        <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">Notatka z rozmowy</p>
             <h2 id="talk-title" className="mt-0.5 text-lg font-semibold">
@@ -215,7 +215,7 @@ function TalkDrawer({
             <X size={18} />
           </button>
         </header>
-        <div className="flex-1 space-y-8 overflow-y-auto px-6 py-5">
+        <div className="min-w-0 flex-1 space-y-8 overflow-y-auto px-4 py-5 sm:px-6">
           <section ref={noteRef} className="scroll-mt-4">
             <NoteBlock mission={mission} editable={editable} />
           </section>

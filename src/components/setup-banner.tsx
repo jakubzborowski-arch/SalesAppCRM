@@ -9,7 +9,7 @@ function NoticeBanner() {
   if (!notice) return null;
   return (
     <div
-      className={`mx-8 mt-4 flex items-start justify-between gap-4 rounded-2xl border px-5 py-3 text-sm ${
+      className={`mx-4 mt-4 sm:mx-6 lg:mx-8 flex items-start justify-between gap-4 rounded-2xl border px-5 py-3 text-sm ${
         notice.kind === "ok"
           ? "border-emerald-200 bg-emerald-50 text-emerald-900"
           : "border-rose-200 bg-rose-50 text-rose-900"
@@ -35,7 +35,7 @@ const INVITE_STATUS: Record<string, string> = {
 function InviteBanner() {
   const { invite, confirmInvite, dismissInvite, state } = useStore();
   if (!invite) return null;
-  const box = "mx-8 mt-4 rounded-2xl border px-5 py-4 text-sm";
+  const box = "mx-4 mt-4 sm:mx-6 lg:mx-8 rounded-2xl border px-5 py-4 text-sm";
 
   if (invite.loading) {
     return <div className={`${box} border-line bg-white text-muted`}>Sprawdzam zaproszenie do zespołu…</div>;
@@ -143,7 +143,7 @@ export function SetupBanner() {
       <>
         <NoticeBanner />
         <InviteBanner />
-        <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+        <div className="mx-4 mt-4 sm:mx-6 lg:mx-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
           {driftFrom === firstMissing && migrationDrift ? (
             <p className="font-semibold">
               Migracja {migrationDrift.rerun === "v3" ? "v2–v3" : migrationDrift.rerun} została odpalona po nowszych —
@@ -200,7 +200,7 @@ export function SetupBanner() {
     <>
       <NoticeBanner />
       <InviteBanner />
-      <div className="mx-8 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+      <div className="mx-4 mt-4 sm:mx-6 lg:mx-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
         <p className="font-semibold">
           {dbStatus === "need-sql" ? "Brakuje tabel CRM. Odpal skrypt v2–v8 w SQL Editorze." : `Błąd bazy: ${dbError}`}
         </p>

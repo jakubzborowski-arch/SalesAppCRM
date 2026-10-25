@@ -79,3 +79,10 @@ body {
 ::selection {
   background: var(--chip-strong);
 }
+
+/* Poniżej lg nad treścią jest przyklejony górny pasek (h-14) — przewijanie do kotwic zatrzymuje się pod nim. */
+@media (max-width: 1023.98px) {
+  html {
+    scroll-padding-top: 4.5rem;
+  }
+}

@@ -52,7 +52,7 @@ export function MissionPanel({ partner, mission }: { partner: Partner; mission: 
   };
 
   return (
-    <aside className="flex w-[320px] shrink-0 flex-col gap-3">
+    <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[320px]">
       <div className="rounded-[28px] bg-chip p-5">
         <h2 className="font-brand text-lg font-semibold text-navy">Ta misja</h2>
         <p className="mt-1 text-xs leading-4 text-muted">

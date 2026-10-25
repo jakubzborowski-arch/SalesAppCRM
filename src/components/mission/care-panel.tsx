@@ -100,7 +100,7 @@ function RedemptionReportForm({ mission }: { mission: Mission }) {
   return (
     <div>
       <div className="flex flex-wrap items-end gap-3">
-        <div className="w-[220px]">
+        <div className="w-full sm:w-[220px]">
           <Field label={`Realizacje za ${monthLabel(month)}`}>
             <NumberInput value={count} min={0} max={100000} onChange={setCount} placeholder="z panelu Lutry" />
           </Field>
@@ -153,7 +153,7 @@ export function CarePanel({ mission, partner }: { mission: Mission; partner: Par
       : null;
 
   return (
-    <section className="mt-6 max-w-4xl rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-6 max-w-4xl rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">Aktywny partner · opieka</p>

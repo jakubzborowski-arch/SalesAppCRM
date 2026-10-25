@@ -59,7 +59,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface px-4">
-      <div className="w-full max-w-md rounded-[28px] border border-line bg-white p-8">
+      <div className="w-full max-w-md rounded-[28px] border border-line bg-white p-6 sm:p-8">
         <p className="font-brand text-[26px] tracking-tight text-navy">lutra</p>
         <h1 className="mt-3 text-2xl font-semibold">CRM partnerów</h1>
         <p className="mt-2 text-sm text-muted">

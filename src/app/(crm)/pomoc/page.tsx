@@ -89,7 +89,7 @@ const FAQ: [string, ReactNode][] = [
 
 function Block({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-6 rounded-[28px] border border-line bg-white p-6">
+    <section id={id} className="scroll-mt-6 rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="text-lg font-semibold text-navy">{title}</h2>
       <div className="mt-3 space-y-3 text-sm leading-6 text-foreground">{children}</div>
     </section>
@@ -99,8 +99,8 @@ function Block({ id, title, children }: { id: string; title: string; children: R
 export default function HelpPage() {
   return (
     <div>
-      <div className="flex items-center justify-end px-8 py-6 text-sm text-muted">CRM / Pomoc</div>
-      <div className="px-8 pb-12">
+      <div className="flex flex-wrap items-center justify-end px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">CRM / Pomoc</div>
+      <div className="px-4 pb-12 sm:px-6 lg:px-8">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">Jak używać CRM</p>
         <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-3xl font-semibold tracking-tight">Pomoc</h1>

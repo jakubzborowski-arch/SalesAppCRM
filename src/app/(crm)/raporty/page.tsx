@@ -64,7 +64,7 @@ function Bar({ value, max, title }: { value: number; max: number; title: string 
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-[28px] border border-line bg-white p-6">
+    <section className="rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="font-semibold text-navy">{title}</h2>
       {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
       <div className="mt-4">{children}</div>
@@ -110,13 +110,13 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-3 px-8 py-6 text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-4 text-sm text-muted sm:px-6 lg:px-8 lg:py-6">
         <span>CRM / Raporty</span>
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-xs font-semibold text-navy">
           {state.user.initials}
         </span>
       </div>
-      <div className="px-8 pb-10">
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight">Raporty</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted">
           Lejek misji, wyniki i powody przegranych. Liczone z misji rozpoczętych w wybranym okresie; kontakty — z
@@ -131,7 +131,7 @@ export default function ReportsPage() {
           ))}
           <select
             aria-label="Typ partnera"
-            className="ml-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-navy"
+            className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-navy sm:ml-2"
             value={segment ?? ""}
             onChange={(event) => setSegment((event.target.value || null) as PartnerSegment | null)}
           >
@@ -145,7 +145,7 @@ export default function ReportsPage() {
           {owners.length > 1 ? (
             <select
               aria-label="Handlowiec"
-              className="ml-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-navy"
+              className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-navy sm:ml-2"
               value={ownerId ?? ""}
               onChange={(event) => setOwnerId(event.target.value || null)}
             >
@@ -185,6 +185,7 @@ export default function ReportsPage() {
             hint="Ile misji doszło co najmniej do danego etapu. Procent obok = ile przeszło z poprzedniego etapu."
           >
             {result.total ? (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-[0.08em] text-muted">
@@ -219,6 +220,7 @@ export default function ReportsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             ) : (
               <p className="text-sm text-muted">Brak misji w tym okresie.</p>
             )}
@@ -259,6 +261,7 @@ export default function ReportsPage() {
 
           <Section title="Kontakty" hint="Wpisy w dzienniku (przy filtrze handlowca: zapisane przez niego). Skuteczne = rozmowa, odpowiedź albo spotkanie.">
             {contacts.total ? (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-[0.08em] text-muted">
@@ -288,6 +291,7 @@ export default function ReportsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             ) : (
               <p className="text-sm text-muted">Brak wpisów w dzienniku w tym okresie.</p>
             )}

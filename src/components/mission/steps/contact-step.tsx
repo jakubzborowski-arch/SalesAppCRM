@@ -38,7 +38,7 @@ export function ContactStep({ mission, partner }: { mission: Mission; partner: P
       <p className="mt-6 text-[10px] font-semibold uppercase tracking-[0.12em] text-navy">
         Kanał
       </p>
-      <div className="mt-2 grid grid-cols-2 gap-3">
+      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {CONTACT_CHANNELS.map((channel) => {
           const consent = partner.consents.find(
             (c) => c.channel === channel.id && c.purpose === "contact",

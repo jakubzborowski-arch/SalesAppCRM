@@ -108,7 +108,7 @@ export function AgendaList({ limit = 8 }: { limit?: number }) {
   const team = state.team.length > 1;
 
   return (
-    <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-6 max-w-3xl rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold text-navy">Na dziś</h2>
@@ -227,7 +227,7 @@ export function RemindersSection() {
   };
 
   return (
-    <section className="mt-4 rounded-[28px] border border-line bg-white p-6">
+    <section className="mt-4 rounded-[28px] border border-line bg-white p-4 sm:p-6">
       <h2 className="font-semibold">Przypomnienia</h2>
       <p className="mt-1 text-sm text-muted">
         Pulpit pokazuje „Na dziś”, a menu — licznik przy Zadaniach. Powiadomienie systemowe wychodzi raz dziennie na
