@@ -106,7 +106,13 @@ export async function POST(request: Request) {
   const user = extractionUserMessage(ctx);
   const started = Date.now();
   if (engine.engine === "claude") {
-    const done = await claudeStructured(engine.claude, { system: EXTRACTION_SYSTEM, user, schema: EXTRACTION_SCHEMA });
+    const done = await claudeStructured(engine.claude, {
+      system: EXTRACTION_SYSTEM,
+      user,
+      schema: EXTRACTION_SCHEMA,
+      // Gdy API nie przyjmie schematu (limit gramatyki), ten sam format idzie opisem w poleceniu.
+      jsonFallback: JSON_ONLY,
+    });
     if (!done.ok) {
       logServer("error", "extract_failed", { engine: "claude", status: done.status, ms: Date.now() - started });
       return Response.json({ error: done.error }, { status: done.status });
@@ -119,6 +125,7 @@ export async function POST(request: Request) {
       ms: Date.now() - started,
       chars: user.length,
       prompt: PROMPT_VERSION,
+      structured: done.structured,
     });
     return Response.json({
       ok: true,

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { claudeKeyProblem, claudeStructured, resolveClaude, type ClaudeConfig } from "@/lib/claude-api";
-import { EXTRACTION_SCHEMA, EXTRACTION_SYSTEM, extractionUserMessage, normalizeExtraction } from "@/lib/discovery-extract";
+import { EXTRACTION_SCHEMA, EXTRACTION_SYSTEM, JSON_ONLY, extractionUserMessage, normalizeExtraction } from "@/lib/discovery-extract";
 import { allStrings, fixtureSetup, loadFixtures, previewFor, privateDataIn, type EvalFixture } from "./fixtures";
 import { pct, pricing, scoreFields, scoreQuotes, summarize, type FieldResult, type QuoteResult } from "./score";
 
@@ -54,7 +54,7 @@ type CaseResult = {
 async function runOne(config: ClaudeConfig, f: EvalFixture): Promise<CaseResult> {
   const setup = fixtureSetup(f);
   const started = Date.now();
-  const request = { system: EXTRACTION_SYSTEM, user: extractionUserMessage(setup.ctx), schema: EXTRACTION_SCHEMA };
+  const request = { system: EXTRACTION_SYSTEM, user: extractionUserMessage(setup.ctx), schema: EXTRACTION_SCHEMA, jsonFallback: JSON_ONLY };
   let result = await claudeStructured(config, request);
   // Jedna ponowna próba przy przeciążeniu albo przerwanym połączeniu.
   if (!result.ok && result.status >= 500) {

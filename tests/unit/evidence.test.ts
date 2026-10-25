@@ -178,3 +178,12 @@ Karolina Nowak: Ale tylko dla grup od czterech osób i bez alkoholu.`;
     expect(rows.find((r) => r.key === "terms:value")).toMatchObject({ checked: false });
   });
 });
+
+describe("dowody jako lista {pole, cytat} (odpowiedź Claude API)", () => {
+  it("lista i obiekt dają to samo; nieznane pola i puste cytaty pominięte, pierwszy dowód wygrywa", () => {
+    const list = Object.entries(BASE.dowody).map(([pole, cytat]) => ({ pole, cytat }));
+    const fromList = normalizeExtraction({ ...BASE, dowody: [...list, { pole: "nieznane", cytat: "x" }, { pole: "decydent", cytat: "" }, { pole: "problem", cytat: "inne" }] });
+    expect(fromList.evidence).toEqual(normalizeExtraction(BASE).evidence);
+    expect(proposal({ ...BASE, dowody: list }).rows.find((r) => r.key === "deal:company")).toMatchObject({ checked: true });
+  });
+});

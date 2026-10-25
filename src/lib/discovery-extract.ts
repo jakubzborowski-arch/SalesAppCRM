@@ -1,6 +1,6 @@
 import { formatPlDate, isIsoDate, parseDeadline, toIsoDate } from "./dates";
 import { categoryLabel, CONTACT_CHANNELS, NEED_CATEGORIES, OBJECTION_KEYS, PRIORITIES, segmentLabel } from "./playbook";
-import { emptyEvidence, EVIDENCE_KEYS, type Evidence, type SpeakerView } from "./evidence";
+import { emptyEvidence, EVIDENCE_KEYS, type Evidence, type EvidenceKey, type SpeakerView } from "./evidence";
 import { redactPrivate } from "./redact";
 import { fold } from "./text";
 import { WEEKDAYS } from "./terms";
@@ -303,148 +303,75 @@ export const EXTRACTION_SYSTEM = [
   "  Społeczność: cykl_wydarzenia (ile), cykl_czestotliwosc (weekly, biweekly, monthly), cykl_pierwsze (RRRR-MM-DD). Firma: pilotaz_zespol, pilotaz_osoby, pilotaz_feedback (RRRR-MM-DD).",
   "  okres_od / okres_do: ustalony okres współpracy (RRRR-MM-DD), gdy padły daty albo długość („na 3 miesiące od 1 listopada”).",
   "- obiekcje: zastrzeżenia, które partner zgłosił — klucz: other_apps („mam inne aplikacje ze zniżkami”), how_many („ile osób przyprowadzicie?”), margin („zniżka mi się nie opłaca”), no_time („nie mam czasu tego pilnować”), ask_owner („muszę zapytać właściciela”), come_back („wróćcie, jak będzie więcej użytkowników”). argument_zadzialal: true tylko gdy partner wyraźnie przyjął odpowiedź handlowca. cytat: dosłowne zdanie partnera albo \"\". Tylko obiekcje, które padły.",
-  "- dowody: dla każdego pola, które wypełniasz, jedno zdanie słowo w słowo z wypowiedzi osoby po stronie partnera (albo z notatki handlowca), z którego to wynika — bez imienia mówcy i czasu. Klucze: problem, rezultat, ograniczenia, decydent, termin_decyzji, wczesniejsze_proby, nastepny_krok, znizka, kiedy (dni i godziny), grupa, wylaczenia, realizacja, miejsce, okres, cykl, pilotaz, nazwa_firmy, kontakt_awaryjny, godziny_otwarcia, zgoda_logo, zgoda_zdjecia, zgoda_social. Gdy partner tylko potwierdził propozycję handlowca („okej, może być”), przytocz to potwierdzenie. Pole puste → dowód \"\". Nie przytaczaj słów handlowca jako dowodu.",
+  "- dowody: lista {pole, cytat} — dla każdego pola, które wypełniasz, jedno zdanie słowo w słowo z wypowiedzi osoby po stronie partnera (albo z notatki handlowca), z którego to wynika — bez imienia mówcy i czasu. pole to jeden z kluczy: problem, rezultat, ograniczenia, decydent, termin_decyzji, wczesniejsze_proby, nastepny_krok, znizka, kiedy (dni i godziny), grupa, wylaczenia, realizacja, miejsce, okres, cykl, pilotaz, nazwa_firmy, kontakt_awaryjny, godziny_otwarcia, zgoda_logo, zgoda_zdjecia, zgoda_social. Gdy partner tylko potwierdził propozycję handlowca („okej, może być”), przytocz to potwierdzenie. Pole bez dowodu pomiń. Nie przytaczaj słów handlowca jako dowodu.",
   "- umowa: nazwa_firmy (pełna nazwa firmy partnera, jeśli padła), kontakt_awaryjny (imię i nazwisko osoby do kontaktu w trakcie wydarzeń), godziny_otwarcia (jak padły), zgoda_logo / zgoda_zdjecia / zgoda_social: true tylko gdy partner wyraźnie zgodził się na nazwę i logo w aplikacji, zdjęcia, posty w social mediach Lutry.",
 ].join("\n");
 
-const text = (description: string) => ({ type: "string", description });
-const categoryEnum = { type: "string", enum: ["", ...CATEGORY_IDS] };
-const priorityEnum = { type: "integer", enum: [0, 1, 2, 3, 4, 5] };
+const str = { type: "string" } as const;
+const int = { type: "integer" } as const;
+const bool = { type: "boolean" } as const;
+const strList = { type: "array", items: str } as const;
 
-/** JSON Schema dla structured output (Claude API: output_config.format). */
-export const EXTRACTION_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "cytat",
-    "problem",
-    "kategoria",
-    "priorytet",
-    "rezultat",
-    "ograniczenia",
-    "decydent",
-    "rola_decydenta",
-    "termin_decyzji",
-    "termin_decyzji_data",
-    "wczesniejsze_proby",
-    "nastepny_krok",
-    "data_nastepnego_kroku",
-    "potrzeby",
-    "wnioski",
-    "warunki",
-    "obiekcje",
-    "umowa",
-    "dowody",
-  ],
-  properties: {
-    cytat: text("Dosłowne zdanie partnera z transkryptu albo pusty tekst."),
-    problem: text("Co partnerowi nie działa, 1–2 zdania."),
-    kategoria: categoryEnum,
-    priorytet: priorityEnum,
-    rezultat: text("Po czym partner pozna, że to ma sens."),
-    ograniczenia: { type: "array", items: { type: "string" } },
-    decydent: text("Kto decyduje (imię i nazwisko)."),
-    rola_decydenta: text("Rola decydenta."),
-    termin_decyzji: text("Kiedy partner zdecyduje — fraza z rozmowy."),
-    termin_decyzji_data: text("RRRR-MM-DD albo pusty tekst."),
-    wczesniejsze_proby: text("Co partner już próbował i z jakim skutkiem."),
-    nastepny_krok: text("Ustalony następny krok."),
-    data_nastepnego_kroku: text("RRRR-MM-DD albo pusty tekst."),
-    potrzeby: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["tytul", "kategoria", "priorytet", "cytat", "rezultat", "ograniczenia"],
-        properties: {
-          tytul: text("Potrzeba, do 8 słów."),
-          kategoria: categoryEnum,
-          priorytet: priorityEnum,
-          cytat: text("Dosłowne zdanie partnera albo pusty tekst."),
-          rezultat: text("Oczekiwany rezultat tej potrzeby."),
-          ograniczenia: text("Ograniczenia tej potrzeby."),
-        },
-      },
-    },
-    wnioski: { type: "array", items: { type: "string" } },
-    warunki: {
-      type: "object",
-      additionalProperties: false,
-      required: [
-        "znizka_procent",
-        "gratis",
-        "dni",
-        "godziny_od",
-        "godziny_do",
-        "min_grupa",
-        "wylaczenia",
-        "realizacja",
-        "miejsce_na_wydarzenia",
-        "cykl_wydarzenia",
-        "cykl_czestotliwosc",
-        "cykl_pierwsze",
-        "pilotaz_zespol",
-        "pilotaz_osoby",
-        "pilotaz_feedback",
-        "okres_od",
-        "okres_do",
-      ],
-      properties: {
-        znizka_procent: { type: "integer", description: "1–100, 0 gdy nie padła." },
-        gratis: text("Gratis zamiast rabatu albo pusty tekst."),
-        dni: { type: "array", items: { type: "string", enum: WEEKDAYS.map((day) => day.id) } },
-        godziny_od: text("GG:MM albo pusty tekst."),
-        godziny_do: text("GG:MM albo pusty tekst."),
-        min_grupa: { type: "integer", description: "Minimalna grupa, 0 gdy nie padła." },
-        wylaczenia: text("Wyłączenia ze zniżki."),
-        realizacja: { type: "string", enum: ["", "qr", "code", "password"] },
-        miejsce_na_wydarzenia: text("Opis miejsca na wydarzenia albo pusty tekst."),
-        cykl_wydarzenia: { type: "integer", description: "Liczba wydarzeń w cyklu, 0 gdy nie padła." },
-        cykl_czestotliwosc: { type: "string", enum: ["", "weekly", "biweekly", "monthly"] },
-        cykl_pierwsze: text("RRRR-MM-DD albo pusty tekst."),
-        pilotaz_zespol: text("Zespół w pilotażu."),
-        pilotaz_osoby: { type: "integer", description: "Liczba osób w pilotażu, 0 gdy nie padła." },
-        pilotaz_feedback: text("RRRR-MM-DD albo pusty tekst."),
-        okres_od: text("RRRR-MM-DD albo pusty tekst."),
-        okres_do: text("RRRR-MM-DD albo pusty tekst."),
-      },
-    },
-    obiekcje: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["klucz", "argument_zadzialal", "cytat"],
-        properties: {
-          klucz: { type: "string", enum: OBJECTION_KEYS.map((item) => item.key) },
-          argument_zadzialal: { type: "boolean" },
-          cytat: text("Dosłowne zdanie partnera albo pusty tekst."),
-        },
-      },
-    },
-    umowa: {
-      type: "object",
-      additionalProperties: false,
-      required: ["nazwa_firmy", "kontakt_awaryjny", "godziny_otwarcia", "zgoda_logo", "zgoda_zdjecia", "zgoda_social"],
-      properties: {
-        nazwa_firmy: text("Pełna nazwa firmy partnera albo pusty tekst."),
-        kontakt_awaryjny: text("Imię i nazwisko osoby do kontaktu w trakcie wydarzeń."),
-        godziny_otwarcia: text("Godziny otwarcia, jak padły."),
-        zgoda_logo: { type: "boolean" },
-        zgoda_zdjecia: { type: "boolean" },
-        zgoda_social: { type: "boolean" },
-      },
-    },
-    dowody: {
-      type: "object",
-      additionalProperties: false,
-      required: [...EVIDENCE_KEYS],
-      properties: Object.fromEntries(
-        EVIDENCE_KEYS.map((key) => [key, text("Dosłowne zdanie partnera z rozmowy, które to pokazuje, albo pusty tekst.")]),
-      ),
-    },
+/** Zamknięty obiekt: wszystkie klucze wymagane, nic spoza listy (tak chce structured output). */
+function closed<P extends Record<string, object>>(properties: P) {
+  return { type: "object", additionalProperties: false, required: Object.keys(properties), properties } as const;
+}
+
+/**
+ * JSON Schema dla structured output (Claude API: output_config.format).
+ * Celowo płaski i bez enumów ani opisów: Claude kompiluje schemat do gramatyki o ograniczonym rozmiarze
+ * („The compiled grammar is too large”). Dozwolone wartości są w EXTRACTION_SYSTEM, a normalizeExtraction
+ * i tak przycina wszystko do znanych id. Dowody idą listą {pole, cytat} — tylko pola, które mają dowód.
+ */
+export const EXTRACTION_SCHEMA = closed({
+  cytat: str,
+  problem: str,
+  kategoria: str,
+  priorytet: int,
+  rezultat: str,
+  ograniczenia: strList,
+  decydent: str,
+  rola_decydenta: str,
+  termin_decyzji: str,
+  termin_decyzji_data: str,
+  wczesniejsze_proby: str,
+  nastepny_krok: str,
+  data_nastepnego_kroku: str,
+  potrzeby: {
+    type: "array",
+    items: closed({ tytul: str, kategoria: str, priorytet: int, cytat: str, rezultat: str, ograniczenia: str }),
   },
-} as const;
+  wnioski: strList,
+  warunki: closed({
+    znizka_procent: int,
+    gratis: str,
+    dni: strList,
+    godziny_od: str,
+    godziny_do: str,
+    min_grupa: int,
+    wylaczenia: str,
+    realizacja: str,
+    miejsce_na_wydarzenia: str,
+    cykl_wydarzenia: int,
+    cykl_czestotliwosc: str,
+    cykl_pierwsze: str,
+    pilotaz_zespol: str,
+    pilotaz_osoby: int,
+    pilotaz_feedback: str,
+    okres_od: str,
+    okres_do: str,
+  }),
+  obiekcje: { type: "array", items: closed({ klucz: str, argument_zadzialal: bool, cytat: str }) },
+  umowa: closed({
+    nazwa_firmy: str,
+    kontakt_awaryjny: str,
+    godziny_otwarcia: str,
+    zgoda_logo: bool,
+    zgoda_zdjecia: bool,
+    zgoda_social: bool,
+  }),
+  dowody: { type: "array", items: closed({ pole: str, cytat: str }) },
+});
 
 const EXAMPLE_SHAPE = {
   cytat: "",
@@ -490,7 +417,7 @@ const EXAMPLE_SHAPE = {
     zgoda_zdjecia: false,
     zgoda_social: false,
   },
-  dowody: emptyEvidence(),
+  dowody: [{ pole: "problem", cytat: "" }],
 };
 
 export const JSON_ONLY =
@@ -772,9 +699,20 @@ export function normalizeExtraction(raw: unknown): DiscoveryExtraction {
   };
 }
 
+/** Dowody jako lista {pole, cytat} (odpowiedź modelu) albo obiekt klucz → zdanie (ręczna ścieżka, skill). */
 function evidenceOf(raw: unknown): Evidence {
-  const e = objectOf(raw);
   const out = emptyEvidence();
+  const known = new Set<string>(EVIDENCE_KEYS);
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const entry = objectOf(item);
+      const key = clean(first(entry, "pole", "key", "field"), 40).toLowerCase();
+      const quote = clean(first(entry, "cytat", "quote", "text"), 400);
+      if (known.has(key) && quote && !out[key as EvidenceKey]) out[key as EvidenceKey] = quote;
+    }
+    return out;
+  }
+  const e = objectOf(raw);
   for (const key of EVIDENCE_KEYS) out[key] = clean(e[key], 400);
   return out;
 }

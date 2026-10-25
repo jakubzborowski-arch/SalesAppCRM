@@ -24,7 +24,7 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 
 const { GET, POST } = await import("@/app/api/discovery-extract/route");
-const { claudeKeyProblem, resolveClaude, supportsEffort } = await import("@/lib/claude-api");
+const { claudeKeyProblem, forgetRejectedSchemas, resolveClaude, supportsEffort } = await import("@/lib/claude-api");
 
 const KEY = "sk-ant-test-0123456789abcdefghij";
 const ENV_KEYS = [
@@ -93,6 +93,7 @@ describe("/api/discovery-extract", () => {
       delete process.env[key];
     }
     flags.supabase = false;
+    forgetRejectedSchemas();
   });
   afterEach(() => {
     for (const key of ENV_KEYS) {
@@ -153,6 +154,53 @@ describe("/api/discovery-extract", () => {
     expect(sent.messages[0].role).toBe("user");
     expect(sent.messages[0].content).toMatch(/Środy po 16 jest pusto/);
     expect(sent.messages[0].content).not.toMatch(/500 100 200/);
+  });
+
+  it("schemat za duży dla Claude API („compiled grammar is too large”): ponowienie z JSON w poleceniu, potem od razu", async () => {
+    process.env.ANTHROPIC_API_KEY = KEY;
+    process.env.AI_ALLOW_WITHOUT_LOGIN = "1";
+    const tooLarge = {
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message:
+          "The compiled grammar is too large, which would cause performance issues. Simplify your tool schemas or reduce the number of strict tools.",
+      },
+    };
+    const ok = () =>
+      claudeReply({
+        model: "claude-sonnet-5-5",
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "```json\n" + JSON.stringify(ANSWER) + "\n```" }],
+        usage: { input_tokens: 1300, output_tokens: 320 },
+      });
+    const fetchMock = vi.fn().mockResolvedValueOnce(claudeReply(tooLarge, 400)).mockImplementation(async () => ok());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await POST(request("POST", { context: CONTEXT }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, engine: "claude", data: ANSWER });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const body = (i: number) => JSON.parse(String((fetchMock.mock.calls[i] as unknown as [string, RequestInit])[1].body));
+    expect(body(0).output_config.format.type).toBe("json_schema");
+    expect(body(1).output_config).not.toHaveProperty("format");
+    expect(body(1).output_config.effort).toBe("low");
+    expect(body(1).system).toMatch(/Odpowiedz wyłącznie jednym obiektem JSON/);
+
+    // Następne odczyty nie tracą czasu na odrzucany schemat.
+    await POST(request("POST", { context: CONTEXT }));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(body(2).output_config).not.toHaveProperty("format");
+  });
+
+  it("inne błędy 400 nie wywołują ponowienia", async () => {
+    process.env.ANTHROPIC_API_KEY = KEY;
+    process.env.AI_ALLOW_WITHOUT_LOGIN = "1";
+    const fetchMock = vi.fn(async () => claudeReply({ type: "error", error: { message: "messages: text content blocks must be non-empty" } }, 400));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(request("POST", { context: CONTEXT }));
+    expect(res.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("błędy Claude API po polsku: zły klucz, odmowa, ucięta odpowiedź", async () => {

@@ -40,8 +40,24 @@ export function resolveClaude(env: Record<string, string | undefined> = process.
 }
 
 export type ClaudeResult =
-  | { ok: true; data: unknown; model: string; usage: { input: number; output: number } }
+  | { ok: true; data: unknown; model: string; usage: { input: number; output: number }; structured: boolean }
   | { ok: false; error: string; status: number };
+
+/** Błąd 400, gdy schemat jest za duży/złożony dla structured outputs (gramatyka ma limit rozmiaru). */
+export function isSchemaTooComplex(status: number, payload: unknown) {
+  if (status !== 400) return false;
+  return /grammar is too large|schema is too (?:large|complex)|simplify your (?:tool )?schemas?|too many (?:strict|optional)/i.test(
+    apiMessage(payload),
+  );
+}
+
+/** Schematy, których Claude API nie przyjął — kolejne zapytania od razu idą ścieżką „JSON w poleceniu”. */
+let rejectedSchemas = new WeakSet<object>();
+
+/** Tylko dla testów: zapomina odrzucone schematy. */
+export function forgetRejectedSchemas() {
+  rejectedSchemas = new WeakSet<object>();
+}
 
 function apiMessage(payload: unknown) {
   const message = (payload as { error?: { message?: unknown } } | null)?.error?.message;
@@ -64,12 +80,40 @@ export function claudeError(status: number, payload: unknown, model: string) {
   return `Claude API: błąd ${status}.`;
 }
 
-/** Jedno zapytanie z odpowiedzią w JSON zgodnym ze schematem (structured outputs). */
+/**
+ * Jedno zapytanie z odpowiedzią w JSON zgodnym ze schematem (structured outputs).
+ * Gdy API odrzuci schemat jako za złożony, a podano `jsonFallback` (opis kształtu JSON w poleceniu),
+ * zapytanie idzie jeszcze raz bez output_config.format, a JSON czytamy z tekstu odpowiedzi.
+ */
 export async function claudeStructured(
   config: ClaudeConfig,
-  input: { system: string; user: string; schema: object; maxTokens?: number; timeoutMs?: number },
+  input: { system: string; user: string; schema: object; maxTokens?: number; timeoutMs?: number; jsonFallback?: string },
   fetcher: typeof fetch = fetch,
 ): Promise<ClaudeResult> {
+  const fallback = input.jsonFallback?.trim();
+  if (fallback && rejectedSchemas.has(input.schema)) return claudeRequest(config, input, false, fetcher);
+  const first = await claudeRequest(config, input, true, fetcher);
+  if (first.ok || !fallback || !("schemaRejected" in first)) return stripFlag(first);
+  rejectedSchemas.add(input.schema);
+  return claudeRequest(config, input, false, fetcher);
+}
+
+function stripFlag(result: ClaudeResult & { schemaRejected?: true }): ClaudeResult {
+  if (result.ok) return result;
+  return { ok: false, error: result.error, status: result.status };
+}
+
+async function claudeRequest(
+  config: ClaudeConfig,
+  input: { system: string; user: string; schema: object; maxTokens?: number; timeoutMs?: number; jsonFallback?: string },
+  structured: boolean,
+  fetcher: typeof fetch,
+): Promise<ClaudeResult & { schemaRejected?: true }> {
+  const system = structured ? input.system : `${input.system}\n\n${input.jsonFallback ?? ""}`.trim();
+  const outputConfig = {
+    ...(structured ? { format: { type: "json_schema", schema: input.schema } } : {}),
+    ...(config.effort ? { effort: config.effort } : {}),
+  };
   let response: Response;
   try {
     response = await fetcher(MESSAGES_URL, {
@@ -84,12 +128,9 @@ export async function claudeStructured(
       body: JSON.stringify({
         model: config.model,
         max_tokens: input.maxTokens ?? 8000,
-        system: input.system,
+        system,
         messages: [{ role: "user", content: input.user }],
-        output_config: {
-          format: { type: "json_schema", schema: input.schema },
-          ...(config.effort ? { effort: config.effort } : {}),
-        },
+        ...(Object.keys(outputConfig).length ? { output_config: outputConfig } : {}),
       }),
     });
   } catch (err) {
@@ -108,7 +149,9 @@ export async function claudeStructured(
     usage?: { input_tokens?: number; output_tokens?: number };
   } | null;
   if (!response.ok) {
-    return { ok: false, status: 502, error: claudeError(response.status, payload, config.model) };
+    const error = claudeError(response.status, payload, config.model);
+    if (structured && isSchemaTooComplex(response.status, payload)) return { ok: false, status: 502, error, schemaRejected: true };
+    return { ok: false, status: 502, error };
   }
   if (payload?.stop_reason === "refusal") {
     return { ok: false, status: 422, error: "Claude odmówił odczytu tej rozmowy." };
@@ -134,5 +177,6 @@ export async function claudeStructured(
     data,
     model: payload?.model ?? config.model,
     usage: { input: payload?.usage?.input_tokens ?? 0, output: payload?.usage?.output_tokens ?? 0 },
+    structured,
   };
 }

@@ -207,7 +207,10 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("%s", (_id, f) => {
     expect(f.seller).toBe("Jakub Zborowski");
     expect(["venue", "community", "company"]).toContain(f.segment);
     expect(f.notes.trim().length).toBeGreaterThan(10);
-    expect(validate(g, EXTRACTION_SCHEMA as unknown as Schema)).toEqual([]);
+    // Złoty wzorzec trzyma dowody jako obiekt (czytelniej); model oddaje listę {pole, cytat}.
+    const asModel = { ...g, dowody: Object.entries(g.dowody).filter(([, v]) => v).map(([pole, cytat]) => ({ pole, cytat })) };
+    expect(validate(asModel, EXTRACTION_SCHEMA as unknown as Schema)).toEqual([]);
+    expect(normalizeExtraction(asModel)).toEqual(normalizeExtraction(g));
   });
 
   it("normalizeExtraction(gold) zachowuje wszystkie wartości (nic nie znika po cichu)", () => {
