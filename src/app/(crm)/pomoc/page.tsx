@@ -234,7 +234,16 @@ export default function HelpPage() {
                 wynika („Dowód: …”). Bez dowodu, z dowodem powiedzianym przez handlowca albo z liczbą, której partner nie
                 powiedział, wiersz jest odznaczony i ma ostrzeżenie. Najlepiej działa transkrypt z mówcami („Imię Nazwisko:
                 …”) — wtedy CRM odróżnia Twoje słowa od słów partnera. Bez mówców warunki i dane do umowy są zawsze do
-                ręcznego sprawdzenia.
+                ręcznego sprawdzenia. Gdy CRM nie zgadnie, kto mówi w imieniu Lutry, w podglądzie wybierzesz to jednym
+                kliknięciem.
+              </p>
+              <p>
+                <strong>Przygotowanie do rozmowy.</strong> Na krokach Research i Kontakt kliknij „Przygotuj rozmowę”. AI
+                sprawdza stronę z karty partnera i internet (godziny, wydarzenia, promocje, Instagram), proponuje warunki na
+                start na podstawie partnerów, którzy już się zgodzili, układa pytania na luki w misji i odpowiedzi na
+                prawdopodobne obiekcje. Każdy fakt ma link do źródła — fakty bez źródła i podpowiedzi z obietnicami, których
+                Lutra nie składa, są pomijane. Przygotowanie zapisuje się w misji; propozycję możesz wstawić jako szkic
+                warunków (tylko puste pola). Kosztuje kilka centów (wyszukiwanie + model).
               </p>
             </Block>
 

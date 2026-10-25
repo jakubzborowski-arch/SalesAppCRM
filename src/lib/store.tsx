@@ -1,5 +1,6 @@
 "use client";
 
+import type { CallPrep } from "./call-prep";
 import {
   createContext,
   useCallback,
@@ -183,6 +184,8 @@ type Store = {
   migrationDrift: MigrationDrift | null;
   /** Zmiana warunków współpracy: zniżka, miejsce, cykl albo pilotaż. */
   updateTerms: <K extends keyof MissionTerms>(missionId: string, section: K, patch: Partial<MissionTerms[K]>) => void;
+  /** Zapis (albo usunięcie) przygotowania AI do rozmowy. */
+  saveCallPrep: (missionId: string, prep: CallPrep | null) => void;
   /** Forma zawarcia: porozumienie mailowe (do 3 miesięcy) albo umowa. */
   setAgreementForm: (missionId: string, form: AgreementForm) => void;
   /** Ustawia pozycję checklisty (z datą odhaczenia w bazie). */
@@ -1194,6 +1197,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       migrationDrift: drift,
       updateTerms: (missionId, section, patch) => {
         patchMission(missionId, (m) => withTerms(m, section, patch));
+      },
+      saveCallPrep: (missionId, prep) => {
+        patchMission(missionId, (m) => ({ ...m, callPrep: prep }));
       },
       setAgreementForm: (missionId, form) => {
         patchMission(missionId, (m) => withAgreementForm(m, form));

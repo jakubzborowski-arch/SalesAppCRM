@@ -11,6 +11,7 @@ import { TransferMission } from "@/components/mission/transfer-mission";
 import { DraftBubble } from "@/components/mission/draft-bubble";
 import { QuickVisitButton } from "@/components/mission/quick-visit";
 import { TalkBubble } from "@/components/mission/talk-bubble";
+import { CallPrepCard } from "@/components/mission/call-prep-card";
 import { MissionStepper } from "@/components/mission/stepper";
 import { ActivationStep } from "@/components/mission/steps/activation-step";
 import { ContactStep } from "@/components/mission/steps/contact-step";
@@ -406,6 +407,9 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
             <ActivationStep mission={shown} partner={partner} />
           ) : null}
           </fieldset>
+          {stage === "research" || stage === "contact" || stage === "discovery" || stage === "offer" ? (
+            <CallPrepCard partner={partner} mission={shown} stage={stage} editable={editable} />
+          ) : null}
 
           {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
 

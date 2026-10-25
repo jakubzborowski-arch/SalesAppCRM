@@ -113,6 +113,7 @@ export function emptyMission(partnerId: string, id = crypto.randomUUID()): Missi
   return {
     id,
     partnerId,
+    callPrep: null,
     closeNote: "",
     activities: [],
     events: [],

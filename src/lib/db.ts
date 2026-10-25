@@ -1,4 +1,5 @@
 import type { MigrationRow } from "./migrations";
+import { callPrepOf } from "./call-prep";
 import { isValidNip, normalizeNip } from "./company";
 import {
   bundlePayload,
@@ -72,6 +73,7 @@ type MissionDetails = {
   terms?: Partial<Mission["terms"]>;
   agreementForm?: Mission["agreementForm"];
   care?: Partial<Mission["care"]>;
+  callPrep?: unknown;
 };
 
 function uiDetailsOf(mission: Mission): MissionDetails {
@@ -87,6 +89,7 @@ function uiDetailsOf(mission: Mission): MissionDetails {
     terms: mission.terms,
     agreementForm: mission.agreementForm,
     care: mission.care,
+    callPrep: mission.callPrep,
   };
 }
 
@@ -148,6 +151,7 @@ function missionFromRow(
     terms: mergeTerms(d.terms),
     agreementForm: d.agreementForm ?? null,
     care: mergeCare(d.care),
+    callPrep: callPrepOf(d.callPrep),
     objections: d.objections?.length
       ? d.objections
       : OBJECTION_KEYS.map((item) => ({

@@ -164,3 +164,12 @@ Każde wywołanie LLM dostaje:
 - instrukcję: „odpowiadaj tylko na podstawie dostarczonego kontekstu”
 
 Wyjście JSON walidowane schematem (Zod). Jeśli model zwróci wariant spoza biblioteki albo obietnicę z blacklisty — odrzucamy output i pokazujemy błąd, nie treść.
+
+## Przygotowanie do rozmowy (`/api/call-prep`, `src/lib/call-prep.ts`)
+
+- Przeglądarka składa kontekst: karta partnera (bez telefonów i maili), historia kontaktu, luki w misji (`discoveryGaps`) i warunki do 5 podobnych partnerów, którzy już się zgodzili (`similarDeals` — do modelu bez nazw).
+- Krok 1 — research: Claude z narzędziami serwerowymi `web_search_20250305` (do 4 wyszukań) i `web_fetch_20250910` (strona z karty, do 12 tys. tokenów). Obsługa `pause_turn`; gdy organizacja nie ma web fetch / web search (Claude Console → Settings → Capabilities), kolejno prostszy zestaw, a na końcu przygotowanie tylko z CRM z informacją dla handlowca.
+- Krok 2 — przygotowanie w stałym formacie (`PREP_SCHEMA`, płaski, ze ścieżką zapasową JSON w poleceniu).
+- `normalizePrep`: fakt zostaje tylko ze źródłem, które naprawdę padło (adres z wyników / strony partnera albo „karta partnera”), oferta przycięta do poprawnych wartości (dla społeczności i firm bez liczb), filtr obietnic z listy „Czego nie obiecywać”.
+- Wynik w `mission.details.callPrep` (bez migracji). „Wstaw propozycję jako szkic warunków” wypełnia tylko puste pola zniżki.
+- Limit: wspólny z odczytem rozmów (`extract`, 30/h). Koszt: ok. 1–4 centy za wyszukiwania + tokeny strony i odpowiedzi.

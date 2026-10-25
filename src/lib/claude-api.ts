@@ -180,3 +180,153 @@ async function claudeRequest(
     structured,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Research z wyszukiwarką (narzędzia serwerowe Claude: web_search, web_fetch)
+
+export type ResearchSource = { url: string; title: string };
+export type ResearchResult =
+  | {
+      ok: true;
+      text: string;
+      sources: ResearchSource[];
+      searches: number;
+      usage: { input: number; output: number };
+      tools: string[];
+    }
+  | { ok: false; error: string; status: number; disabled?: boolean };
+
+type ContentBlock = {
+  type?: string;
+  text?: string;
+  name?: string;
+  content?: unknown;
+  citations?: Array<{ url?: unknown; title?: unknown }>;
+};
+
+/** Kolejne zestawy narzędzi: gdy API odrzuci jeden (np. web_fetch wyłączony), próbujemy prostszego. */
+export const RESEARCH_TOOLSETS: Array<{ label: string; tools: object[]; beta?: string }> = [
+  {
+    label: "web_search+web_fetch",
+    tools: [
+      { type: "web_search_20250305", name: "web_search", max_uses: 4 },
+      { type: "web_fetch_20250910", name: "web_fetch", max_uses: 3, max_content_tokens: 12000 },
+    ],
+  },
+  {
+    label: "web_search+web_fetch (beta)",
+    beta: "web-fetch-2025-09-10",
+    tools: [
+      { type: "web_search_20250305", name: "web_search", max_uses: 4 },
+      { type: "web_fetch_20250910", name: "web_fetch", max_uses: 3, max_content_tokens: 12000 },
+    ],
+  },
+  { label: "web_search", tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }] },
+];
+
+/** Źródła z cytowań i z wyników wyszukiwania / pobrania strony (bez duplikatów). */
+export function researchSources(blocks: ContentBlock[]): ResearchSource[] {
+  const out = new Map<string, ResearchSource>();
+  const add = (url: unknown, title: unknown) => {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url) || out.has(url)) return;
+    out.set(url, { url: url.slice(0, 400), title: typeof title === "string" ? title.slice(0, 200) : "" });
+  };
+  for (const block of blocks) {
+    for (const c of block.citations ?? []) add(c.url, c.title);
+    if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+      for (const r of block.content as Array<{ url?: unknown; title?: unknown }>) add(r.url, r.title);
+    }
+    if (block.type === "web_fetch_tool_result" && block.content && typeof block.content === "object") {
+      const r = block.content as { url?: unknown; content?: { title?: unknown } };
+      add(r.url, r.content?.title);
+    }
+  }
+  return [...out.values()];
+}
+
+/** Brak dostępu do narzędzia (wyłączone w Console, nieznany typ) — 400, po którym warto spróbować prostszego zestawu. */
+export function isToolUnavailable(status: number, payload: unknown) {
+  if (status !== 400 && status !== 403) return false;
+  return /web[_ ]?(search|fetch)|tool|beta|not enabled|disabled|capabilit/i.test(apiMessage(payload));
+}
+
+/**
+ * Jedno badanie z narzędziami serwerowymi. Obsługuje `pause_turn` (odsyłamy odpowiedź bez zmian, najwyżej 2 razy)
+ * i spada na prostszy zestaw narzędzi, gdy API go nie przyjmie.
+ */
+export async function claudeResearch(
+  config: ClaudeConfig,
+  input: { system: string; user: string; maxTokens?: number; timeoutMs?: number; toolsets?: typeof RESEARCH_TOOLSETS },
+  fetcher: typeof fetch = fetch,
+): Promise<ResearchResult> {
+  const started = Date.now();
+  const budget = input.timeoutMs ?? 75_000;
+  let lastError: ResearchResult = { ok: false, status: 400, error: "Wyszukiwanie niedostępne.", disabled: true };
+  for (const set of input.toolsets ?? RESEARCH_TOOLSETS) {
+    const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [{ role: "user", content: input.user }];
+    const blocks: ContentBlock[] = [];
+    const usage = { input: 0, output: 0 };
+    let searches = 0;
+    let rejected = false;
+    for (let round = 0; round < 3; round++) {
+      const left = budget - (Date.now() - started);
+      if (left < 5_000) return { ok: false, status: 504, error: "Wyszukiwanie trwało za długo." };
+      let response: Response;
+      try {
+        response = await fetcher(MESSAGES_URL, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": config.apiKey,
+            "anthropic-version": "2023-06-01",
+            ...(set.beta ? { "anthropic-beta": set.beta } : {}),
+            ...(config.workspaceId ? { "anthropic-workspace-id": config.workspaceId } : {}),
+          },
+          signal: AbortSignal.timeout(left),
+          body: JSON.stringify({
+            model: config.model,
+            max_tokens: input.maxTokens ?? 3000,
+            system: input.system,
+            messages,
+            tools: set.tools,
+            ...(config.effort ? { output_config: { effort: config.effort } } : {}),
+          }),
+        });
+      } catch (err) {
+        const timeout = (err as { name?: string } | null)?.name === "TimeoutError";
+        return { ok: false, status: timeout ? 504 : 503, error: timeout ? "Wyszukiwanie trwało za długo." : "Brak połączenia z Claude API." };
+      }
+      const payload = (await response.json().catch(() => null)) as {
+        stop_reason?: string;
+        content?: ContentBlock[];
+        usage?: { input_tokens?: number; output_tokens?: number; server_tool_use?: { web_search_requests?: number } };
+      } | null;
+      if (!response.ok) {
+        if (round === 0 && isToolUnavailable(response.status, payload)) {
+          lastError = { ok: false, status: 400, error: claudeError(response.status, payload, config.model), disabled: true };
+          rejected = true;
+          break;
+        }
+        return { ok: false, status: 502, error: claudeError(response.status, payload, config.model) };
+      }
+      const content = payload?.content ?? [];
+      blocks.push(...content);
+      usage.input += payload?.usage?.input_tokens ?? 0;
+      usage.output += payload?.usage?.output_tokens ?? 0;
+      searches += payload?.usage?.server_tool_use?.web_search_requests ?? 0;
+      if (payload?.stop_reason === "pause_turn") {
+        messages.push({ role: "assistant", content });
+        continue;
+      }
+      break;
+    }
+    if (rejected) continue;
+    const text = blocks
+      .filter((b) => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text)
+      .join("")
+      .trim();
+    return { ok: true, text, sources: researchSources(blocks), searches, usage, tools: [set.label] };
+  }
+  return lastError;
+}
