@@ -315,8 +315,14 @@ export default function HelpPage() {
                   • <strong>Co kwartał:</strong> potwierdzenie z partnerem, że warunki, godziny i kontakt są aktualne.
                 </li>
                 <li>
-                  • <strong>Co miesiąc (miejsca):</strong> informacja dla partnera o liczbie realizacji zniżki z poprzedniego
-                  miesiąca.
+                  • <strong>Co miesiąc:</strong> metryki z panelu Lutry — wydarzenia, uczestnicy, a w lokalach realizacje
+                  zniżki. Z nich powstaje mail z podsumowaniem dla partnera (kopiujesz albo otwierasz w poczcie, CRM nic
+                  nie wysyła sam). Zapis za poprzedni miesiąc odhacza przypomnienie w „Na dziś”.
+                </li>
+                <li>
+                  • <strong>Zdrowie partnera:</strong> zielony — w porządku; żółty — brak liczb za poprzedni miesiąc albo
+                  spadek o połowę; czerwony — 2 miesiące bez liczb, 2 miesiące z zerem albo decyzja „kończymy”. Przez
+                  pierwsze 30 dni bez liczb — „za wcześnie”.
                 </li>
                 <li>
                   • <strong>Koniec okresu:</strong> 30 dni wcześniej przypomnienie o przedłużeniu. Odnowienie = nowa misja.

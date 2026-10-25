@@ -2,6 +2,8 @@ import type { MigrationRow } from "./migrations";
 import { isValidNip, normalizeNip } from "./company";
 import { loadMissionCore, syncMissionCore } from "./mission-core";
 import { mergeCare, mergeTerms } from "./terms";
+import { fitLevel } from "./fit";
+import { MONTH_RE } from "./health";
 import { nextPriorityForDb, normalizePartnerPriority, priorityForDb } from "./partner-priority";
 import { OBJECTION_KEYS } from "./playbook";
 import { fetchAll, groupBy, selectIn } from "./fetch-all";
@@ -21,6 +23,8 @@ import type {
   NewPartnerInput,
   Partner,
   PartnerContact,
+  PartnerMetrics,
+  PartnerMetricsInput,
   StageId,
   InvitePeek,
   TaskItem,
@@ -167,6 +171,9 @@ function mapPartner(
     notes: string | null;
     owner_user_id?: string | null;
     capacity?: number | null;
+    fit_dead_hours?: number | null;
+    fit_capacity?: number | null;
+    fit_area?: number | null;
     legal_name?: string | null;
     nip?: string | null;
     regon?: string | null;
@@ -207,6 +214,11 @@ function mapPartner(
     },
     contacts,
     consents,
+    fit: {
+      deadHours: fitLevel(row.fit_dead_hours),
+      capacity: fitLevel(row.fit_capacity),
+      area: fitLevel(row.fit_area),
+    },
   };
 }
 
@@ -679,12 +691,20 @@ function partnerColumns(partner: Partner): Record<string, unknown> {
     billing_email: c.billingEmail || null,
     segment: partner.segment,
     capacity: partner.capacity && partner.capacity > 0 ? Math.round(partner.capacity) : null,
+    fit_dead_hours: fitLevel(partner.fit?.deadHours),
+    fit_capacity: fitLevel(partner.fit?.capacity),
+    fit_area: fitLevel(partner.fit?.area),
   };
 }
 
 const COMPANY_COLUMNS = ["legal_name", "nip", "regon", "legal_address", "mailing_address", "billing_email"];
 /** Kolumny z migracji v7 (typ partnera i pojemność). */
 const V7_PARTNER_COLUMNS = ["segment", "capacity"];
+/** Kolumny z migracji v8 (wynik dopasowania lokalu). */
+const V8_PARTNER_COLUMNS = ["fit_dead_hours", "fit_capacity", "fit_area"];
+
+/** Zabrakło kolumn dopasowania albo tabeli metryk — trzeba uruchomić migrację v8. */
+export const V8_MISSING = "Baza nie ma jeszcze wyniku dopasowania i metryk partnera. Uruchom migrację v8 z paska u góry strony.";
 
 /** Zabrakło kolumn typu partnera / pojemności — trzeba uruchomić migrację v7. */
 export const V7_MISSING = "Baza nie ma jeszcze pól typu partnera i pojemności. Uruchom migrację v7 z paska u góry strony.";
@@ -699,8 +719,8 @@ export const V5_MISSING = "Baza nie ma jeszcze pól danych firmy. Uruchom migrac
 export async function persistPartner(
   partner: Partner,
   before?: Partner,
-): Promise<{ dropped: ("company" | "priority" | "v7")[]; conflicts: string[] }> {
-  const dropped: ("company" | "priority" | "v7")[] = [];
+): Promise<{ dropped: ("company" | "priority" | "v7" | "v8")[]; conflicts: string[] }> {
+  const dropped: ("company" | "priority" | "v7" | "v8")[] = [];
   /** Kontakty zmienione w międzyczasie przez kogoś innego — ich nie zapisujemy. */
   const conflicts: string[] = [];
   const sb = getSupabase();
@@ -723,7 +743,7 @@ export async function persistPartner(
   const prev = before ? partnerColumns(before) : null;
   const changed = Object.fromEntries(
     Object.entries(next).filter(([key, value]) => {
-      if (!prev) return !([...COMPANY_COLUMNS, "capacity"].includes(key) && value === null);
+      if (!prev) return !([...COMPANY_COLUMNS, ...V8_PARTNER_COLUMNS, "capacity"].includes(key) && value === null);
       return JSON.stringify(prev[key]) !== JSON.stringify(value);
     }),
   );
@@ -733,9 +753,17 @@ export async function persistPartner(
         ? (await sb.from("partners").update(changed).eq("id", partner.id)).error
         : null;
     let error = await send();
-    for (let attempt = 0; error && attempt < 5; attempt++) {
+    for (let attempt = 0; error && attempt < 6; attempt++) {
       const missing = missingColumnName(error);
-      if ("priority" in changed && /partner_priority/i.test(error.message ?? "")) {
+      if (
+        isMissingColumn(error) &&
+        Object.keys(changed).some((key) => V8_PARTNER_COLUMNS.includes(key)) &&
+        (!missing || V8_PARTNER_COLUMNS.includes(missing))
+      ) {
+        // Bez migracji v8 nie ma gdzie zapisać wyniku dopasowania — reszta karty się zapisuje.
+        for (const key of V8_PARTNER_COLUMNS) delete changed[key];
+        if (!dropped.includes("v8")) dropped.push("v8");
+      } else if ("priority" in changed && /partner_priority/i.test(error.message ?? "")) {
         // Starsza baza ma inny zestaw priorytetów — reszta zmian i tak ma się zapisać.
         delete changed.priority;
         dropped.push("priority");
@@ -1226,6 +1254,69 @@ export async function detectSchemaV8(): Promise<{ has: boolean | null; rows: Mig
   if (error) return { has: isMissingCrmTable(error) || isMissingColumn(error) ? false : null, rows: [] };
   const rows = (data ?? []) as MigrationRow[];
   return { has: rows.some((row) => row.version === "v8"), rows };
+}
+
+function intOrNull(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
+}
+
+function metricsFromRow(row: Record<string, unknown>): PartnerMetrics {
+  return {
+    id: String(row.id),
+    partnerId: String(row.partner_id),
+    month: String(row.month),
+    events: intOrNull(row.events),
+    attendees: intOrNull(row.attendees),
+    redemptions: intOrNull(row.redemptions),
+    notes: typeof row.notes === "string" ? row.notes : "",
+    updatedAt: row.updated_at ? String(row.updated_at) : undefined,
+  };
+}
+
+/** Wartości z formularza → wiersz bazy (liczby całkowite ≥ 0, notatka do 1000 znaków). */
+export function metricsPayload(values: PartnerMetricsInput) {
+  return {
+    events: intOrNull(values.events),
+    attendees: intOrNull(values.attendees),
+    redemptions: intOrNull(values.redemptions),
+    notes: values.notes.trim().slice(0, 1000) || null,
+  };
+}
+
+/** Metryki partnerów (migracja v8). `missing` — tabeli jeszcze nie ma. */
+export async function loadPartnerMetrics(partnerIds: string[]): Promise<{ metrics: PartnerMetrics[]; missing: boolean }> {
+  const sb = getSupabase();
+  if (!sb || !partnerIds.length) return { metrics: [], missing: false };
+  const { data, error } = await selectIn(sb, "partner_metrics", "partner_id", partnerIds);
+  if (error) {
+    if (isMissingCrmTable(error) || isMissingColumn(error)) return { metrics: [], missing: true };
+    throw error;
+  }
+  return { metrics: data.map(metricsFromRow), missing: false };
+}
+
+/** Zapis metryk za miesiąc (jeden wiersz na partnera i miesiąc). */
+export async function savePartnerMetricsRow(
+  partnerId: string,
+  month: string,
+  values: PartnerMetricsInput,
+): Promise<PartnerMetrics> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Brak klienta Supabase.");
+  if (!MONTH_RE.test(month)) throw new Error("Miesiąc w formacie RRRR-MM.");
+  const { data, error } = await sb
+    .from("partner_metrics")
+    .upsert(
+      { partner_id: partnerId, month, ...metricsPayload(values), updated_at: new Date().toISOString() },
+      { onConflict: "partner_id,month" },
+    )
+    .select("*")
+    .single();
+  if (error) {
+    if (isMissingCrmTable(error) || isMissingColumn(error)) throw new Error(V8_MISSING);
+    throw error;
+  }
+  return metricsFromRow(data as Record<string, unknown>);
 }
 
 /** Szablon porozumienia mailowego zespołu (admin, migracja v7). */

@@ -9,9 +9,17 @@ vi.mock("@/lib/supabase", () => ({
     Boolean(error && (error.code === "PGRST205" || error.code === "42P01")),
 }));
 
-const { persistMission, persistPartner, loadCrm, clearMissionVersions, replaceMissionVersions, preferFilled } = await import(
-  "@/lib/db"
-);
+const {
+  persistMission,
+  persistPartner,
+  loadCrm,
+  clearMissionVersions,
+  replaceMissionVersions,
+  preferFilled,
+  loadPartnerMetrics,
+  savePartnerMetricsRow,
+  V8_MISSING,
+} = await import("@/lib/db");
 const { emptyCompany } = await import("@/lib/company");
 const { emptyMission } = await import("@/lib/seed");
 const { changeRulesFor } = await import("@/lib/terms");
@@ -118,5 +126,54 @@ describe("karta partnera na bazie bez pojemności (przed v7)", () => {
     expect(result.dropped).toEqual(["v7"]);
     expect(fake.db.rows("partners")[0].segment).toBe("community");
     expect(fake.db.rows("partners")[0].capacity).toBeUndefined();
+  });
+});
+
+describe("v8: wynik dopasowania i metryki partnera", () => {
+  const base: Partner = {
+    id: P, name: "Nova", segment: "venue", capacity: 20, city: "", address: "", category: "", subcategory: "",
+    website: "", instagram: "", facebook: "", socialOther: "", priority: "", priorityReason: "", source: "", dnc: false,
+    company: emptyCompany(), contacts: [], consents: [],
+  };
+  beforeEach(() => {
+    fake.db = new FakeDb();
+    clearMissionVersions();
+    fake.db.rows("partners").push({ id: P, workspace_id: WS, name: "Nova", segment: "venue", dnc_status: "ok", capacity: 20 });
+  });
+
+  it("dopasowanie zapisuje się w kolumnach fit_* i wraca po odświeżeniu", async () => {
+    const result = await persistPartner({ ...base, fit: { deadHours: 2, capacity: 1, area: null } }, base);
+    expect(result.dropped).toEqual([]);
+    expect(fake.db.rows("partners")[0]).toMatchObject({ fit_dead_hours: 2, fit_capacity: 1 });
+    expect(fake.db.rows("partners")[0].fit_area).toBeUndefined();
+    const { partners } = await loadCrm(WS);
+    expect(partners[0].fit).toEqual({ deadHours: 2, capacity: 1, area: null });
+  });
+
+  it("bez migracji v8 dopasowanie odpada, reszta karty się zapisuje", async () => {
+    fake.db.failNext = { table: "partners", op: "update", error: { code: "PGRST204", message: "Could not find the 'fit_area' column of 'partners' in the schema cache" } };
+    const result = await persistPartner({ ...base, city: "Kraków", fit: { deadHours: null, capacity: null, area: 2 } }, base);
+    expect(result.dropped).toEqual(["v8"]);
+    expect(fake.db.rows("partners")[0].city).toBe("Kraków");
+    expect(fake.db.rows("partners")[0].fit_area).toBeUndefined();
+  });
+
+  it("metryki: jeden wiersz na partnera i miesiąc, liczby całkowite ≥ 0, notatka przycięta", async () => {
+    await savePartnerMetricsRow(P, "2026-09", { events: 3, attendees: 25.4, redemptions: 11, notes: "  remont  " });
+    const saved = await savePartnerMetricsRow(P, "2026-09", { events: 4, attendees: 25, redemptions: 12, notes: "x".repeat(1200) });
+    expect(fake.db.rows("partner_metrics")).toHaveLength(1);
+    expect(saved).toMatchObject({ partnerId: P, month: "2026-09", events: 4, attendees: 25, redemptions: 12 });
+    expect(saved.notes).toHaveLength(1000);
+    const { metrics, missing } = await loadPartnerMetrics([P]);
+    expect(missing).toBe(false);
+    expect(metrics).toEqual([expect.objectContaining({ month: "2026-09", redemptions: 12 })]);
+    await expect(savePartnerMetricsRow(P, "2026-9", { events: 1, attendees: null, redemptions: null, notes: "" })).rejects.toThrow(/RRRR-MM/);
+  });
+
+  it("brak tabeli metryk: odczyt mówi „po migracji v8”, zapis zwraca komunikat", async () => {
+    fake.db.failNext = { table: "partner_metrics", op: "select", error: { code: "PGRST205", message: "Could not find the table 'public.partner_metrics'" } };
+    expect(await loadPartnerMetrics([P])).toEqual({ metrics: [], missing: true });
+    fake.db.failNext = { table: "partner_metrics", op: "upsert", error: { code: "42P01", message: "relation partner_metrics does not exist" } };
+    await expect(savePartnerMetricsRow(P, "2026-09", { events: 1, attendees: null, redemptions: null, notes: "" })).rejects.toThrow(V8_MISSING);
   });
 });

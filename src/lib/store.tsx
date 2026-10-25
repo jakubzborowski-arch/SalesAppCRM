@@ -46,6 +46,9 @@ import {
   saveAgreementTemplate as saveAgreementTemplateRow,
   saveContractTemplate as saveContractTemplateRow,
   V7_MISSING,
+  V8_MISSING,
+  loadPartnerMetrics,
+  savePartnerMetricsRow,
   transferMission as transferMissionRow,
   V5_MISSING,
   loadPartner,
@@ -70,6 +73,8 @@ import {
   uploadContractPdf,
 } from "./mission-core";
 import { migrationDrift, type MigrationDrift } from "./migrations";
+import { fitOf, pickUrgentMission } from "./fit";
+import { MONTH_RE } from "./health";
 import { getSupabase, isMissingCrmTable, isSupabaseConfigured } from "./supabase";
 import type {
   MissionTerms,
@@ -88,6 +93,8 @@ import type {
   OfferVariant,
   Partner,
   PartnerContact,
+  PartnerMetrics,
+  PartnerMetricsInput,
   StageId,
   TaskItem,
   TeamInvite,
@@ -162,6 +169,10 @@ type Store = {
   confirmTerms: (missionId: string) => void;
   /** Opieka: wysłana miesięczna informacja o liczbie realizacji. */
   reportRedemptions: (missionId: string, month: string, count: number | null) => void;
+  /** Miesięczne metryki partnera (wydarzenia, uczestnicy, realizacje zniżki, notatka). */
+  savePartnerMetrics: (partnerId: string, month: string, values: PartnerMetricsInput) => Promise<Result>;
+  /** Baza nie ma jeszcze tabeli metryk (migracja v8). */
+  metricsMissing: boolean;
   /** Zapisuje w dzienniku wysłany mail po telefonie albo spotkaniu. */
   logFollowUpMail: (missionId: string, afterActivityId: string) => Promise<Result>;
   /** Generuje PDF umowy z szablonu i podpina go do misji. */
@@ -283,6 +294,7 @@ const emptyState: AppState = {
   missions: [],
   tasks: [],
   team: [],
+  metrics: [],
 };
 
 /** Wyciąga kod zaproszenia z linku (`…/login?invite=KOD`) albo z samego kodu. */
@@ -398,7 +410,9 @@ function readLocal(): AppState {
         company: { ...emptyCompany(), ...(p.company ?? {}) },
         segment: p.segment ?? "venue",
         capacity: p.capacity ?? null,
+        fit: fitOf(p),
       })),
+      metrics: (parsed.metrics ?? []).filter((m) => m && typeof m.partnerId === "string" && MONTH_RE.test(m.month)),
       missions: (parsed.missions ?? []).map((m) => {
         const base = emptyMission(m.partnerId, m.id);
         return {
@@ -454,6 +468,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [schemaV6, setSchemaV6] = useState<boolean | null>(null);
   const [schemaV7, setSchemaV7] = useState<boolean | null>(null);
   const [schemaV8, setSchemaV8] = useState<boolean | null>(null);
+  const [metricsMissing, setMetricsMissing] = useState(false);
   const [drift, setDrift] = useState<MigrationDrift | null>(null);
   const storeRef = useRef<Store | null>(null);
   /** Uprawnienia egzekwujemy w widoku tylko, gdy baza ma v6 (inaczej baza też nikogo nie ogranicza). */
@@ -527,6 +542,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (dropped.includes("v7")) {
           setSchemaV7(false);
           setNotice({ kind: "error", text: `${partner.name}: ${V7_MISSING}` });
+        }
+        if (dropped.includes("v8")) {
+          setSchemaV8(false);
+          setNotice({ kind: "error", text: `${partner.name}: ${V8_MISSING}` });
         }
         if (dropped.includes("priority")) {
           setNotice({ kind: "error", text: `${partner.name}: baza nie przyjęła tego priorytetu. Reszta zmian zapisana.` });
@@ -683,6 +702,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           loadCrm(ctx.workspaceId),
           loadTeam().catch(() => undefined),
         ]);
+        const metricsResult = await loadPartnerMetrics(partners.map((p) => p.id)).catch(() => null);
+        setMetricsMissing(Boolean(metricsResult?.missing));
         const me = team?.find((member) => member.isMe);
         const name = fullName || me?.fullName || ctx.fullName;
         const next: AppState = {
@@ -703,6 +724,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           missions,
           tasks,
           team: team ?? [],
+          metrics: metricsResult?.metrics ?? [],
         };
         // Workspace, stan do zapisu i „zapisane” przestawiamy razem — zapis w tle nie zobaczy pół stanu.
         workspaceIdRef.current = ctx.workspaceId;
@@ -763,7 +785,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         loadCrm(workspaceId),
         loadTeam().catch(() => undefined),
       ]);
+      const metricsResult = await loadPartnerMetrics(partners.map((p) => p.id)).catch(() => null);
       if (workspaceIdRef.current !== workspaceId || hydrating.current) return;
+      if (metricsResult) setMetricsMissing(metricsResult.missing);
       lastLoadAt.current = Date.now();
       setState((prev) => {
         // Zostawiamy lokalną wersję, gdy ma niezapisane zmiany albo zapisała się już po starcie wczytywania.
@@ -806,6 +830,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           missions: nextMissions,
           tasks,
           team: team ?? prev.team,
+          metrics: metricsResult && !metricsResult.missing ? metricsResult.metrics : prev.metrics,
         };
         // Zapis w tle porównuje z tym samym stanem, który właśnie oznaczyliśmy jako zapisany.
         latest.current = next;
@@ -1145,6 +1170,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ].sort((a, b) => b.month.localeCompare(a.month)),
           },
         }));
+      },
+      metricsMissing,
+      savePartnerMetrics: async (partnerId, month, values) => {
+        const partner = latest.current.partners.find((p) => p.id === partnerId);
+        if (!partner) return { ok: false, error: "Nie ma takiego partnera." };
+        if (!canEditPartnerIn(latest.current, partner, enforceRef.current)) {
+          return { ok: false, error: "Metryki wpisuje opiekun partnera, prowadzący misję albo administrator." };
+        }
+        if (!MONTH_RE.test(month)) return { ok: false, error: "Wybierz miesiąc." };
+        const numbers = [values.events, values.attendees, values.redemptions];
+        if (numbers.some((v) => v !== null && (!Number.isFinite(v) || v < 0))) {
+          return { ok: false, error: "Liczby nie mogą być ujemne." };
+        }
+        if (numbers.every((v) => v === null) && !values.notes.trim()) {
+          return { ok: false, error: "Wpisz przynajmniej jedną liczbę albo notatkę." };
+        }
+        const clean: PartnerMetricsInput = {
+          events: values.events === null ? null : Math.round(values.events),
+          attendees: values.attendees === null ? null : Math.round(values.attendees),
+          redemptions: values.redemptions === null ? null : Math.round(values.redemptions),
+          notes: values.notes.trim().slice(0, 1000),
+        };
+        let saved: PartnerMetrics;
+        if (isSupabaseConfigured() && userIdRef.current) {
+          try {
+            saved = await savePartnerMetricsRow(partnerId, month, clean);
+            setMetricsMissing(false);
+          } catch (err) {
+            const error = errorText(err, "Nie udało się zapisać metryk.");
+            if (error === V8_MISSING) setMetricsMissing(true);
+            return { ok: false, error };
+          }
+        } else {
+          // Tryb demo: metryki w przeglądarce razem z resztą stanu.
+          const existing = (latest.current.metrics ?? []).find((m) => m.partnerId === partnerId && m.month === month);
+          saved = { id: existing?.id ?? crypto.randomUUID(), partnerId, month, ...clean, updatedAt: new Date().toISOString() };
+        }
+        setState((prev) => {
+          const next = {
+            ...prev,
+            metrics: [...(prev.metrics ?? []).filter((m) => !(m.partnerId === partnerId && m.month === month)), saved],
+          };
+          latest.current = next;
+          return next;
+        });
+        return { ok: true };
       },
       logFollowUpMail: async (missionId, afterActivityId) => {
         const mission = latest.current.missions.find((m) => m.id === missionId);
@@ -1577,15 +1648,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       latestMissionByPartner,
       missionsOfPartner,
       memberName,
-      urgentMission: () => {
-        const mission = [...state.missions]
-          .filter((m) => m.status === "active")
-          .sort((a, b) => a.nextStepAt.localeCompare(b.nextStepAt))[0];
-        if (!mission) return undefined;
-        const partner = partnerById(mission.partnerId);
-        if (!partner) return undefined;
-        return { partner, mission };
-      },
+      urgentMission: () => pickUrgentMission(state),
       startMission: (partnerId) => {
         const partner = partnerById(partnerId);
         if (!partner) return null;
@@ -2153,6 +2216,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     schemaV6,
     schemaV7,
     schemaV8,
+    metricsMissing,
     drift,
     notice,
     invite,

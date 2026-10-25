@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { inputClass } from "@/components/ui";
+import { FitBadge } from "@/components/partners/fit-editor";
+import { HealthBadge } from "@/components/partners/health-badge";
+import { careMissionOf } from "@/lib/care";
+import { sortPartners, type PartnerSort as SortKey } from "@/lib/fit";
+import { healthFor } from "@/lib/health";
 import { PARTNER_PRIORITIES } from "@/lib/partner-priority";
 import { MISSION_STATUS_LABEL, SEGMENTS, segmentLabel } from "@/lib/playbook";
 import { useStore } from "@/lib/store";
@@ -22,6 +27,7 @@ export default function PartnersPage() {
   const [priority, setPriority] = useState("all");
   const [category, setCategory] = useState("all");
   const [missionFilter, setMissionFilter] = useState<"all" | "open" | "none">("all");
+  const [sort, setSort] = useState<SortKey>("added");
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +46,7 @@ export default function PartnersPage() {
 
   const filtered = useMemo(() => {
     const q = fold(query.trim());
-    return state.partners.filter((partner) => {
+    const list = state.partners.filter((partner) => {
       const mission = missionByPartner(partner.id);
       if (segment !== "all" && partner.segment !== segment) return false;
       if (priority !== "all" && fold(partner.priority) !== fold(priority)) return false;
@@ -64,7 +70,8 @@ export default function PartnersPage() {
         .join(" ");
       return hay.includes(q);
     });
-  }, [state.partners, query, segment, priority, category, missionFilter, missionByPartner]);
+    return sortPartners(list, sort);
+  }, [state.partners, query, segment, priority, category, missionFilter, missionByPartner, sort]);
 
   const remove = async (id: string) => {
     setBusyId(id);
@@ -112,7 +119,7 @@ export default function PartnersPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 rounded-[28px] border border-line bg-white p-4 md:grid-cols-[1fr_150px_160px_160px_150px]">
+        <div className="mt-6 grid gap-3 rounded-[28px] border border-line bg-white p-4 md:grid-cols-[1fr_150px_160px_160px_150px_170px]">
           <input
             className={inputClass}
             placeholder="Szukaj nazwy, miasta, adresu…"
@@ -157,6 +164,16 @@ export default function PartnersPage() {
             <option value="open">Z misją</option>
             <option value="none">Bez misji</option>
           </select>
+          <select
+            className={inputClass}
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            aria-label="Sortowanie"
+          >
+            <option value="added">Od dodania</option>
+            <option value="name">Nazwa A–Z</option>
+            <option value="fit">Dopasowanie</option>
+          </select>
         </div>
 
         {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
@@ -173,6 +190,7 @@ export default function PartnersPage() {
             const mission = missionByPartner(partner.id);
             const stage = STAGES.find((s) => s.id === mission?.currentStage);
             const closed = mission ? undefined : latestMissionByPartner(partner.id);
+            const health = careMissionOf(state.missions, partner.id) ? healthFor(state, partner) : null;
             return (
               <div
                 key={partner.id}
@@ -187,6 +205,8 @@ export default function PartnersPage() {
                   </p>
                 </Link>
                 <div className="flex shrink-0 items-center gap-3 text-sm">
+                  {health ? <HealthBadge health={health} compact /> : null}
+                  <FitBadge partner={partner} />
                   {partner.dnc ? (
                     <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700">
                       Nie kontaktować

@@ -80,6 +80,17 @@ export const CONTRACT_END_NOTICE_DAYS = 30;
 /** Po ilu dniach od wysyłki przypominamy o podpisie partnera. */
 export const SIGNATURE_NUDGE_DAYS = 5;
 
+/**
+ * Informacja o realizacjach za miesiąc jest „odhaczona”, gdy handlowiec zapisał wysyłkę (`care.reports`)
+ * albo wpisał metryki partnera za ten miesiąc (z nich powstaje mail z podsumowaniem).
+ */
+export function reportDone(state: Pick<AppState, "metrics">, mission: Pick<Mission, "care" | "partnerId">, month: string) {
+  return (
+    mission.care.reports.some((report) => report.month === month) ||
+    (state.metrics ?? []).some((m) => m.partnerId === mission.partnerId && m.month === month)
+  );
+}
+
 function mine(state: AppState, mission: Mission, onlyMine: boolean) {
   if (!onlyMine || !state.user.id) return true;
   return !mission.ownerUserId || mission.ownerUserId === state.user.id;
@@ -201,7 +212,7 @@ export function agenda(state: AppState, onlyMine = true, today = new Date()): Ag
         segmentOf(mission.partnerId) === "venue" &&
         activated &&
         toIsoDate(new Date(activated)).slice(0, 7) <= month &&
-        !care.reports.some((report) => report.month === month)
+        !reportDone(state, mission, month)
       ) {
         push(mission, "report", `Wyślij partnerowi liczbę realizacji za ${monthLabel(month)}`, `${todayIso.slice(0, 7)}-01`, month);
       }
