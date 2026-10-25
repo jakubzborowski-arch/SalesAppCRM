@@ -945,6 +945,38 @@ function isMissionConflict(error: { code?: string; message?: string }) {
   return error.code === "P0001" && /mission_conflict/.test(error.message ?? "");
 }
 
+/** JSON z posortowanymi kluczami — porównanie wiersza z bazy z tym, co wysłaliśmy. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** Pola misji, po których rozpoznajemy własny zapis (odpowiedź zginęła, a baza go przyjęła). */
+function missionFingerprint(row: Record<string, unknown>) {
+  const time = (value: unknown) => (value ? new Date(String(value)).toISOString() : null);
+  return stableJson({
+    owner_user_id: row.owner_user_id ?? null,
+    status: row.status ?? null,
+    current_stage: row.current_stage ?? null,
+    next_step_label: row.next_step_label ?? "",
+    next_step_at: row.next_step_at ? String(row.next_step_at).slice(0, 10) : null,
+    outcome: row.outcome ?? null,
+    loss_reason: row.loss_reason ?? null,
+    closed_at: time(row.closed_at),
+    details: row.details ?? null,
+  });
+}
+
+/** Ostatnio wysłany zapis misji, którego wyniku nie znamy (błąd sieci) — klucz: id misji. */
+const unconfirmedSaves = new Map<string, string>();
+
 /**
  * Zapis misji i jej tabel jedną transakcją (`save_mission_bundle`). Wersja sprawdzana w tej samej
  * transakcji: albo zapisuje się wszystko, albo nic. `null` = funkcji nie ma, trzeba po staremu.
@@ -956,24 +988,49 @@ async function persistMissionBundle(
   userId: string,
   plan: PlannedMissionCore,
 ): Promise<{ nextStepTask: TaskItem | null } | null> {
+  const columns = missionColumns(mission, workspaceId, userId, uiDetailsOf(mission));
+  const mine = missionFingerprint(columns);
   const call = (legacy: boolean) =>
     sb.rpc("save_mission_bundle", {
       p_mission_id: mission.id,
       // Bez znanej wersji funkcja tylko zakłada nową misję — istniejącej nie nadpisze w ciemno.
       p_expected_version: missionVersions.get(mission.id) ?? null,
-      p_mission: missionColumns(mission, workspaceId, userId, uiDetailsOf(mission)),
+      p_mission: columns,
       p_ops: bundlePayload(plan.ops, legacy),
     });
+  const previous = unconfirmedSaves.get(mission.id);
+  unconfirmedSaves.set(mission.id, mine);
   let { data, error } = await call(false);
   if (needsLegacyRows(plan.ops, error)) ({ data, error } = await call(true));
+  if (error && isMissionConflict(error)) {
+    // Konflikt może być pozorny: poprzedni zapis doszedł do bazy, tylko odpowiedź zginęła (sieć).
+    // Wtedy wiersz w bazie = to, co wysłaliśmy (teraz albo poprzednio) — przejmujemy wersję i zapisujemy dalej.
+    const { data: row } = await sb.from("missions").select("*").eq("id", mission.id).maybeSingle();
+    const server = row ? missionFingerprint(row as Record<string, unknown>) : null;
+    if (row && server && (server === mine || server === previous)) {
+      setMissionVersion(mission.id, (row as { updated_at?: string }).updated_at ? String((row as { updated_at?: string }).updated_at) : undefined);
+      if (server === mine) {
+        unconfirmedSaves.delete(mission.id);
+        missionBundleAvailable = true;
+        return { nextStepTask: null };
+      }
+      ({ data, error } = await call(false));
+      if (needsLegacyRows(plan.ops, error)) ({ data, error } = await call(true));
+    }
+  }
   if (error) {
     if (isMissingFunction(error)) {
+      unconfirmedSaves.delete(mission.id);
       missionBundleAvailable = false;
       return null;
     }
-    if (isMissionConflict(error)) throw new MissionConflictError(mission.id);
+    if (isMissionConflict(error)) {
+      unconfirmedSaves.delete(mission.id);
+      throw new MissionConflictError(mission.id);
+    }
     throw error;
   }
+  unconfirmedSaves.delete(mission.id);
   missionBundleAvailable = true;
   coreTablesAvailable = true;
   const result = (data ?? {}) as { version?: string | null; returned?: Record<string, Record<string, unknown>[]> };

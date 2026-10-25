@@ -761,7 +761,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           missions,
           tasks,
           team: team ?? [],
-          metrics: metricsResult?.metrics ?? [],
+          // Błąd odczytu ≠ brak metryk: bez danych zdrowie partnera jest „nie wiadomo”, a nie czerwone.
+          metrics: metricsResult ? metricsResult.metrics : undefined,
         };
         // Workspace, stan do zapisu i „zapisane” przestawiamy razem — zapis w tle nie zobaczy pół stanu.
         workspaceIdRef.current = ctx.workspaceId;
@@ -1332,10 +1333,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       signUp: async (email, password, name) => {
         const sb = getSupabase();
         if (!sb) return { ok: false, error: "Brak konfiguracji Supabase." };
+        // Kod zaproszenia idzie do Supabase: hook „Before User Created” (v8) wpuszcza tylko z ważnym zaproszeniem.
+        const inviteToken = readPendingInvite();
         const { data, error } = await sb.auth.signUp({
           email,
           password,
-          options: { data: { full_name: name }, emailRedirectTo: `${window.location.origin}/login` },
+          options: {
+            data: { full_name: name, ...(inviteToken ? { invite_token: inviteToken } : {}) },
+            emailRedirectTo: `${window.location.origin}/login`,
+          },
         });
         if (error) return { ok: false, error: error.message };
         // Z włączonym „Confirm email” sesja powstaje dopiero po kliknięciu linku w mailu.

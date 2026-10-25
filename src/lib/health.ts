@@ -145,5 +145,8 @@ export function healthFor(
   today = new Date(),
 ): PartnerHealth {
   const mission = careMissionOf(state.missions, partner.id);
+  if (state.metrics === undefined && mission?.status === "won") {
+    return { level: "unknown", reason: "Metryki chwilowo niedostępne — odśwież stronę." };
+  }
   return partnerHealth({ partner, mission, metrics: metricsHistory(partner.id, state.metrics, mission), today });
 }

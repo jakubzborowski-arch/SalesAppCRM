@@ -99,8 +99,10 @@ function speakerLabel(raw: string) {
   const wordsCount = label.split(" ").length;
   if (wordsCount > 4 || !/\p{L}/u.test(label) || /\d{3,}/.test(label)) return null;
   if (NOT_SPEAKERS.has(fold(label))) return null;
-  // Mówca to nazwa własna: zaczyna się wielką literą (albo „Handlowiec”, „Partner”, „Speaker 1”).
-  if (!/^\p{Lu}/u.test(label)) return null;
+  // Mówca to imię / imię i nazwisko: każde słowo z wielkiej litery, co najmniej dwie litery
+  // („Wariant B: 20%” albo „Uwaga: …” w środku wypowiedzi to nie nowy mówca).
+  const parts = label.split(" ");
+  if (!parts.every((part) => /^\p{Lu}[\p{Ll}'’-]+$/u.test(part))) return null;
   return label;
 }
 
@@ -183,12 +185,24 @@ export function speakerView(input: {
   seller: string;
   contacts: Array<{ name: string }>;
 }): SpeakerView {
-  const all = input.transcripts.flatMap((t) => utterances(t.text));
-  const speakers = [...new Set(all.map((u) => u.speaker).filter((s): s is string => Boolean(s)))];
   const isContact = (speaker: string) => input.contacts.some((c) => sameSpeaker(speaker, c.name));
-  let sellers = speakers.filter(
-    (speaker) => (input.seller.trim() && sameSpeaker(speaker, input.seller) && !isContact(speaker)) || /lutr/i.test(speaker),
-  );
+  const isSellerName = (speaker: string) =>
+    (input.seller.trim() && sameSpeaker(speaker, input.seller) && !isContact(speaker)) || /lutr/i.test(speaker);
+  // Etykieta, która pada raz i nie jest ani handlowcem, ani osobą partnera, to raczej fragment wypowiedzi
+  // („Propozycja: …”) niż nowy mówca — doklejamy ją do poprzedniej wypowiedzi.
+  const raw = input.transcripts.flatMap((t) => utterances(t.text));
+  const counts = new Map<string, number>();
+  for (const u of raw) if (u.speaker) counts.set(u.speaker, (counts.get(u.speaker) ?? 0) + 1);
+  const all: Utterance[] = [];
+  for (const u of raw) {
+    const rare = u.speaker && (counts.get(u.speaker) ?? 0) < 2 && !isContact(u.speaker) && !isSellerName(u.speaker);
+    if (rare && all.length) {
+      const prev = all[all.length - 1];
+      all[all.length - 1] = { ...prev, text: `${prev.text} ${u.speaker}: ${u.text}` };
+    } else all.push(u);
+  }
+  const speakers = [...new Set(all.map((u) => u.speaker).filter((s): s is string => Boolean(s)))];
+  let sellers = speakers.filter(isSellerName);
   if (!sellers.length && speakers.length === 2) {
     const partnerSide = speakers.filter(isContact);
     if (partnerSide.length === 1) sellers = speakers.filter((speaker) => speaker !== partnerSide[0]);
@@ -263,6 +277,49 @@ export function spokenNumbers(text: string): number[] {
   return out;
 }
 
+/** Wszystkie liczby w tekście: cyframi i słownie. */
+export function numbersIn(text: string): number[] {
+  const digits = (text.match(/\d+/g) ?? []).map(Number);
+  return [...digits, ...spokenNumbers(text)];
+}
+
+function normWords(text: string) {
+  return fold(text).replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
+}
+
+/**
+ * Zdanie (linia, ewentualnie z następną) w tekście, które odpowiada cytatowi: dosłownie (bez interpunkcji)
+ * albo w 85% słów po kolei. Zwraca prawdziwe zdanie z rozmowy, żeby liczby sprawdzać w nim, a nie w cytacie od AI.
+ */
+export function matchSentence(quote: string, text: string): { line: string; exact: boolean } | null {
+  const q = normWords(quote);
+  if (q.join("").length < 8) return null;
+  const needle = ` ${q.join(" ")} `;
+  const lines = text.split("\n").filter((line) => line.trim());
+  for (const span of [1, 2]) {
+    for (let i = 0; i + span <= lines.length; i++) {
+      const chunk = lines.slice(i, i + span).join(" ");
+      if (` ${normWords(chunk).join(" ")} `.includes(needle)) return { line: chunk, exact: true };
+    }
+  }
+  let best: { line: string; score: number } | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const chunk = lines.slice(i, i + 2).join(" ");
+    const hay = normWords(chunk);
+    let pos = 0;
+    let hits = 0;
+    for (const word of q) {
+      const at = hay.indexOf(word, pos);
+      if (at < 0) continue;
+      hits += 1;
+      pos = at + 1;
+    }
+    const score = hits / q.length;
+    if (score >= 0.85 && (!best || score > best.score)) best = { line: chunk, score };
+  }
+  return best ? { line: best.line, exact: false } : null;
+}
+
 /** Liczba z wiersza (np. zniżka 15%, grupa od 6 osób) pada w tekście — cyframi albo słownie. */
 export function numberInText(value: number, text: string) {
   if (new RegExp(`(^|[^\\d])${value}([^\\d]|$)`).test(text)) return true;
@@ -299,22 +356,32 @@ export function applyEvidence(
     let warning = row.warning;
     let checked = row.checked;
     let hint = row.hint;
+    const match = quote ? matchSentence(quote, view.partnerText) : null;
     if (!quote) {
       warning = warning ?? NO_EVIDENCE;
       checked = false;
-    } else if (!found(quote, view.partnerText)) {
+    } else if (!match) {
       warning = warning ?? (view.known && view.sellerText && found(quote, view.sellerText) ? SELLER_EVIDENCE : EVIDENCE_NOT_FOUND);
       checked = false;
     } else {
-      hint = [hint, `Dowód: „${quote}”`].filter(Boolean).join(" ");
+      hint = [hint, `Dowód: „${match.exact ? quote : match.line.trim()}”`].filter(Boolean).join(" ");
+      // Liczby sprawdzamy w zdaniu, które naprawdę padło — nie w cytacie od AI (mógł podmienić „15” na „20”).
+      const spoken = numbersIn(match.line);
+      const invented = numbersIn(quote).filter((n) => !spoken.includes(n));
       const number =
         row.key === "terms:value" && values.discountPercent
           ? values.discountPercent
           : row.key === "terms:group" && values.minGroup
             ? values.minGroup
             : 0;
-      if (number && !numberInText(number, quote)) {
-        warning = warning ?? `W zdaniu-dowodzie nie ma liczby ${number} — sprawdź, na co partner się zgodził.`;
+      if (invented.length) {
+        warning = warning ?? `Cytat od AI ma liczbę ${invented[0]}, której nie ma w tym zdaniu rozmowy — sprawdź.`;
+        checked = false;
+      } else if (number && !spoken.includes(number)) {
+        warning = warning ?? `W zdaniu partnera nie ma liczby ${number} — sprawdź, na co partner się zgodził.`;
+        checked = false;
+      } else if (strict && !match.exact) {
+        warning = warning ?? "Zdanie-dowód nie jest dosłowne — porównaj z rozmową, zanim wstawisz.";
         checked = false;
       } else if (strict && !view.known) {
         warning = warning ?? SPEAKERS_UNKNOWN;

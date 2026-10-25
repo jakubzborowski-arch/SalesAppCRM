@@ -40,7 +40,8 @@ Na bazie, w której migracje odpalałeś ręcznie, pierwszy `db push` odpali wsz
 - Vercel → Environment Variables: `AI_ALLOWED_EMAILS` (adresy albo domeny handlowców). Bez tej listy AI na produkcji jest wyłączone.
 - Claude Console → Settings → Limits: miesięczny limit wydatków dla organizacji albo workspace’u z kluczem CRM.
 - OpenCode Zen (jeśli używasz `HOSTED_LLM_API_KEY`): limit salda w panelu Zen.
-- Supabase: włączone **Confirm email** (punkt 1); otwartą rejestrację możesz też wyłączyć całkiem (Authentication → Sign In / Providers → „Allow new users to sign up”), jeśli konta zakładasz tylko zaproszeniami przez panel Supabase.
+- Supabase → Authentication → Hooks → **Before User Created** → Postgres → `public.crm_before_user_created` (z v8). Od tej chwili konto założy tylko osoba z linkiem zaproszenia (pierwsze konto w pustym projekcie przechodzi zawsze). Bez hooka ukryty przycisk rejestracji nie wystarcza — API Supabase przyjmie rejestrację.
+- Supabase: włączone **Confirm email** (punkt 1). Bez tego lista z domeną (`@lutra.pl`) nie chroni AI: ktoś założy konto `x@lutra.pl` bez dostępu do tej skrzynki.
 
 ## Dane firmy, terminy, raporty
 

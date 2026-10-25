@@ -106,27 +106,30 @@ alter table public.ai_usage enable row level security;
 revoke all on public.ai_usage from anon, authenticated;
 
 -- Jedno wywołanie = sprawdzenie i zapis próby (atomowo, z blokadą na użytkownika).
-create or replace function public.take_ai_quota(p_kind text, p_limit integer, p_window_seconds integer)
+-- Limity są stałe w bazie (30 odczytów rozmów i 60 szkiców na godzinę) — parametry od klienta są ignorowane,
+-- żeby nikt nie podbił sobie limitu ani nie zapchał tabeli.
+create or replace function public.take_ai_quota(p_kind text, p_limit integer default null, p_window_seconds integer default null)
 returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   uid uuid := auth.uid();
+  max_calls integer := case p_kind when 'extract' then 30 when 'draft' then 60 end;
   used integer;
 begin
   if uid is null then
     return false;
   end if;
-  if p_kind not in ('extract', 'draft') or p_limit < 1 or p_limit > 1000 or p_window_seconds < 60 or p_window_seconds > 86400 then
+  if max_calls is null then
     raise exception 'Nieprawidłowy limit AI.';
   end if;
   perform pg_advisory_xact_lock(hashtext('ai_quota:' || uid::text || ':' || p_kind));
   delete from ai_usage where user_id = uid and created_at < now() - interval '2 days';
   select count(*) into used from ai_usage
-    where user_id = uid and kind = p_kind and created_at > now() - make_interval(secs => p_window_seconds);
-  if used >= p_limit then
+    where user_id = uid and kind = p_kind and created_at > now() - interval '1 hour';
+  if used >= max_calls then
     return false;
   end if;
   insert into ai_usage (user_id, kind) values (uid, p_kind);
@@ -361,6 +364,49 @@ end $$;
 
 revoke all on function public.save_mission_bundle(uuid, timestamptz, jsonb, jsonb) from public, anon;
 grant execute on function public.save_mission_bundle(uuid, timestamptz, jsonb, jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6. Rejestracja tylko z zaproszenia (Supabase Auth Hook „Before User Created”)
+-- Włącz w Supabase: Authentication → Hooks → Before User Created → Postgres → public.crm_before_user_created.
+-- Przechodzi: pierwsze konto w pustym projekcie (administrator) albo konto z ważnym linkiem zaproszenia
+-- (CRM wysyła kod w user_metadata.invite_token; e-mail musi się zgadzać, jeśli zaproszenie ma adres).
+
+create or replace function public.crm_before_user_created(event jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  token text := trim(coalesce(event -> 'user' -> 'user_metadata' ->> 'invite_token', ''));
+  mail text := lower(trim(coalesce(event -> 'user' ->> 'email', '')));
+begin
+  if not exists (select 1 from public.profiles) then
+    return '{}'::jsonb;
+  end if;
+  if token <> '' and exists (
+    select 1 from public.workspace_invites i
+    where i.token_hash = encode(sha256(convert_to(token, 'UTF8')), 'hex')
+      and i.revoked_at is null
+      and i.accepted_at is null
+      and i.expires_at > now()
+      and (i.email is null or lower(i.email) = mail)
+  ) then
+    return '{}'::jsonb;
+  end if;
+  return jsonb_build_object(
+    'error',
+    jsonb_build_object('http_code', 403, 'message', 'Konto w tym CRM zakłada się z linku zaproszenia do zespołu.')
+  );
+end $$;
+
+revoke all on function public.crm_before_user_created(jsonb) from public, anon, authenticated;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'supabase_auth_admin') then
+    execute 'grant execute on function public.crm_before_user_created(jsonb) to supabase_auth_admin';
+  end if;
+end $$;
 
 -- Znacznik wersji: CRM wykrywa, gdy starsza migracja została odpalona po nowszej (trzeba wtedy powtórzyć kolejne).
 create table if not exists public.crm_migrations (

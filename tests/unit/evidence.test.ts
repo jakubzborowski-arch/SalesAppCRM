@@ -145,4 +145,36 @@ describe("dowody w podglądzie", () => {
     // Pola rozmowy z dowodem zostają zaznaczone.
     expect(rows.find((r) => r.key === "problem")).toMatchObject({ checked: true });
   });
+
+  it("podmieniona liczba w prawie dosłownym cytacie nie przejdzie (15 → 20, cztery → sześć)", () => {
+    const rows = proposal({
+      ...BASE,
+      warunki: { ...BASE.warunki, znizka_procent: 20, min_grupa: 6 },
+      dowody: {
+        ...BASE.dowody,
+        znizka: "Mogę dać 20 procent zniżki na wstęp i napoje, od poniedziałku do środy, od 18 do 22.",
+        grupa: "Ale tylko dla grup od sześciu osób i bez alkoholu.",
+      },
+    }).rows;
+    expect(rows.find((r) => r.key === "terms:value")).toMatchObject({ checked: false });
+    expect(rows.find((r) => r.key === "terms:value")!.warning).toMatch(/liczbę 20/);
+    expect(rows.find((r) => r.key === "terms:group")).toMatchObject({ checked: false });
+  });
+
+  it("„Wariant B: …” w środku wypowiedzi handlowca nie robi się mówcą partnera", () => {
+    const text = `Kuba Zborowski: Dzień dobry, mamy dla Was propozycję:
+Wariant B: 20 procent zniżki od poniedziałku do środy dla grup.
+Karolina Nowak: Mogę dać 15 procent zniżki na wstęp i napoje, od poniedziałku do środy, od 18 do 22.
+Kuba Zborowski: Rozumiem.
+Karolina Nowak: Ale tylko dla grup od czterech osób i bez alkoholu.`;
+    const v = view(text);
+    expect(v.known).toBe(true);
+    expect(v.speakers).toEqual(["Kuba Zborowski", "Karolina Nowak"]);
+    expect(v.partnerText).not.toMatch(/20 procent/);
+    const rows = proposal(
+      { ...BASE, warunki: { ...BASE.warunki, znizka_procent: 20 }, dowody: { ...BASE.dowody, znizka: "20 procent zniżki od poniedziałku do środy dla grup." } },
+      text,
+    ).rows;
+    expect(rows.find((r) => r.key === "terms:value")).toMatchObject({ checked: false });
+  });
 });

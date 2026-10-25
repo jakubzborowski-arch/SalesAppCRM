@@ -85,6 +85,8 @@ export const SIGNATURE_NUDGE_DAYS = 5;
  * albo wpisał metryki partnera za ten miesiąc (z nich powstaje mail z podsumowaniem).
  */
 export function reportDone(state: Pick<AppState, "metrics">, mission: Pick<Mission, "care" | "partnerId">, month: string) {
+  // Metryki się nie wczytały — nie przypominamy na ślepo.
+  if (state.metrics === undefined) return true;
   return (
     mission.care.reports.some((report) => report.month === month) ||
     (state.metrics ?? []).some((m) => m.partnerId === mission.partnerId && m.month === month)

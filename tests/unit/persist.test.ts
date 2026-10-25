@@ -404,3 +404,43 @@ describe("loadCrm i dziennik", () => {
     expect(activity.subject).toBe("Re: oferta");
   });
 });
+
+describe("zapis w jednej transakcji: zgubiona odpowiedź serwera", () => {
+  beforeEach(() => {
+    fake.db = new FakeDb();
+    clearMissionVersions();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at("2026-10-01T10:00:00Z");
+  });
+
+  it("baza przyjęła zapis, odpowiedź zginęła: ponowienie i kolejna zmiana przechodzą bez fałszywego konfliktu", async () => {
+    const m = mission({ nextStepLabel: "Zadzwonić", nextStepAt: "2026-10-02" });
+    await persistMission(m, WS, A);
+    const realRpc = fake.db.rpc.bind(fake.db);
+    let lose = true;
+    fake.db.rpc = (async (name: string, args: Record<string, unknown> = {}) => {
+      const result = await realRpc(name, args);
+      if (name === "save_mission_bundle" && lose) {
+        lose = false;
+        return { data: null, error: { message: "TypeError: fetch failed" } };
+      }
+      return result;
+    }) as typeof fake.db.rpc;
+    at("2026-10-01T10:05:00Z");
+    const first = { ...m, nextStepLabel: "Wysłać recap" };
+    await expect(persistMission(first, WS, A)).rejects.toMatchObject({ message: expect.stringMatching(/fetch failed/) });
+    expect(fake.db.rows("missions")[0].next_step_label).toBe("Wysłać recap");
+    // Ponowienie tego samego zapisu (stara wersja w pamięci) — rozpoznany własny zapis, bez konfliktu.
+    await expect(persistMission(first, WS, A)).resolves.toBeTruthy();
+    // Zgubiona odpowiedź, a w międzyczasie kolejna zmiana — też przechodzi.
+    lose = true;
+    at("2026-10-01T10:06:00Z");
+    await expect(persistMission({ ...m, nextStepLabel: "Krok 3" }, WS, A)).rejects.toBeTruthy();
+    at("2026-10-01T10:07:00Z");
+    await persistMission({ ...m, nextStepLabel: "Krok 4" }, WS, A);
+    expect(fake.db.rows("missions")[0].next_step_label).toBe("Krok 4");
+    // Prawdziwy konflikt (kolega) nadal jest konfliktem.
+    await fake.db.from("missions").update({ next_step_label: "Kolega" }).eq("id", m.id);
+    await expect(persistMission({ ...m, nextStepLabel: "Krok 5" }, WS, A)).rejects.toBeInstanceOf(MissionConflictError);
+  });
+});

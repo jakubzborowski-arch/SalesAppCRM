@@ -618,14 +618,16 @@ await expectError("dopasowanie ujemne odrzucone", () => as(H, () => db.query("up
 await as(H, () => db.query("update partners set fit_area = null where id = $1", [pH]));
 ok((await one("select fit_area from partners where id = $1", [pH])).fit_area === null, "kryterium można wyczyścić");
 
-// Limit AI w bazie: atomowo, na osobę i rodzaj; anon nic; tabela niewidoczna z zewnątrz.
-const take = (user, kind = "extract", limit = 2) =>
-  as(user, async () => (await one("select public.take_ai_quota($1, $2, 3600) as ok", [kind, limit])).ok);
-ok((await take(H)) === true && (await take(H)) === true && (await take(H)) === false, "limit AI: dwa razy tak, trzeci raz nie");
+// Limit AI w bazie: atomowo, na osobę i rodzaj, limity stałe w bazie; anon nic; tabela niewidoczna z zewnątrz.
+const take = (user, kind = "extract", limit = 1000) =>
+  as(user, async () => (await one("select public.take_ai_quota($1, $2, 60) as ok", [kind, limit])).ok);
+const thirty = [];
+for (let i = 0; i < 31; i++) thirty.push(await take(H));
+ok(thirty.slice(0, 30).every(Boolean) && thirty[30] === false, "limit AI: 30 odczytów na godzinę, 31. odrzucony (limit z klienta ignorowany)");
 ok((await take(H, "draft")) === true, "limit AI liczy osobno szkice");
 ok((await take(G)) === true, "limit AI liczy osobno każdą osobę");
-await expectError("anon nie wywoła limitu AI", () => as(null, () => db.query("select public.take_ai_quota('extract', 2, 3600)")), /permission denied/);
-await expectError("limit AI odrzuca dziwne parametry", () => as(H, () => db.query("select public.take_ai_quota('extract', 0, 3600)")), /Nieprawidłowy limit/);
+await expectError("anon nie wywoła limitu AI", () => as(null, () => db.query("select public.take_ai_quota('extract')")), /permission denied/);
+await expectError("limit AI odrzuca nieznany rodzaj", () => as(H, () => db.query("select public.take_ai_quota('inne')")), /Nieprawidłowy limit/);
 await expectError("tabela użycia AI niewidoczna dla handlowca", () => as(H, () => db.query("select * from ai_usage")), /permission denied/);
 
 // Zapis misji w jednej transakcji: misja + tabele misji razem albo wcale, wersja sprawdzana w środku.
@@ -757,6 +759,18 @@ await expectError("zmiana mission_id w update odrzucona", async () =>
   ])), /Nieprawidłowa zmiana/);
 ok((await stateOf()) === beforeFail, "odrzucone operacje niczego nie zmieniają");
 ok((await one("select count(*)::int as n from missions where id = $1 and owner_user_id = $2", [mG, H.id])).n === 1, "misja kolegi nietknięta");
+
+// Rejestracja tylko z zaproszenia (hook Before User Created).
+const hook = async (email, token) =>
+  (await one("select public.crm_before_user_created($1::jsonb) as r", [JSON.stringify({ user: { email, user_metadata: token ? { invite_token: token } : {} } })])).r;
+const inviteOpen = await as(G, async () => (await one("select public.create_workspace_invite(null) as t")).t);
+const inviteMail = await as(G, async () => (await one("select public.create_workspace_invite($1) as t", ["nowa@zespol.pl"])).t);
+ok((await hook("ktos@gmail.com", null)).error?.http_code === 403, "bez zaproszenia rejestracja odrzucona");
+ok((await hook("ktos@gmail.com", "zly-kod")).error?.http_code === 403, "zły kod zaproszenia odrzucony");
+ok(JSON.stringify(await hook("ktos@gmail.com", inviteOpen)) === "{}", "zaproszenie bez adresu wpuszcza");
+ok(JSON.stringify(await hook("Nowa@Zespol.pl", inviteMail)) === "{}", "zaproszenie z adresem wpuszcza ten adres");
+ok((await hook("inna@zespol.pl", inviteMail)).error?.http_code === 403, "zaproszenie z adresem nie wpuszcza innego adresu");
+await expectError("hook rejestracji niedostępny dla zalogowanych", () => as(H, () => db.query("select public.crm_before_user_created('{}'::jsonb)")), /permission denied/);
 
 const good = await snapshot();
 ok((await versions()).at(-1) === "v8", "v8 zapisuje znacznik wersji");

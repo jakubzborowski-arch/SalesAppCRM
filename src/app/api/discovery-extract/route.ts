@@ -98,7 +98,8 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (!(await takeAiQuota(request, allowed.who, "extract"))) {
+  // Darmowy Qwen na tym komputerze nie zużywa limitu płatnego AI.
+  if (engine.engine !== "mac" && !(await takeAiQuota(request, allowed.who, "extract"))) {
     return Response.json({ error: quotaMessage("extract") }, { status: 429 });
   }
 

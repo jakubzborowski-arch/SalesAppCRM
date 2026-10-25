@@ -919,7 +919,7 @@ function FillBlock({
     setOverrides((prev) => ({ ...prev, [rowId(row)]: !(prev[rowId(row)] ?? row.checked) }));
 
   /** Statystyka jakości: co AI zaproponowało, co handlowiec przyjął (bez treści pól — same klucze i decyzje). */
-  const logReading = (outcome: "applied" | "discarded") => {
+  const logReading = (outcome: "applied" | "discarded", accepted: Set<string> = selected) => {
     if (!proposal || !reading) return;
     void saveAiSuggestion(
       {
@@ -934,7 +934,7 @@ function FillBlock({
         outputTokens: reading.meta.outputTokens,
         durationMs: reading.meta.durationMs,
         speakersKnown: reading.view.known,
-        rows: suggestionRows(proposal.rows, outcome === "applied" ? selected : new Set()),
+        rows: suggestionRows(proposal.rows, outcome === "applied" ? accepted : new Set()),
       },
       store.state.workspace.id,
     );
@@ -943,7 +943,6 @@ function FillBlock({
   const apply = async () => {
     if (!proposal) return;
     const plan = planMission(proposal, selected, mission);
-    logReading("applied");
     setBusy(true);
     let makerId = plan.maker?.id;
     let makerError = "";
@@ -981,6 +980,8 @@ function FillBlock({
       setRecording(mission.id, { conversationNote: appendToNote(mission.conversationNote, plan.noteAppend) });
     }
     setBusy(false);
+    // Statystyka dopiero po wstawieniu (decydent, którego nie udało się dodać, nie liczy się jako przyjęty).
+    logReading("applied", makerError && plan.maker ? new Set([...selected].filter((key) => key !== "maker")) : selected);
     const count = selected.size - (makerError && plan.maker ? 1 : 0);
     setReading(null);
     setOverrides({});
