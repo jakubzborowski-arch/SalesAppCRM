@@ -1,8 +1,17 @@
-import * as XLSX from "xlsx";
+import readXlsxFile from "read-excel-file/universal";
 import { parseCsv, readCsvFile, type CsvTable } from "./csv";
 
 function isSpreadsheetName(name: string) {
-  return /\.(xlsx|xlsm|xls)$/i.test(name);
+  return /\.(xlsx|xlsm)$/i.test(name);
+}
+
+function isOldExcelName(name: string) {
+  return /\.xls$/i.test(name);
+}
+
+function isoDay(date: Date) {
+  // Komórki z datą w Excelu nie mają strefy — bierzemy dzień w UTC, żeby nie cofnąć daty o jeden.
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
 
 function isCsvName(name: string) {
@@ -12,7 +21,9 @@ function isCsvName(name: string) {
 function cellsToStrings(row: unknown[]) {
   return row.map((cell) => {
     if (cell == null) return "";
+    if (cell instanceof Date) return isoDay(cell);
     if (typeof cell === "number" && Number.isFinite(cell)) return String(cell);
+    if (typeof cell === "boolean") return cell ? "tak" : "nie";
     return String(cell).trim();
   });
 }
@@ -34,18 +45,11 @@ export function sheetMatrixToTable(matrix: unknown[][]): CsvTable {
   return { headers, rows: padded.slice(1) };
 }
 
-export function parseXlsxBuffer(buffer: ArrayBuffer): CsvTable {
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-  for (const name of workbook.SheetNames) {
-    const sheet = workbook.Sheets[name];
-    if (!sheet) continue;
-    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      defval: "",
-      raw: false,
-      blankrows: false,
-    });
-    const table = sheetMatrixToTable(matrix);
+/** Pierwszy arkusz z nagłówkami (puste arkusze pomijamy). Tylko .xlsx — stary .xls trzeba zapisać na nowo. */
+export async function parseXlsxBuffer(buffer: ArrayBuffer | Blob): Promise<CsvTable> {
+  const sheets = await readXlsxFile(buffer);
+  for (const sheet of sheets) {
+    const table = sheetMatrixToTable(sheet.data as unknown[][]);
     if (table.headers.length) return table;
   }
   return { headers: [], rows: [] };
@@ -53,6 +57,9 @@ export function parseXlsxBuffer(buffer: ArrayBuffer): CsvTable {
 
 export async function readImportFile(file: File): Promise<CsvTable> {
   const name = file.name.toLowerCase();
+  if (isOldExcelName(name)) {
+    throw new Error("Stary format .xls nie jest obsługiwany. Zapisz plik w Excelu jako .xlsx albo CSV.");
+  }
   if (isSpreadsheetName(name) || file.type.includes("spreadsheet") || file.type.includes("excel")) {
     return parseXlsxBuffer(await file.arrayBuffer());
   }
