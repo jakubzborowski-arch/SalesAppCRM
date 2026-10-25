@@ -22,11 +22,11 @@ export function missionDesk(partner: Partner, mission: Mission) {
         ? activationBlockers(mission, partner)
         : mission.currentStage === "offer" || mission.currentStage === "negotiation"
           ? [
-              ...offerBlockers(mission),
+              ...offerBlockers(mission, partner),
               ...(mission.selectedVariant ? [] : ["wybrany wariant"]),
               ...missingOf(termsChecks(mission, partner.segment)),
             ]
-          : offerBlockers(mission);
+          : offerBlockers(mission, partner);
 
   const owner =
     partner.contacts.find((c) => c.id === mission.decision.decisionMakerId)?.name ??

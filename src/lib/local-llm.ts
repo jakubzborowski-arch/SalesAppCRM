@@ -172,7 +172,7 @@ export function systemForDraft(mode: LocalDraftMode) {
   const base =
     "Jesteś analitykiem rozmów handlowych B2B dla Lutry. Rozmowa jest w bloku „Notatka z dzwonienia”, jeśli tam jest. Cytat bierz tylko stamtąd, dosłownie. Nie masz telefonu, maila, NIP-u ani pliku nagrania i nie prosisz o nie. Czego nie ma w notatce ani w polach, nie dopisuj. Szkic nie jest umową i nie wolno go wysłać partnerowi bez człowieka.";
   if (mode === "umowa") return base;
-  return `${base} Oferta A/B/C jest zablokowana, dopóki w polach nie ma razem: problemu, rezultatu, ograniczenia, decydenta, terminu decyzji, wcześniejszych prób i następnego kroku z datą. Nie obiecuj liczby gości, wyłączności, VIP, Premium ani darmowego wstępu. Zniżkę podawaj wyłącznie z linii „Ustalone warunki” — innych rabatów nie proponuj.`;
+  return `${base} Oferta A/B/C jest zablokowana, dopóki w polach nie ma razem: problemu, ograniczenia, decydenta i następnego kroku z datą (dla społeczności i firm także rezultatu, terminu decyzji i wcześniejszych prób). Nie obiecuj liczby gości, wyłączności, VIP, Premium ani darmowego wstępu. Zniżkę podawaj wyłącznie z linii „Ustalone warunki” — innych rabatów nie proponuj.`;
 }
 
 export function draftBreaksRules(draft: string, source: string) {

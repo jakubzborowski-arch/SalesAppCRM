@@ -11,6 +11,8 @@ export function hasContactConsent(partner: Partner) {
   );
 }
 
+const segmentOf = (partner?: Pick<Partner, "segment">): PartnerSegment => partner?.segment ?? "venue";
+
 export function constraintText(mission: Mission) {
   const fromDecision = mission.decision.constraintSummary.trim();
   if (fromDecision) return fromDecision;
@@ -22,20 +24,36 @@ export function constraintText(mission: Mission) {
     .join(", ");
 }
 
-/** Wymagania przed ofertą (KB → „Mapa potrzeb w CRM”). */
-export function offerChecks(mission: Mission): Check[] {
+/**
+ * Pola rozmowy, które dla lokalu są opcjonalne. Kawiarnię zamyka się często w jednej wizycie —
+ * oczekiwany rezultat, termin decyzji i wcześniejsze próby nie zmieniają tam oferty.
+ */
+export const VENUE_OPTIONAL_OFFER_FIELDS = ["result", "deadline", "attempts"] as const;
+
+/** Wymagania przed ofertą (KB → „Mapa potrzeb w CRM”). Zależą od typu partnera. */
+export function offerChecks(mission: Mission, partner?: Pick<Partner, "segment">): Check[] {
   const d = mission.decision;
+  const venue = segmentOf(partner) === "venue";
+  const deadlineText = d.decisionDeadline.trim();
+  const deadline: Check[] = venue
+    ? // Opcjonalny, ale wpisany ma być datą (przypomnienia i tablica liczą z daty).
+      deadlineText && !isIsoDate(deadlineText)
+      ? [{ key: "deadline", label: "termin decyzji jako data", done: false }]
+      : []
+    : [
+        {
+          key: "deadline",
+          label: deadlineText && !isIsoDate(d.decisionDeadline) ? "termin decyzji jako data" : "termin decyzji",
+          done: isIsoDate(d.decisionDeadline),
+        },
+      ];
   return [
     { key: "problem", label: "problem", done: Boolean(d.problem.trim()) },
-    { key: "result", label: "oczekiwany rezultat", done: Boolean(d.expectedResult.trim()) },
+    ...(venue ? [] : [{ key: "result", label: "oczekiwany rezultat", done: Boolean(d.expectedResult.trim()) }]),
     { key: "constraint", label: "ograniczenie", done: Boolean(constraintText(mission)) },
     { key: "maker", label: "decydent", done: Boolean(d.decisionMakerId) },
-    {
-      key: "deadline",
-      label: d.decisionDeadline.trim() && !isIsoDate(d.decisionDeadline) ? "termin decyzji jako data" : "termin decyzji",
-      done: isIsoDate(d.decisionDeadline),
-    },
-    { key: "attempts", label: "wcześniejsze próby", done: Boolean(d.previousAttempts.trim()) },
+    ...deadline,
+    ...(venue ? [] : [{ key: "attempts", label: "wcześniejsze próby", done: Boolean(d.previousAttempts.trim()) }]),
     { key: "next", label: "następny krok", done: Boolean(d.nextStep.trim()) },
     {
       key: "fact",
@@ -49,11 +67,9 @@ export function missingOf(checks: Check[]) {
   return checks.filter((check) => !check.done).map((check) => check.label);
 }
 
-export function offerBlockers(mission: Mission) {
-  return missingOf(offerChecks(mission));
+export function offerBlockers(mission: Mission, partner?: Pick<Partner, "segment">) {
+  return missingOf(offerChecks(mission, partner));
 }
-
-const segmentOf = (partner?: Pick<Partner, "segment">): PartnerSegment => partner?.segment ?? "venue";
 
 /** Zasady zmian i wycofania: wpisane i nie jest to stary domyślny tekst. */
 function changeRulesSet(rules: string) {
@@ -201,7 +217,7 @@ export function canEnterStage(
   }
 
   if (stage === "offer") {
-    const missing = offerBlockers(mission);
+    const missing = offerBlockers(mission, partner);
     if (missing.length) {
       return {
         ok: false,

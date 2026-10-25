@@ -2,11 +2,11 @@
 
 import { addDaysIso, isIsoDate, toIsoDate } from "@/lib/dates";
 import {
-  addMonthsIso,
   CYCLE_FREQUENCIES,
   DISCOUNT_RANGE,
   discountSummary,
   isShortTerm,
+  periodEndIso,
   REDEMPTION_METHODS,
   SHORT_TERM_MONTHS,
   spaceSummary,
@@ -18,9 +18,7 @@ import { cn } from "@/lib/cn";
 
 /** Koniec okresu: start + N miesięcy − 1 dzień (1.11 + 3 mies. → 31.01). */
 export function periodEnd(start: string, months: number) {
-  const end = addMonthsIso(start, months);
-  const [y, m, d] = end.split("-").map(Number);
-  return toIsoDate(new Date(y, m - 1, d - 1));
+  return periodEndIso(start, months);
 }
 
 const PERIOD_PRESETS = [1, 3, 6, 12];
@@ -93,10 +91,34 @@ export function PeriodFields({ mission }: { mission: Mission }) {
   );
 }
 
+/** Błędy pól zniżki (szybka wizyta). */
+export type DiscountErrors = Partial<Record<"discount" | "hours" | "redemption" | "password", string>>;
+
+function FieldError({ text }: { text?: string }) {
+  return text ? (
+    <p role="alert" className="mt-1.5 text-xs font-medium text-rose-600">
+      {text}
+    </p>
+  ) : null;
+}
+
 function DiscountFields({ mission }: { mission: Mission }) {
   const { updateTerms } = useStore();
-  const d = mission.terms.discount;
-  const set = (patch: Partial<MissionTerms["discount"]>) => updateTerms(mission.id, "discount", patch);
+  return (
+    <DiscountEditor value={mission.terms.discount} onChange={(patch) => updateTerms(mission.id, "discount", patch)} />
+  );
+}
+
+/** Pola zniżki bez zapisu — wartość i zmiany podaje rodzic (krok misji albo szybka wizyta). */
+export function DiscountEditor({
+  value: d,
+  onChange: set,
+  errors = {},
+}: {
+  value: MissionTerms["discount"];
+  onChange: (patch: Partial<MissionTerms["discount"]>) => void;
+  errors?: DiscountErrors;
+}) {
   const method = REDEMPTION_METHODS.find((m) => m.id === d.redemption);
   const outOfRange = d.kind === "percent" && d.percent !== null && (d.percent < DISCOUNT_RANGE.min || d.percent > DISCOUNT_RANGE.max);
 
@@ -115,7 +137,7 @@ function DiscountFields({ mission }: { mission: Mission }) {
       </div>
 
       {d.kind === "percent" ? (
-        <div>
+        <div data-field="discount">
           <Field label="Wysokość rabatu">
             <NumberInput
               value={d.percent}
@@ -145,16 +167,21 @@ function DiscountFields({ mission }: { mission: Mission }) {
               Zwykle {DISCOUNT_RANGE.min}–{DISCOUNT_RANGE.max}%.
             </span>
           </div>
+          <FieldError text={errors.discount} />
         </div>
       ) : (
-        <Field label="Co gratis">
-          <input
-            className={inputClass}
-            placeholder="np. kawa do deseru, pierwsza godzina gry gratis"
-            value={d.freebie}
-            onChange={(e) => set({ freebie: e.target.value })}
-          />
-        </Field>
+        <div data-field="discount">
+          <Field label="Co gratis">
+            <input
+              className={inputClass}
+              placeholder="np. kawa do deseru, pierwsza godzina gry gratis"
+              value={d.freebie}
+              aria-invalid={Boolean(errors.discount)}
+              onChange={(e) => set({ freebie: e.target.value })}
+            />
+          </Field>
+          <FieldError text={errors.discount} />
+        </div>
       )}
 
       <div>
@@ -162,14 +189,21 @@ function DiscountFields({ mission }: { mission: Mission }) {
           Kiedy obowiązuje <span className="font-medium normal-case tracking-normal text-muted">— np. godziny martwe</span>
         </p>
         <WeekdayPicker value={d.days} onChange={(days) => set({ days })} />
-        <div className="mt-2 grid max-w-md grid-cols-2 gap-3">
+        <div className="mt-2 grid max-w-md grid-cols-2 gap-3" data-field="hours">
           <Field label="Od godziny" optional>
             <input type="time" className={inputClass} value={d.hoursFrom} onChange={(e) => set({ hoursFrom: e.target.value })} />
           </Field>
           <Field label="Do godziny" optional>
-            <input type="time" className={inputClass} value={d.hoursTo} onChange={(e) => set({ hoursTo: e.target.value })} />
+            <input
+              type="time"
+              className={inputClass}
+              value={d.hoursTo}
+              aria-invalid={Boolean(errors.hours)}
+              onChange={(e) => set({ hoursTo: e.target.value })}
+            />
           </Field>
         </div>
+        <FieldError text={errors.hours} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -205,7 +239,7 @@ function DiscountFields({ mission }: { mission: Mission }) {
         </Field>
       </div>
 
-      <div>
+      <div data-field="redemption">
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-navy">Jak gość realizuje zniżkę</p>
         <Pills
           value={d.redemption}
@@ -213,16 +247,19 @@ function DiscountFields({ mission }: { mission: Mission }) {
           options={REDEMPTION_METHODS.map((m) => ({ id: m.id, label: m.label, hint: m.hint }))}
         />
         {method ? <p className="mt-2 text-xs leading-5 text-muted">{method.hint}</p> : null}
+        <FieldError text={errors.redemption} />
         {d.redemption === "password" ? (
-          <div className="mt-3 max-w-md">
+          <div className="mt-3 max-w-md" data-field="password">
             <Field label="Hasło dla obsługi">
               <input
                 className={inputClass}
                 placeholder="np. LUTRA-ŚRODA"
                 value={d.password}
+                aria-invalid={Boolean(errors.password)}
                 onChange={(e) => set({ password: e.target.value })}
               />
             </Field>
+            <FieldError text={errors.password} />
           </div>
         ) : null}
       </div>
@@ -238,8 +275,19 @@ function DiscountFields({ mission }: { mission: Mission }) {
 
 function SpaceFields({ mission }: { mission: Mission }) {
   const { updateTerms } = useStore();
-  const s = mission.terms.space;
-  const set = (patch: Partial<MissionTerms["space"]>) => updateTerms(mission.id, "space", patch);
+  return <SpaceEditor value={mission.terms.space} onChange={(patch) => updateTerms(mission.id, "space", patch)} />;
+}
+
+/** Miejsce na wydarzenia bez zapisu — wartość i zmiany podaje rodzic. */
+export function SpaceEditor({
+  value: s,
+  onChange: set,
+  error,
+}: {
+  value: MissionTerms["space"];
+  onChange: (patch: Partial<MissionTerms["space"]>) => void;
+  error?: string;
+}) {
   return (
     <div>
       <CheckRow
@@ -275,6 +323,7 @@ function SpaceFields({ mission }: { mission: Mission }) {
               onChange={(e) => set({ notes: e.target.value })}
             />
           </Field>
+          <FieldError text={error} />
           {spaceSummary(s) ? <p className="text-xs text-navy">{spaceSummary(s)}</p> : null}
         </div>
       ) : null}
