@@ -62,9 +62,19 @@ function Bar({ value, max, title }: { value: number; max: number; title: string 
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({
+  title,
+  hint,
+  wide,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="rounded-[28px] border border-line bg-white p-4 sm:p-6">
+    <section className={cn("rounded-[28px] border border-line bg-white p-4 sm:p-6", wide && "xl:col-span-2")}>
       <h2 className="font-semibold text-navy">{title}</h2>
       {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
       <div className="mt-4">{children}</div>
@@ -329,6 +339,7 @@ export default function ReportsPage() {
             </div>
           </Section>
           <Section
+            wide
             title="Podpowiedzi AI z rozmów"
             hint="Ile pól z rozmowy przyjmujesz, które odrzucasz i ile to kosztuje. Bez treści rozmów — same decyzje."
           >

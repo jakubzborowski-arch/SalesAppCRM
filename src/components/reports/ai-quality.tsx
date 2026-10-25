@@ -47,7 +47,7 @@ export function AiQualitySection({ period, ownerId }: { period: ReportPeriod; ow
   }
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Box label="Odczyty rozmów" value={String(q.runs)} hint={`${q.applied} wstawione · ${q.discarded} odrzucone`} />
         <Box label="Średni czas" value={q.avgSeconds !== null ? `${q.avgSeconds} s` : "—"} hint="od wysłania do odpowiedzi" />
         <Box
