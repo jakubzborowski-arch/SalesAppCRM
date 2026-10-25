@@ -201,6 +201,29 @@ describe("etap 4 w sklepie: warunki, porozumienie, opieka, maile", () => {
     });
   });
 
+  it("metryki partnera zapisują się w bazie i odhaczają informację o realizacjach", async () => {
+    const out = await mount();
+    let result = { ok: false } as { ok: boolean; error?: string };
+    await act(async () => {
+      result = await out.store!.savePartnerMetrics(P1, "2026-09", { events: null, attendees: null, redemptions: null, notes: " " });
+    });
+    expect(result.ok).toBe(false);
+    await act(async () => {
+      result = await out.store!.savePartnerMetrics(P1, "2026-09", { events: 4, attendees: 30, redemptions: 18, notes: "" });
+    });
+    expect(result.ok).toBe(true);
+    expect(holder.client.rows("partner_metrics")).toEqual([expect.objectContaining({ partner_id: P1, month: "2026-09", redemptions: 18 })]);
+    expect(out.store!.state.metrics).toEqual([expect.objectContaining({ partnerId: P1, month: "2026-09", redemptions: 18 })]);
+    expect(out.store!.metricsMissing).toBe(false);
+    holder.client.failNext = { table: "partner_metrics", op: "upsert", error: { code: "42P01", message: "relation does not exist" } };
+    await act(async () => {
+      result = await out.store!.savePartnerMetrics(P1, "2026-08", { events: 1, attendees: null, redemptions: null, notes: "" });
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/migrację v8/);
+    expect(out.store!.metricsMissing).toBe(true);
+  });
+
   it("zgody na markę zapisują się jako checklista umowy", async () => {
     const out = await mount();
     act(() => out.store!.setChecklistItem(M1, "contract:brand_app", true));

@@ -578,6 +578,46 @@ await expectError("podpowiedź AI do misji z innego zespołu odrzucona", () => a
 await expectError("anon nie zapisze podpowiedzi AI", () => as(null, () => sugg(wsG, mG, G.id)), /permission denied|row-level security/);
 await expectError("podpowiedzi AI nie da się poprawić po fakcie", () => as(H, () => db.query("update ai_suggestions set outcome = 'discarded'")), /permission denied/);
 
+// Metryki partnera: zespół czyta, edytuje ten, kto może edytować kartę; obcy zespół i anon — nic.
+const metric = (partner, month, redemptions) =>
+  db.query("insert into partner_metrics (partner_id, month, events, attendees, redemptions) values ($1, $2, 2, 10, $3) returning id, created_by", [partner, month, redemptions]);
+const hMetric = await as(H, async () => (await metric(pH, "2026-09", 12)).rows[0]);
+ok(hMetric?.created_by === H.id, "handlowiec zapisuje metryki swojego partnera (created_by = on)");
+await as(H, () => db.query("insert into partner_metrics (partner_id, month, redemptions) values ($1, '2026-09', 14) on conflict (partner_id, month) do update set redemptions = excluded.redemptions, updated_at = now()", [pH]));
+ok((await as(G, () => one("select redemptions from partner_metrics where partner_id = $1 and month = '2026-09'", [pH])))?.redemptions === 14, "upsert po (partner, miesiąc); administrator widzi metryki zespołu");
+const pG2 = await as(G, async () => (await one("insert into partners (workspace_id, name, owner_user_id) values ($1, 'Klub Gosi', $2) returning id", [wsG, G.id])).id);
+await as(G, () => metric(pG2, "2026-09", 5));
+ok((await as(H, () => all("select id from partner_metrics where partner_id = $1", [pG2]))).length === 1, "handlowiec czyta metryki partnera kolegi");
+await expectError("handlowiec nie dopisze metryk cudzego partnera", () => as(H, () => metric(pG2, "2026-08", 1)), /row-level security/);
+const hUpdOther = await as(H, () => db.query("update partner_metrics set redemptions = 99 where partner_id = $1", [pG2]));
+ok((hUpdOther.affectedRows ?? 0) === 0, "handlowiec nie poprawi metryk cudzego partnera");
+const hDelOther = await as(H, () => db.query("delete from partner_metrics where partner_id = $1", [pG2]));
+ok((hDelOther.affectedRows ?? 0) === 0, "handlowiec nie usunie metryk cudzego partnera");
+ok((await as(A, () => all("select id from partner_metrics"))).length === 0, "obcy zespół nie widzi metryk");
+await expectError("obcy zespół nie zapisze metryk", () => as(A, () => metric(pH, "2026-07", 1)), /row-level security/);
+const aUpd = await as(A, () => db.query("update partner_metrics set redemptions = 0"));
+ok((aUpd.affectedRows ?? 0) === 0, "obcy zespół nie poprawi metryk");
+await expectError("anon nie czyta metryk", () => as(null, () => all("select id from partner_metrics")), /permission denied/);
+await expectError("anon nie zapisze metryk", () => as(null, () => metric(pH, "2026-06", 1)), /permission denied|row-level security/);
+await expectError("miesiąc w złym formacie odrzucony", () => as(H, () => metric(pH, "2026-13", 1)), /check constraint/);
+await expectError("ujemne realizacje odrzucone", () => as(H, () => metric(pH, "2026-05", -1)), /check constraint/);
+await expectError("drugi wiersz za ten sam miesiąc odrzucony", () => as(H, () => metric(pH, "2026-09", 1)), /duplicate key|unique/);
+await expectError("notatka ponad 1000 znaków odrzucona", () =>
+  as(H, () => db.query("insert into partner_metrics (partner_id, month, notes) values ($1, '2026-04', $2)", [pH, "x".repeat(1001)])), /check constraint/);
+await as(H, () => db.query("delete from partner_metrics where partner_id = $1 and month = '2026-09'", [pH]));
+ok((await all("select id from partner_metrics where partner_id = $1", [pH])).length === 0, "handlowiec usuwa metryki swojego partnera");
+await db.query("delete from partners where id = $1", [pG2]);
+ok((await all("select id from partner_metrics where partner_id = $1", [pG2])).length === 0, "usunięcie partnera kasuje jego metryki");
+
+// Wynik dopasowania: każde kryterium 0–2 albo puste.
+const fitUpd = await as(H, () => db.query("update partners set fit_dead_hours = 2, fit_capacity = 1, fit_area = 0 where id = $1", [pH]));
+ok((fitUpd.affectedRows ?? 0) === 1, "handlowiec ocenia dopasowanie swojego lokalu");
+ok((await one("select fit_dead_hours + fit_capacity + fit_area as s from partners where id = $1", [pH])).s === 3, "suma dopasowania 3/6");
+await expectError("dopasowanie 3 odrzucone", () => as(H, () => db.query("update partners set fit_area = 3 where id = $1", [pH])), /partners_fit_range/);
+await expectError("dopasowanie ujemne odrzucone", () => as(H, () => db.query("update partners set fit_capacity = -1 where id = $1", [pH])), /partners_fit_range/);
+await as(H, () => db.query("update partners set fit_area = null where id = $1", [pH]));
+ok((await one("select fit_area from partners where id = $1", [pH])).fit_area === null, "kryterium można wyczyścić");
+
 const good = await snapshot();
 ok((await versions()).at(-1) === "v8", "v8 zapisuje znacznik wersji");
 await db.exec(v23);

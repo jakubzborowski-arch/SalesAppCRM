@@ -7,6 +7,9 @@ import { CompanyCard } from "@/components/partners/company-card";
 import { MissionDossier } from "@/components/partners/mission-dossier";
 import { ContactForm, PartnerBasicsForm } from "@/components/partners/partner-edit";
 import { PriorityChecks } from "@/components/partners/priority-checks";
+import { FitEditor } from "@/components/partners/fit-editor";
+import { HealthBadge } from "@/components/partners/health-badge";
+import { healthFor } from "@/lib/health";
 import { CONTACT_CHANNELS, segmentLabel } from "@/lib/playbook";
 import { careMissionOf } from "@/lib/care";
 import { socialUrl, type SocialKind } from "@/lib/social";
@@ -61,6 +64,8 @@ export default function PartnerDetailPage({
   }
 
   const owner = partner.contacts.find((c) => c.isDecisionMaker);
+  const caring = careMissionOf(state.missions, partner.id);
+  const health = caring ? healthFor(state, partner) : null;
   const editable = canEditPartner(partner);
   // Usunięcie kasuje też misje — tylko opiekun/admin i bez cudzych misji (tak samo pilnuje baza).
   const canDelete = canDeletePartner(partner);
@@ -81,11 +86,12 @@ export default function PartnerDetailPage({
               <span className="rounded-full bg-chip px-2.5 py-0.5 text-[10px] tracking-[0.08em] text-lutra">
                 {segmentLabel(partner.segment)}
               </span>
-              {careMissionOf(state.missions, partner.id) ? (
+              {caring ? (
                 <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] tracking-[0.08em] text-emerald-700">
                   Aktywny partner
                 </span>
               ) : null}
+              {health ? <HealthBadge health={health} /> : null}
             </p>
             <h1 className="mt-1 text-4xl font-bold tracking-tight text-navy">{partner.name}</h1>
             <p className="mt-2 text-sm font-semibold text-foreground">
@@ -332,6 +338,8 @@ export default function PartnerDetailPage({
               <p className="mt-4 text-xs text-amber-700">Brak oznaczonego decydenta.</p>
             )}
           </section>
+
+          {partner.segment === "venue" ? <FitEditor partner={partner} editable={editable} /> : null}
 
           <CompanyCard key={partner.id} partner={partner} />
 

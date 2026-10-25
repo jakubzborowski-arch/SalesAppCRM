@@ -226,6 +226,18 @@ Kwartalne potwierdzenie warunków.
 - reviewed_at, terms_still_valid
 - notes, next_review_at
 
+### partner_metrics (v8)
+Miesięczne liczby partnera z panelu Lutry — podstawa maila z podsumowaniem i wskaźnika zdrowia.
+
+- id, partner_id (kasowane z partnerem), month `RRRR-MM`, unique (partner_id, month)
+- events, attendees, redemptions (liczby ≥ 0, puste = nie wpisano), notes (do 1000 znaków, tylko dla zespołu)
+- created_by, updated_at
+- RLS: czyta zespół; zapis, poprawka i usunięcie — kto może edytować kartę partnera (`can_edit_partner`)
+
+### partners.fit_* (v8)
+Wynik dopasowania lokalu 0–6: `fit_dead_hours`, `fit_capacity`, `fit_area` (każde 0–2 albo puste).
+Sortowanie listy partnerów i remis w „najpilniejszej misji” (przy tej samej dacie kroku wyżej lokal z lepszym wynikiem).
+
 ---
 
 ## AI i uczenie

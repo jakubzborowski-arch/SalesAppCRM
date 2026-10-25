@@ -37,6 +37,61 @@ create policy "ai_suggestions_insert" on public.ai_suggestions for insert
     and (mission_id is null or mission_id in (select id from public.missions where workspace_id = public.current_workspace_id()))
   );
 
+-- ---------------------------------------------------------------------------
+-- 2. Miesięczne metryki partnera: wydarzenia, uczestnicy, realizacje zniżki (opieka po aktywacji)
+
+create table if not exists public.partner_metrics (
+  id uuid primary key default gen_random_uuid(),
+  partner_id uuid not null references public.partners (id) on delete cascade,
+  month text not null check (month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
+  events integer check (events is null or events >= 0),
+  attendees integer check (attendees is null or attendees >= 0),
+  redemptions integer check (redemptions is null or redemptions >= 0),
+  notes text check (notes is null or char_length(notes) <= 1000),
+  created_by uuid default auth.uid() references auth.users (id) on delete set null,
+  updated_at timestamptz not null default now(),
+  unique (partner_id, month)
+);
+
+create index if not exists partner_metrics_partner_idx on public.partner_metrics (partner_id, month desc);
+
+alter table public.partner_metrics enable row level security;
+revoke all on public.partner_metrics from anon, authenticated;
+grant select, insert, update, delete on public.partner_metrics to authenticated;
+
+drop policy if exists "partner_metrics_select" on public.partner_metrics;
+create policy "partner_metrics_select" on public.partner_metrics for select
+  using (partner_id in (select id from public.partners where workspace_id = public.current_workspace_id()));
+drop policy if exists "partner_metrics_insert" on public.partner_metrics;
+create policy "partner_metrics_insert" on public.partner_metrics for insert
+  with check (public.can_edit_partner(partner_id));
+drop policy if exists "partner_metrics_update" on public.partner_metrics;
+create policy "partner_metrics_update" on public.partner_metrics for update
+  using (public.can_edit_partner(partner_id))
+  with check (public.can_edit_partner(partner_id));
+drop policy if exists "partner_metrics_delete" on public.partner_metrics;
+create policy "partner_metrics_delete" on public.partner_metrics for delete
+  using (public.can_edit_partner(partner_id));
+
+-- ---------------------------------------------------------------------------
+-- 3. Wynik dopasowania lokalu (0–6): martwe godziny, pojemność dla grup, dzielnica — każde 0–2
+
+alter table public.partners add column if not exists fit_dead_hours smallint;
+alter table public.partners add column if not exists fit_capacity smallint;
+alter table public.partners add column if not exists fit_area smallint;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'partners_fit_range') then
+    alter table public.partners
+      add constraint partners_fit_range check (
+        (fit_dead_hours is null or fit_dead_hours between 0 and 2)
+        and (fit_capacity is null or fit_capacity between 0 and 2)
+        and (fit_area is null or fit_area between 0 and 2)
+      );
+  end if;
+end $$;
+
 -- Znacznik wersji: CRM wykrywa, gdy starsza migracja została odpalona po nowszej (trzeba wtedy powtórzyć kolejne).
 create table if not exists public.crm_migrations (
   version text primary key,
