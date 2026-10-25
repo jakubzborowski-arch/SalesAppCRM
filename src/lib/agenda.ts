@@ -1,6 +1,6 @@
 import { addDaysIso, daysUntil, isIsoDate, toIsoDate } from "./dates";
 import { careMissionOf } from "./care";
-import { pendingFollowUps } from "./followups";
+import { pendingFollowUps, retryCadence, STALE_DAYS } from "./followups";
 import { addMonthsIso, agreementFormOf } from "./terms";
 import type { AppState, Mission } from "./types";
 
@@ -13,7 +13,10 @@ export type AgendaKind =
   | "follow_up"
   | "review"
   | "terms"
-  | "report";
+  | "report"
+  | "retry"
+  | "no_response"
+  | "stale";
 
 export type AgendaItem = {
   /** Stały klucz — po nim powiadomienie wychodzi raz dziennie. */
@@ -40,6 +43,9 @@ export const AGENDA_LABEL: Record<AgendaKind, string> = {
   review: "Przegląd po cyklu",
   terms: "Potwierdzenie warunków",
   report: "Informacja o realizacjach",
+  retry: "Ponowienie kontaktu",
+  no_response: "Brak odpowiedzi",
+  stale: "Misja stygnie",
 };
 
 /** Co ile miesięcy partner potwierdza warunki (KB → „Poprawność danych”). */
@@ -133,6 +139,25 @@ export function agenda(state: AppState, onlyMine = true, today = new Date()): Ag
       if (mission.nextStepAt <= todayIso) push(mission, "next_step", mission.nextStepLabel, mission.nextStepAt);
     }
     if (mission.status === "active") {
+      // Zaplanowany krok w przyszłości (albo otwarte zadanie) = handlowiec ma plan; rytm i „stygnie” nie przeszkadzają.
+      const planned = (isIsoDate(mission.nextStepAt) && mission.nextStepAt > todayIso) || openStepTasks.has(mission.id);
+      const retry = planned ? null : retryCadence(mission);
+      if (retry && retry.due <= todayIso) {
+        push(mission, retry.kind, retry.title, retry.due, retry.lastAt);
+      } else if (!planned && !retry) {
+        const lastTouch = mission.activities.reduce<string>((max, a) => (a.occurredAt > max ? a.occurredAt : max), "") || mission.startedAt;
+        const since = lastTouch ? toIsoDate(new Date(lastTouch)) : "";
+        const quiet = since ? -(daysUntil(since, today) ?? 0) : 0;
+        if (since && quiet >= STALE_DAYS) {
+          push(
+            mission,
+            "stale",
+            `Bez kontaktu od ${quiet} dni — zaplanuj następny krok albo zamknij misję`,
+            addDaysIso(STALE_DAYS, new Date(`${since}T12:00:00`)),
+            since,
+          );
+        }
+      }
       const deadline = mission.decision.decisionDeadline;
       if (isIsoDate(deadline) && deadline <= todayIso) push(mission, "deadline", "Partner miał dać odpowiedź — zadzwoń po decyzję", deadline);
       const c = mission.contract;
