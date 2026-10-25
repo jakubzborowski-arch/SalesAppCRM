@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { parseInviteToken, rememberInvite, useStore } from "@/lib/store";
 
+const SIGNUP_OPEN = process.env.NEXT_PUBLIC_OPEN_SIGNUP === "1" || process.env.NODE_ENV === "development";
+
 export default function LoginPage() {
   const router = useRouter();
   const { dbStatus, signIn, signUp } = useStore();
@@ -11,7 +13,10 @@ export default function LoginPage() {
   const [invite] = useState(() =>
     typeof window === "undefined" ? "" : parseInviteToken(window.location.search),
   );
-  const [mode, setMode] = useState<"login" | "signup">("signup");
+  const [mode, setMode] = useState<"login" | "signup">(() => (invite ? "signup" : "login"));
+  // Konto zakłada się z linku zaproszenia. Otwarta rejestracja tylko lokalnie albo po NEXT_PUBLIC_OPEN_SIGNUP=1.
+  const signupOpen = Boolean(invite) || SIGNUP_OPEN;
+  const [notice, setNotice] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,10 +41,18 @@ export default function LoginPage() {
     event.preventDefault();
     setPending(true);
     setError(null);
-    const result =
-      mode === "signup"
-        ? await signUp(email, password, name || email.split("@")[0])
-        : await signIn(email, password);
+    setNotice(null);
+    if (mode === "signup") {
+      const result = await signUp(email, password, name || email.split("@")[0]);
+      setPending(false);
+      if (!result.ok) setError(result.error ?? "Nie udało się założyć konta.");
+      else if (result.confirm) {
+        setNotice(`Wysłaliśmy link potwierdzający na ${email}. Kliknij go, a potem zaloguj się tutaj.`);
+        setMode("login");
+      }
+      return;
+    }
+    const result = await signIn(email, password);
     setPending(false);
     if (!result.ok) setError(result.error ?? "Nie udało się zalogować.");
   };
@@ -88,6 +101,7 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {notice ? <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</p> : null}
           <button
             type="submit"
             disabled={pending}
@@ -100,20 +114,25 @@ export default function LoginPage() {
           <div className="mt-6 h-48 rounded-2xl bg-surface" />
         )}
 
-        <button
-          type="button"
-          className="mt-4 text-sm font-medium text-blue"
-          onClick={() => {
-            setMode(mode === "signup" ? "login" : "signup");
-            setError(null);
-          }}
-        >
-          {mode === "signup" ? "Mam już konto" : "Nie mam konta — załóż"}
-        </button>
+        {signupOpen ? (
+          <button
+            type="button"
+            className="mt-4 text-sm font-medium text-blue"
+            onClick={() => {
+              setMode(mode === "signup" ? "login" : "signup");
+              setError(null);
+            }}
+          >
+            {mode === "signup" ? "Mam już konto" : "Nie mam konta — załóż"}
+          </button>
+        ) : (
+          <p className="mt-4 text-sm text-muted">
+            Nie masz konta? Poproś administratora o link z zaproszeniem do zespołu.
+          </p>
+        )}
 
         <p className="mt-6 text-xs leading-5 text-muted-soft">
-          Jeśli po rejestracji Supabase wymaga potwierdzenia maila, wyłącz Confirm email w Authentication
-          → Providers. To tylko na czas developmentu.
+          Po założeniu konta Supabase wyśle mail z linkiem potwierdzającym. AI działa dopiero po potwierdzeniu adresu.
         </p>
       </div>
     </div>

@@ -170,7 +170,7 @@ type Store = {
     email: string,
     password: string,
     name: string,
-  ) => Promise<{ ok: boolean; error?: string }>;
+  ) => Promise<{ ok: boolean; error?: string; confirm?: boolean }>;
   signOut: () => Promise<void>;
   retryCloud: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -1198,16 +1198,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const { data, error } = await sb.auth.signUp({
           email,
           password,
-          options: { data: { full_name: name } },
+          options: { data: { full_name: name }, emailRedirectTo: `${window.location.origin}/login` },
         });
         if (error) return { ok: false, error: error.message };
-        if (!data.session) {
-          return {
-            ok: false,
-            error:
-              "Konto utworzone, ale wymaga potwierdzenia e-maila. W Supabase: Authentication → Providers → wyłącz Confirm email.",
-          };
-        }
+        // Z włączonym „Confirm email” sesja powstaje dopiero po kliknięciu linku w mailu.
+        if (!data.session) return { ok: true, confirm: true };
         return { ok: true };
       },
       signOut: async () => {

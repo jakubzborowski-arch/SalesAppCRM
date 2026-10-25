@@ -678,6 +678,9 @@ const DISABLED_TEXT: Record<string, string> = {
     "W .env.local jest klucz administracyjny (sk-ant-admin…). Potrzebny jest zwykły klucz API z Claude Console — albo zrób to przez Claude poniżej.",
   login: "Automat jest wyłączony — sesja wygasła. Zaloguj się ponownie albo zrób to przez Claude poniżej.",
   not_allowed: "Twoje konto nie ma dostępu do automatu (AI_ALLOWED_EMAILS). Możesz to zrobić przez Claude poniżej.",
+  unconfirmed: "Automat działa po potwierdzeniu adresu e-mail — kliknij link z maila rejestracyjnego i zaloguj się ponownie.",
+  no_allowlist:
+    "Automat jest wyłączony: na serwerze nie ustawiono AI_ALLOWED_EMAILS (na produkcji lista jest obowiązkowa). Możesz to zrobić przez Claude poniżej.",
   offline: "Nie mogę sprawdzić serwera CRM. Możesz to zrobić przez Claude poniżej.",
   no_engine:
     "Automat jest wyłączony — na serwerze CRM nie ma klucza Claude API. Możesz to zrobić przez Claude poniżej (bez dodatkowych kosztów w ramach Twojego planu) albo dodać ANTHROPIC_API_KEY do .env.local i uruchomić CRM ponownie.",
