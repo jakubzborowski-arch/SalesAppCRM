@@ -18,13 +18,7 @@ const fixtures = loadFixtures();
  * Klucz: `${id fixture}:${klucz wiersza podglądu}` → opis. Te wiersze są wyłączone z asercji „bez NOT_IN_TALK”
  * i opisane jako it.todo niżej.
  */
-const KNOWN_GROUNDING_ISSUES: Record<string, string> = {
-  // mission-extract.ts:103 — check(`${t.discountPercent}`) → relatesTo (discovery-extract.ts:827–835) szuka liczby
-  // tylko cyframi („ 30 ”), a bramka dowodu numberInText (evidence.ts:227) przyjmuje „trzydzieści”. Zniżka powiedziana
-  // słownie dostaje „Nie widzę tego w rozmowie” i jest odznaczona, choć dowód jest poprawny.
-  "v13-przestrzen-kreda-umowa:terms:value":
-    "Zniżka powiedziana słownie („trzydzieści procent”) dostaje NOT_IN_TALK — relatesTo nie zna liczebników",
-};
+const KNOWN_GROUNDING_ISSUES: Record<string, string> = {};
 
 // ---------------------------------------------------------------------------
 // Minimalny walidator JSON Schema (tylko konstrukcje używane w EXTRACTION_SCHEMA).

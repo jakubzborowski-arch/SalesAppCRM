@@ -91,7 +91,12 @@ describe("kto mówi", () => {
     expect(numberInText(15, "Mogę dać 15 procent")).toBe(true);
     expect(numberInText(15, "Mogę dać piętnaście procent")).toBe(true);
     expect(numberInText(15, "Mogę dać 150 zł")).toBe(false);
-    expect(numberInText(4, "od czterech osób")).toBe(false);
+    expect(numberInText(4, "od czterech osób")).toBe(true);
+    expect(numberInText(6, "od sześciu osób")).toBe(true);
+    expect(numberInText(5, "mogę dać pięć procent")).toBe(true);
+    expect(numberInText(35, "trzydzieści pięć procent")).toBe(true);
+    expect(numberInText(30, "trzydzieści pięć procent")).toBe(false);
+    expect(numberInText(50, "połowę ceny")).toBe(true);
   });
 });
 
@@ -108,11 +113,12 @@ describe("dowody w podglądzie", () => {
     expect(row("deal:company")).toMatchObject({ checked: true });
   });
 
-  it("bez dowodu — odznaczone z ostrzeżeniem; liczba 4 słownie (czterech) też do sprawdzenia", () => {
+  it("bez dowodu — odznaczone z ostrzeżeniem; grupa słownie („od czterech osób”) rozpoznana", () => {
     const rows = proposal({ ...BASE, dowody: { ...BASE.dowody, nazwa_firmy: "" } }).rows;
     expect(rows.find((r) => r.key === "deal:company")).toMatchObject({ checked: false, warning: NO_EVIDENCE });
-    expect(rows.find((r) => r.key === "terms:group")).toMatchObject({ checked: false });
-    expect(rows.find((r) => r.key === "terms:group")!.warning).toMatch(/liczby 4/);
+    expect(rows.find((r) => r.key === "terms:group")).toMatchObject({ checked: true });
+    const wrong = proposal({ ...BASE, warunki: { ...BASE.warunki, min_grupa: 8 } }).rows;
+    expect(wrong.find((r) => r.key === "terms:group")!.warning).toMatch(/liczby 8/);
   });
 
   it("propozycja handlowca nie jest dowodem; zmyślone zdanie też nie", () => {

@@ -211,23 +211,62 @@ export function speakerView(input: {
 // ---------------------------------------------------------------------------
 // Liczby w dowodzie
 
-const NUMBER_WORDS: Array<[number, RegExp]> = [
-  [5, /\bpi[eę]ć\b|\bpi[eę]ciu\b/],
-  [10, /\bdziesi[eę]ć\b|\bdziesi[eę]ciu\b/],
-  [12, /\bdwana[sś]cie\b|\bdwunastu\b/],
-  [15, /\bpi[eę]tna[sś]cie\b|\bpi[eę]tnastu\b/],
-  [20, /\bdwadzie[sś]cia\b|\bdwudziestu\b/],
-  [25, /\bdwadzie[sś]cia pi[eę]ć\b/],
-  [30, /\btrzydzie[sś]ci\b|\btrzydziestu\b/],
-  [40, /\bczterdzie[sś]ci\b/],
-  [50, /\bpi[eę][cć]dziesi[aą]t\b|\bpo[lł]ow[eęa]\b/],
-];
+/** Liczebniki po polsku (bez znaków diakrytycznych, różne przypadki) → liczba. */
+const UNITS: Record<string, number> = {
+  jeden: 1, jedna: 1, jedno: 1, jednej: 1, jednego: 1,
+  dwa: 2, dwie: 2, dwoch: 2, dwoje: 2, dwom: 2,
+  trzy: 3, trzech: 3, troje: 3, trzem: 3,
+  cztery: 4, czterech: 4, czworo: 4, czterem: 4,
+  piec: 5, pieciu: 5, piecioro: 5,
+  szesc: 6, szesciu: 6, szescioro: 6,
+  siedem: 7, siedmiu: 7,
+  osiem: 8, osmiu: 8,
+  dziewiec: 9, dziewieciu: 9,
+};
+const TEENS: Record<string, number> = {
+  dziesiec: 10, dziesieciu: 10,
+  jedenascie: 11, jedenastu: 11,
+  dwanascie: 12, dwunastu: 12,
+  trzynascie: 13, trzynastu: 13,
+  czternascie: 14, czternastu: 14,
+  pietnascie: 15, pietnastu: 15,
+  szesnascie: 16, szesnastu: 16,
+  siedemnascie: 17, siedemnastu: 17,
+  osiemnascie: 18, osiemnastu: 18,
+  dziewietnascie: 19, dziewietnastu: 19,
+};
+const TENS: Record<string, number> = {
+  dwadziescia: 20, dwudziestu: 20,
+  trzydziesci: 30, trzydziestu: 30,
+  czterdziesci: 40, czterdziestu: 40,
+  piecdziesiat: 50, piecdziesieciu: 50,
+  szescdziesiat: 60, siedemdziesiat: 70, osiemdziesiat: 80, dziewiecdziesiat: 90,
+  sto: 100, stu: 100,
+};
 
-/** Liczba z wiersza (np. zniżka 15%) pada w dowodzie — cyframi albo słownie. */
+/** Liczby zapisane słownie w tekście („trzydzieści pięć” → 35, „sześciu” → 6, „połowę” → 50). */
+export function spokenNumbers(text: string): number[] {
+  const tokens = fold(text).replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+  const out: number[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const word = tokens[i];
+    if (TENS[word] !== undefined) {
+      const next = UNITS[tokens[i + 1] ?? ""];
+      if (next !== undefined && TENS[word] < 100) {
+        out.push(TENS[word] + next);
+        i += 1;
+      } else out.push(TENS[word]);
+    } else if (TEENS[word] !== undefined) out.push(TEENS[word]);
+    else if (UNITS[word] !== undefined) out.push(UNITS[word]);
+    else if (/^polow/.test(word)) out.push(50);
+  }
+  return out;
+}
+
+/** Liczba z wiersza (np. zniżka 15%, grupa od 6 osób) pada w tekście — cyframi albo słownie. */
 export function numberInText(value: number, text: string) {
-  const lower = text.toLowerCase();
-  if (new RegExp(`(^|[^\\d])${value}([^\\d]|$)`).test(lower)) return true;
-  return NUMBER_WORDS.some(([n, pattern]) => n === value && pattern.test(lower));
+  if (new RegExp(`(^|[^\\d])${value}([^\\d]|$)`).test(text)) return true;
+  return spokenNumbers(text).includes(value);
 }
 
 // ---------------------------------------------------------------------------

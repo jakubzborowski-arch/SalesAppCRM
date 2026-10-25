@@ -15,7 +15,7 @@ import {
   type Proposal,
   type ProposalRow,
 } from "./discovery-extract";
-import { applyEvidence } from "./evidence";
+import { applyEvidence, numberInText } from "./evidence";
 import { OBJECTION_KEYS } from "./playbook";
 import { cycleSummary, discountSummary, periodText, pilotSummary, redemptionLabel, termsChecks } from "./terms";
 import type {
@@ -75,6 +75,7 @@ function termsRows(
   partner: Partner,
   check: (value: string) => string | undefined,
   dates: { fromDate: string; callDate: string },
+  source: string,
 ) {
   const rows: ProposalRow[] = [];
   const t = ext.terms;
@@ -100,7 +101,8 @@ function termsRows(
           label: "Zniżka",
           value: proposed,
           current: now,
-          warning: check(t.discountPercent ? `${t.discountPercent}` : t.freebie),
+          // Procent może paść słownie („trzydzieści procent”) — sprawdzamy liczbę, nie samo „30”.
+          warning: t.discountPercent ? (source.trim() && !numberInText(t.discountPercent, source) ? NOT_IN_TALK : undefined) : check(t.freebie),
           hint: "Wpisz tylko to, na co partner się zgodził.",
         });
       }
@@ -309,7 +311,7 @@ export function buildMissionProposal(
 
   const talk = base.rows.filter((row) => row.key !== "summary").map((row) => ({ ...row, group: GROUPS.talk }));
   const note = base.rows.filter((row) => row.key === "summary").map((row) => ({ ...row, group: GROUPS.note }));
-  const offer = termsRows(ext, mission, partner, check, { fromDate, callDate });
+  const offer = termsRows(ext, mission, partner, check, { fromDate, callDate }, source);
   const objections = objectionRows(ext, mission, input.view?.known ? input.view.partnerText : source);
   const deal = dealRows(ext, mission, partner, check, source);
 
