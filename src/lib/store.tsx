@@ -344,6 +344,22 @@ export function rememberInvite(token: string) {
   }
 }
 
+/** Komunikaty Supabase Auth po polsku (reszta bez zmian). */
+export function authErrorText(message: string) {
+  if (/signups not allowed/i.test(message)) {
+    return "Rejestracja jest wyłączona w Supabase (Authentication → Sign In / Providers → „Allow new users to sign up”). Włącz ją — o tym, kto założy konto, decyduje zaproszenie.";
+  }
+  if (/invalid login credentials/i.test(message)) return "Nieprawidłowy e-mail albo hasło.";
+  if (/email not confirmed/i.test(message)) return "Najpierw potwierdź adres e-mail — kliknij link z maila rejestracyjnego.";
+  if (/user already registered/i.test(message)) return "To konto już istnieje — zaloguj się.";
+  if (/password should be at least/i.test(message)) return "Hasło jest za krótkie (min. 6 znaków).";
+  if (/rate limit|too many/i.test(message)) return "Za dużo prób. Odczekaj chwilę i spróbuj ponownie.";
+  if (/before.user.created|hook/i.test(message) && !/zaproszenia/i.test(message)) {
+    return "Konto w tym CRM zakłada się z linku zaproszenia do zespołu.";
+  }
+  return message;
+}
+
 function readPendingInvite() {
   try {
     return window.sessionStorage.getItem(INVITE_KEY);
@@ -1327,7 +1343,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const sb = getSupabase();
         if (!sb) return { ok: false, error: "Brak konfiguracji Supabase." };
         const { error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) return { ok: false, error: error.message };
+        if (error) return { ok: false, error: authErrorText(error.message) };
         return { ok: true };
       },
       signUp: async (email, password, name) => {
@@ -1343,7 +1359,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             emailRedirectTo: `${window.location.origin}/login`,
           },
         });
-        if (error) return { ok: false, error: error.message };
+        if (error) return { ok: false, error: authErrorText(error.message) };
         // Z włączonym „Confirm email” sesja powstaje dopiero po kliknięciu linku w mailu.
         if (!data.session) return { ok: true, confirm: true };
         return { ok: true };
