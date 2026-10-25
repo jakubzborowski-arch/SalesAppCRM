@@ -197,6 +197,12 @@ export default function HelpPage() {
                 Typ ustawiasz przy dodawaniu partnera i zmieniasz na karcie („Edytuj”). Od typu zależą research, warianty
                 oferty, wymagane warunki i lista kroków aktywacji.
               </p>
+              <p>
+                <strong>Dopasowanie lokalu (0–6).</strong> Na karcie lokalu oceniasz trzy rzeczy po 0–2: martwe godziny,
+                pojemność dla grup i dzielnicę blisko użytkowników Lutry. Na liście partnerów możesz sortować po
+                dopasowaniu, a pulpit przy równych terminach podsuwa najpierw lepiej dopasowane lokale — tam Lutra szybciej
+                zbuduje gęstość wydarzeń.
+              </p>
             </Block>
 
             <Block id="rozmowa" title="Rozmowa i mapa potrzeb">
@@ -219,9 +225,16 @@ export default function HelpPage() {
               <p className="text-xs text-muted">Kategorie: {NEED_CATEGORIES.map((c) => c.label).join(", ")}.</p>
               <p>
                 <strong>Rozmowa nagrana w Spinach?</strong> Otwórz bąbelek „Notatka z rozmowy” w prawym dolnym rogu misji,
-                wklej transkrypt (albo wczytaj plik .txt / .vtt / .srt) i kliknij „Wypełnij pola z rozmowy”. AI proponuje
-                cytat, problem, ograniczenia, decydenta, terminy i potrzeby — każdą pozycję zaznaczasz sam, a fakt
-                potwierdzasz przyciskiem. Cytat, którego nie ma dosłownie w transkrypcie, jest oznaczony do sprawdzenia.
+                wklej transkrypt (albo wczytaj plik .txt / .vtt / .srt), zaznacz, że partner wie o transkrypcji i analizie
+                przez AI, i kliknij „Wypełnij pola z rozmowy”. AI proponuje pola całej misji: rozmowę i potrzeby, warunki
+                oferty, obiekcje i dane do porozumienia — każdą pozycję zaznaczasz sam, a fakt potwierdzasz przyciskiem.
+              </p>
+              <p>
+                <strong>Dowód przy każdym polu.</strong> Przy propozycji widzisz zdanie partnera z rozmowy, z którego
+                wynika („Dowód: …”). Bez dowodu, z dowodem powiedzianym przez handlowca albo z liczbą, której partner nie
+                powiedział, wiersz jest odznaczony i ma ostrzeżenie. Najlepiej działa transkrypt z mówcami („Imię Nazwisko:
+                …”) — wtedy CRM odróżnia Twoje słowa od słów partnera. Bez mówców warunki i dane do umowy są zawsze do
+                ręcznego sprawdzenia.
               </p>
             </Block>
 
@@ -365,6 +378,12 @@ export default function HelpPage() {
                 „Na dziś” na Pulpicie zbiera zaległe i dzisiejsze: zadania i następne kroki, terminy decyzji, maile po
                 kontakcie, umowy czekające na podpis, przeglądy, kwartalne potwierdzenia, informacje o realizacjach i końce
                 umów. Liczba przy „Zadaniach” w menu to rzeczy do ruchu dziś.
+              </p>
+              <p>
+                <strong>Partner nie odpowiada?</strong> Po pierwszej próbie bez odpowiedzi CRM przypomina o kolejnej po 2
+                dniach, potem po 5 i 10 (licząc od pierwszej) — najlepiej innym kanałem. Po czwartej próbie proponuje
+                zamknięcie misji z powodem „Brak kontaktu” jednym kliknięciem. Misja bez żadnego kontaktu od 7 dni i bez
+                zaplanowanego kroku też trafia do „Na dziś”. Zaplanowany krok w przyszłości wycisza te przypomnienia.
               </p>
               <p>
                 Powiadomienia systemowe włączysz w{" "}
