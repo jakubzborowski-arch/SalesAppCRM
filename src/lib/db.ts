@@ -1009,7 +1009,7 @@ function isMissingFunction(error: { code?: string; message?: string } | null) {
 }
 
 export const V4_MISSING =
-  "Brakuje migracji v4 w bazie. Otwórz SQL Editor w Supabase, wklej supabase/v4-team-timeline.sql i kliknij Run.";
+  "Brakuje migracji v4 w bazie. Otwórz SQL Editor w Supabase, wklej supabase/migrations/20261001000004_v4_team_timeline.sql i kliknij Run.";
 
 /** `true` gdy w bazie są kolumny dziennika kontaktów z migracji v4. `null` gdy nie wiadomo. */
 export async function detectSchemaV4(): Promise<boolean | null> {

@@ -5,11 +5,11 @@ const TEXT = { headers: { "content-type": "text/plain; charset=utf-8" } };
 
 // Stałe ścieżki, żeby pliki SQL trafiły do paczki na Vercelu.
 const MIGRATIONS = [
-  { id: "v4", file: "supabase/v4-team-timeline.sql" },
-  { id: "v5", file: "supabase/v5-company-data.sql" },
-  { id: "v6", file: "supabase/v6-roles-contracts.sql" },
-  { id: "v7", file: "supabase/v7-partner-types.sql" },
-  { id: "v8", file: "supabase/v8-quality-care.sql" },
+  { id: "v4", file: "supabase/migrations/20261001000004_v4_team_timeline.sql" },
+  { id: "v5", file: "supabase/migrations/20261001000005_v5_company_data.sql" },
+  { id: "v6", file: "supabase/migrations/20261001000006_v6_roles_contracts.sql" },
+  { id: "v7", file: "supabase/migrations/20261001000007_v7_partner_types.sql" },
+  { id: "v8", file: "supabase/migrations/20261025000008_v8_quality_care.sql" },
 ] as const;
 
 export async function GET(request: Request) {

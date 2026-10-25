@@ -524,7 +524,7 @@ export function ActivityLog({
 
       {needsMigration ? (
         <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-          Dziennik wymaga migracji bazy v4. W Supabase → SQL Editor wklej plik supabase/v4-team-timeline.sql i
+          Dziennik wymaga migracji bazy v4. W Supabase → SQL Editor wklej plik supabase/migrations/20261001000004_v4_team_timeline.sql i
           kliknij Run.
         </p>
       ) : null}

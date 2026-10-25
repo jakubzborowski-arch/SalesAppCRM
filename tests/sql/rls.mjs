@@ -3,15 +3,15 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 
 const REPO = process.argv[2] ?? new URL("../..", import.meta.url).pathname;
-const v23 = readFileSync(`${REPO}/supabase/v2-v3-all.sql`, "utf8").replace(
+const v23 = readFileSync(`${REPO}/supabase/migrations/20261001000003_v2_v3_all.sql`, "utf8").replace(
   /create extension if not exists pgcrypto;/g,
   "",
 );
-const v4 = readFileSync(`${REPO}/supabase/v4-team-timeline.sql`, "utf8");
-const v5 = readFileSync(`${REPO}/supabase/v5-company-data.sql`, "utf8");
-const v6 = readFileSync(`${REPO}/supabase/v6-roles-contracts.sql`, "utf8");
-const v7 = readFileSync(`${REPO}/supabase/v7-partner-types.sql`, "utf8");
-const v8 = readFileSync(`${REPO}/supabase/v8-quality-care.sql`, "utf8");
+const v4 = readFileSync(`${REPO}/supabase/migrations/20261001000004_v4_team_timeline.sql`, "utf8");
+const v5 = readFileSync(`${REPO}/supabase/migrations/20261001000005_v5_company_data.sql`, "utf8");
+const v6 = readFileSync(`${REPO}/supabase/migrations/20261001000006_v6_roles_contracts.sql`, "utf8");
+const v7 = readFileSync(`${REPO}/supabase/migrations/20261001000007_v7_partner_types.sql`, "utf8");
+const v8 = readFileSync(`${REPO}/supabase/migrations/20261025000008_v8_quality_care.sql`, "utf8");
 
 const stub = `
 create role anon nologin;

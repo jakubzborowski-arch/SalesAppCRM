@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:sql": "node tests/sql/rls.mjs",
+    "db:push": "npx supabase db push",
     "eval:ai": "vitest run --config vitest.eval.config.mts"
   },
   "dependencies": {

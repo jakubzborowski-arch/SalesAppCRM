@@ -56,7 +56,7 @@ function TeamSection() {
         <h2 className="font-semibold">Zespół</h2>
         <p className="mt-2">
           Wspólny workspace wymaga migracji bazy v4. W Supabase otwórz SQL Editor, wklej cały plik
-          supabase/v4-team-timeline.sql i kliknij Run. Potem odśwież tę stronę.
+          supabase/migrations/20261001000004_v4_team_timeline.sql i kliknij Run. Potem odśwież tę stronę.
         </p>
       </section>
     );

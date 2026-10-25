@@ -15,13 +15,25 @@ Otwórz [http://localhost:3001](http://localhost:3001) (albo 3000). Zaloguj się
 
 1. Authentication → Sign In / Providers → Email: włącz **Confirm email** (AI działa tylko dla potwierdzonych adresów).
 2. Authentication → URL Configuration: **Site URL** = adres CRM (lokalnie `http://localhost:3001`, na produkcji adres z Vercela) — tam prowadzi link z maila.
-3. SQL Editor: wklej `supabase/v2-v3-all.sql` i Run.
-4. SQL Editor: wklej po kolei i Run: `v4-team-timeline.sql` (zespół, dziennik kontaktów, historia etapów), `v5-company-data.sql` (dane firmy), `v6-roles-contracts.sql` (kto co edytuje, obieg podpisu), `v7-partner-types.sql` (typ partnera, porozumienie mailowe), `v8-quality-care.sql` (jakość AI, metryki i zdrowie partnera, wynik dopasowania, limity AI). Najprościej: w CRM przycisk „Kopiuj SQL” na żółtym pasku daje wszystkie brakujące naraz.
+3. SQL Editor: wklej `supabase/migrations/20261001000003_v2_v3_all.sql` i Run.
+4. SQL Editor: wklej po kolei i Run kolejne pliki z `supabase/migrations/`: v4 (zespół, dziennik kontaktów, historia etapów), v5 (dane firmy), v6 (kto co edytuje, obieg podpisu), v7 (typ partnera, porozumienie mailowe), v8 (jakość AI, metryki i zdrowie partnera, wynik dopasowania, limity AI). Najprościej: w CRM przycisk „Kopiuj SQL” na żółtym pasku daje wszystkie brakujące naraz. Albo Supabase CLI — niżej.
 5. `.env.local` z URL i anon key.
 6. Pierwsze konto: lokalnie (`npm run dev`) rejestracja jest otwarta. Na produkcji konta zakłada się z linku zaproszenia (Ustawienia → Zespół); pierwsze konto administratora — jednorazowo `NEXT_PUBLIC_OPEN_SIGNUP=1`, potem usuń tę zmienną.
 7. W CRM: **Dodaj partnera**, potem **Zajmuję się partnerem**. Przy pierwszym wejściu CRM pokazuje krótkie wprowadzenie; pełny opis jest w menu → **Pomoc** albo w bąbelku „Wprowadzenie”.
 
-**Zasada migracji:** każdą można odpalać wielokrotnie, ale po ponownym odpaleniu starszej (np. `v2-v3-all.sql`) trzeba odpalić jeszcze raz wszystkie nowsze, po kolei (v4–v8). Starsza migracja potrafi przywrócić stare polityki dostępu albo funkcje. CRM pilnuje tego sam: każda migracja zapisuje znacznik w `crm_migrations`, a gdy starsza poszła po nowszej, żółty pasek każe powtórzyć kolejne i daje gotowy SQL.
+**Zasada migracji:** każdą można odpalać wielokrotnie, ale po ponownym odpaleniu starszej (np. v2–v3) trzeba odpalić jeszcze raz wszystkie nowsze, po kolei (v4–v8). Starsza migracja potrafi przywrócić stare polityki dostępu albo funkcje. CRM pilnuje tego sam: każda migracja zapisuje znacznik w `crm_migrations`, a gdy starsza poszła po nowszej, żółty pasek każe powtórzyć kolejne i daje gotowy SQL.
+
+### Supabase CLI (zamiast wklejania)
+
+Migracje są w `supabase/migrations/` w formacie Supabase CLI:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <ref>   # ref = część adresu https://<ref>.supabase.co
+npm run db:push                          # = npx supabase db push
+```
+
+Na bazie, w której migracje odpalałeś ręcznie, pierwszy `db push` odpali wszystkie pliki jeszcze raz, po kolei — to bezpieczne (każda jest powtarzalna, a kolejność przywraca aktualne uprawnienia). Kopia zapasowa: Supabase → Database → Backups (na planie Pro włącz Point in Time Recovery przed wdrożeniem dla zespołu).
 
 ### Przed wdrożeniem na Vercel (koszty AI)
 
