@@ -664,6 +664,8 @@ type Reading = {
   extraction: DiscoveryExtraction;
   source: string;
   view: SpeakerView;
+  /** Dane do ponownego podziału na mówców, gdy wskażesz handlowca ręcznie. */
+  viewInput: Parameters<typeof speakerView>[0];
   meta: ReadingMeta;
   callDate: string;
   fromDate: string;
@@ -806,6 +808,7 @@ function FillBlock({
       extraction: normalizeExtraction(raw),
       source: sourceOf(ctx),
       view: speakerView(ctx),
+      viewInput: { note: ctx.note, transcripts: ctx.transcripts, seller: ctx.seller, contacts: ctx.contacts },
       meta,
       callDate: ctx.callDate,
       fromDate: firstDateOf(ctx),
@@ -1120,6 +1123,15 @@ function FillBlock({
           origin={reading.origin}
           clipped={reading.clipped}
           speakersKnown={reading.view.known}
+          speakers={reading.view.speakers}
+          sellers={reading.view.sellers}
+          sellerName={seller}
+          onPickSeller={(name) => {
+            setReading((current) =>
+              current ? { ...current, view: speakerView({ ...current.viewInput, seller: name }) } : current,
+            );
+            setOverrides({});
+          }}
           selected={selected}
           busy={busy}
           onToggle={toggle}
@@ -1140,6 +1152,10 @@ function ProposalPreview({
   origin,
   clipped,
   speakersKnown,
+  speakers,
+  sellers,
+  sellerName,
+  onPickSeller,
   selected,
   busy,
   onToggle,
@@ -1150,6 +1166,10 @@ function ProposalPreview({
   origin: string;
   clipped: boolean;
   speakersKnown: boolean;
+  speakers: string[];
+  sellers: string[];
+  sellerName: string;
+  onPickSeller: (name: string) => void;
   selected: Set<string>;
   busy: boolean;
   onToggle: (row: ProposalRow) => void;
@@ -1169,9 +1189,45 @@ function ProposalPreview({
         </p>
       ) : null}
       {!speakersKnown ? (
-        <p className="border-b border-line bg-amber-50 px-4 py-2 text-xs leading-5 text-amber-900">
-          Nie rozpoznałem w transkrypcie, kto jest handlowcem, a kto partnerem (brak „Imię Nazwisko: …” albo Twoje imię
-          nie pada). Warunki i dane do umowy są odznaczone — sprawdź, czy to mówił partner.
+        <div className="border-b border-line bg-amber-50 px-4 py-2 text-xs leading-5 text-amber-900">
+          <p>
+            Nie rozpoznałem w transkrypcie, kto jest handlowcem, a kto partnerem
+            {speakers.length >= 2
+              ? ` (Twoje imię w CRM${sellerName.trim() ? ` — „${sellerName.trim()}”` : ""} nie pada w rozmowie)`
+              : " (brak „Imię Nazwisko: …” przed wypowiedziami)"}
+            . Warunki i dane do umowy są odznaczone.
+          </p>
+          {speakers.length >= 2 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="font-medium">Kto mówi w imieniu Lutry?</span>
+              {speakers.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => onPickSeller(name)}
+                  className="rounded-full border border-amber-300 bg-white px-2.5 py-0.5 font-medium text-amber-900 hover:bg-amber-100"
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : speakers.length >= 2 ? (
+        <p className="border-b border-line bg-surface px-4 py-2 text-xs leading-5 text-muted">
+          Lutra w rozmowie: <span className="font-medium text-ink">{sellers.join(", ")}</span> — dowody biorę tylko z wypowiedzi
+          pozostałych osób.{" "}
+          {speakers
+            .filter((name) => !sellers.includes(name))
+            .slice(0, 3)
+            .map((name, i) => (
+              <span key={name}>
+                {i ? " · " : ""}
+                <button type="button" className="underline decoration-dotted hover:text-ink" onClick={() => onPickSeller(name)}>
+                  to {name}
+                </button>
+              </span>
+            ))}
         </p>
       ) : null}
       {missing.length ? (

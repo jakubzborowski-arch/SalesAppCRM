@@ -187,3 +187,50 @@ describe("dowody jako lista {pole, cytat} (odpowiedź Claude API)", () => {
     expect(proposal({ ...BASE, dowody: list }).rows.find((r) => r.key === "deal:company")).toMatchObject({ checked: true });
   });
 });
+
+describe("handlowiec bez dopasowania imienia z CRM", () => {
+  const CAFE = `Spinach AI — notatka ze spotkania
+Uczestnicy: Kuba Zborowski, Magdalena Wróbel, Tomasz Lis
+
+Kuba Zborowski: Dzień dobry, Kuba, umówieniśmy się przez Instagrama.
+Magdalena Wróbel: A, tak, tak, proszę siadać.
+Kuba Zborowski: Rozumiem. My w Lutrze organizujemy wyjścia dla grup znajomych.
+Magdalena Wróbel: Piętnaście to dużo. Dziesięć mogę dać. Ale nie na ciasta.
+Kuba Zborowski: Zwykle lokale dają piętnaście procent.
+Tomasz Lis: Kod w kasie wpiszemy bez problemu.
+Magdalena Wróbel: To kod.`;
+
+  it("ten, kto mówi „my w Lutrze”, jest handlowcem — także przy profilu „Handlowiec” i bez osób na karcie", () => {
+    const v = speakerView({ note: "", transcripts: [{ text: CAFE }], seller: "Handlowiec", contacts: [] });
+    expect(v.known).toBe(true);
+    expect(v.sellers).toEqual(["Kuba Zborowski"]);
+    expect(v.partnerText).toMatch(/Dziesięć mogę dać/);
+    expect(v.partnerText).toMatch(/Kod w kasie/);
+    expect(v.partnerText).not.toMatch(/piętnaście procent/);
+  });
+
+  it("osoby z karty partnera rozpoznane, jeden inny mówca → handlowiec (też przy trzech mówcach)", () => {
+    const text = CAFE.replace("My w Lutrze organizujemy", "Organizujemy");
+    const v = speakerView({
+      note: "",
+      transcripts: [{ text }],
+      seller: "",
+      contacts: [{ name: "Magdalena Wróbel" }, { name: "Tomasz Lis" }],
+    });
+    expect(v.sellers).toEqual(["Kuba Zborowski"]);
+    expect(speakerView({ note: "", transcripts: [{ text }], seller: "", contacts: [] }).known).toBe(false);
+  });
+
+  it("partner pytający „jesteście z Lutry?” nie zostaje handlowcem", () => {
+    const text = "Ola Nowak: Dzień dobry.\nMagdalena Wróbel: A wy jesteście z Lutry?\nOla Nowak: Tak.";
+    expect(speakerView({ note: "", transcripts: [{ text }], seller: "", contacts: [] }).known).toBe(false);
+  });
+});
+
+it("nagłówek „Uczestnicy: … (Lutra)” wskazuje handlowca; jednorazowy mówca z imieniem i nazwiskiem zostaje osobno", () => {
+  const text = "Uczestnicy: Ola Nowak (Lutra), Magdalena Wróbel\n\nOla Nowak: Dzień dobry.\nMagdalena Wróbel: Dziesięć mogę dać.\nOla Nowak: Super.\nTomasz Lis: Kod w kasie wpiszemy.";
+  const v = speakerView({ note: "", transcripts: [{ text }], seller: "", contacts: [] });
+  expect(v.sellers).toEqual(["Ola Nowak"]);
+  expect(v.speakers).toContain("Tomasz Lis");
+  expect(v.sellerText).not.toMatch(/Kod w kasie/);
+});

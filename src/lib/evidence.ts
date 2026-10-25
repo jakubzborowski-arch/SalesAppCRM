@@ -173,7 +173,27 @@ export type SpeakerView = {
   /** Wypowiedzi handlowca Lutry (puste, gdy nieznani). */
   sellerText: string;
   speakers: string[];
+  /** Mówcy uznani za handlowca Lutry (puste, gdy nieznani). */
+  sellers: string[];
 };
+
+/** Osoby z nagłówka „Uczestnicy: A, B, C” (Spinach, Zoom, Meet). */
+function participants(text: string) {
+  const line = text.split("\n").find((l) => /^\s*(?:uczestnicy|participants|attendees)\s*:/i.test(l));
+  if (!line) return [];
+  return line
+    .replace(/^[^:]*:/, "")
+    .split(/[,;]/)
+    .map((raw) => ({ name: raw.replace(/\([^)]*\)/g, "").trim(), lutra: /lutr/i.test(raw) }))
+    .filter((p) => p.name.length >= 2);
+}
+
+/** Handlowiec przedstawia się jako Lutra: „my w Lutrze…”, „jestem z Lutry”, „dzwonię z Lutry”. */
+const LUTRA_SELF = /\b(?:my|jestem|jestesmy|dzwonie|pisze|u nas|ja)\b[^.?!]{0,25}\blutr/;
+
+function introducesLutra(text: string) {
+  return LUTRA_SELF.test(fold(text));
+}
 
 /**
  * Podział rozmowy na stronę partnera i handlowca. Handlowiec = mówca z imieniem/nazwiskiem handlowca
@@ -191,11 +211,15 @@ export function speakerView(input: {
   // Etykieta, która pada raz i nie jest ani handlowcem, ani osobą partnera, to raczej fragment wypowiedzi
   // („Propozycja: …”) niż nowy mówca — doklejamy ją do poprzedniej wypowiedzi.
   const raw = input.transcripts.flatMap((t) => utterances(t.text));
+  const listed = participants(input.transcripts.map((t) => t.text).join("\n"));
   const counts = new Map<string, number>();
   for (const u of raw) if (u.speaker) counts.set(u.speaker, (counts.get(u.speaker) ?? 0) + 1);
   const all: Utterance[] = [];
   for (const u of raw) {
-    const rare = u.speaker && (counts.get(u.speaker) ?? 0) < 2 && !isContact(u.speaker) && !isSellerName(u.speaker);
+    // Imię i nazwisko (dwa słowa) albo osoba z listy uczestników to mówca, nawet gdy odzywa się raz.
+    const person = u.speaker && (u.speaker.includes(" ") || listed.some((p) => sameSpeaker(u.speaker!, p.name)));
+    const rare =
+      u.speaker && !person && (counts.get(u.speaker) ?? 0) < 2 && !isContact(u.speaker) && !isSellerName(u.speaker);
     if (rare && all.length) {
       const prev = all[all.length - 1];
       all[all.length - 1] = { ...prev, text: `${prev.text} ${u.speaker}: ${u.text}` };
@@ -203,15 +227,26 @@ export function speakerView(input: {
   }
   const speakers = [...new Set(all.map((u) => u.speaker).filter((s): s is string => Boolean(s)))];
   let sellers = speakers.filter(isSellerName);
-  if (!sellers.length && speakers.length === 2) {
-    const partnerSide = speakers.filter(isContact);
-    if (partnerSide.length === 1) sellers = speakers.filter((speaker) => speaker !== partnerSide[0]);
+  if (!sellers.length) {
+    // Nagłówek „Uczestnicy: Kuba Zborowski (Lutra), …”.
+    const tagged = listed.filter((p) => p.lutra);
+    sellers = speakers.filter((speaker) => tagged.some((p) => sameSpeaker(speaker, p.name)) && !isContact(speaker));
+  }
+  if (!sellers.length) {
+    // Osoby partnera z karty rozpoznane, a zostaje jeden inny mówca — to handlowiec.
+    const others = speakers.filter((speaker) => !isContact(speaker));
+    if (others.length === 1 && others.length < speakers.length) sellers = others;
+  }
+  if (!sellers.length) {
+    // Imię handlowca w CRM nie pasuje do transkryptu (np. puste w profilu) — ten, kto mówi „my w Lutrze”.
+    const introduced = speakers.filter((speaker) => all.some((u) => u.speaker === speaker && introducesLutra(u.text)));
+    if (introduced.length === 1 && !isContact(introduced[0])) sellers = introduced;
   }
   const unlabeled = all.filter((u) => !u.speaker).reduce((sum, u) => sum + u.text.length, 0);
   const labeled = all.filter((u) => u.speaker).reduce((sum, u) => sum + u.text.length, 0);
   const known = sellers.length > 0 && speakers.some((speaker) => !sellers.includes(speaker)) && labeled >= unlabeled;
   const full = [input.note, ...input.transcripts.map((t) => t.text)].filter((part) => part.trim()).join("\n");
-  if (!known) return { known: false, partnerText: full, sellerText: "", speakers };
+  if (!known) return { known: false, partnerText: full, sellerText: "", speakers, sellers: [] };
   const partnerLines = all.filter((u) => u.speaker && !sellers.includes(u.speaker)).map((u) => u.text);
   const sellerLines = all.filter((u) => u.speaker && sellers.includes(u.speaker)).map((u) => u.text);
   return {
@@ -219,6 +254,7 @@ export function speakerView(input: {
     partnerText: [input.note, ...partnerLines].filter((part) => part.trim()).join("\n"),
     sellerText: sellerLines.join("\n"),
     speakers,
+    sellers,
   };
 }
 
