@@ -11,7 +11,7 @@ import {
 } from "@/lib/discovery-extract";
 import { completeRaw, resolveDraftBackend } from "@/lib/draft-complete";
 import { PROMPT_VERSION } from "@/lib/ai-log";
-import { AI_DENIED, aiAccess, quotaMessage, takeMemoryQuota } from "@/lib/ai-access";
+import { AI_DENIED, aiAccess, logServer, quotaMessage, takeAiQuota } from "@/lib/ai-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (!takeMemoryQuota(allowed.who, "extract")) {
+  if (!(await takeAiQuota(request, allowed.who, "extract"))) {
     return Response.json({ error: quotaMessage("extract") }, { status: 429 });
   }
 
@@ -106,7 +106,19 @@ export async function POST(request: Request) {
   const started = Date.now();
   if (engine.engine === "claude") {
     const done = await claudeStructured(engine.claude, { system: EXTRACTION_SYSTEM, user, schema: EXTRACTION_SCHEMA });
-    if (!done.ok) return Response.json({ error: done.error }, { status: done.status });
+    if (!done.ok) {
+      logServer("error", "extract_failed", { engine: "claude", status: done.status, ms: Date.now() - started });
+      return Response.json({ error: done.error }, { status: done.status });
+    }
+    logServer("info", "extract_done", {
+      engine: "claude",
+      model: done.model,
+      input_tokens: done.usage.input,
+      output_tokens: done.usage.output,
+      ms: Date.now() - started,
+      chars: user.length,
+      prompt: PROMPT_VERSION,
+    });
     return Response.json({
       ok: true,
       engine: "claude",
@@ -131,9 +143,13 @@ export async function POST(request: Request) {
     // Ok. 3 znaki na token po polsku + miejsce na odpowiedź; domyślne okno Ollamy ucina początek polecenia.
     numCtx: Math.min(32_768, Math.ceil((system.length + user.length) / 3) + 4_500),
   });
-  if (!done.ok) return Response.json({ error: done.error }, { status: done.status });
+  if (!done.ok) {
+    logServer("error", "extract_failed", { engine: engine.engine, status: done.status, ms: Date.now() - started });
+    return Response.json({ error: done.error }, { status: done.status });
+  }
   const data = parseLooseJson(done.text);
   if (!data || typeof data !== "object") {
+    logServer("warn", "extract_bad_json", { engine: done.place, ms: Date.now() - started });
     return Response.json({ error: "Model nie oddał pól w formacie JSON. Spróbuj jeszcze raz." }, { status: 502 });
   }
   return Response.json({

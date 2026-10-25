@@ -60,6 +60,50 @@ export function takeMemoryQuota(who: string, kind: QuotaKind, now = Date.now()) 
   return true;
 }
 
+/** Token zalogowanego handlowca z nagłówka (do wywołań bazy w jego imieniu). */
+function bearer(request: Request) {
+  const header = request.headers.get("authorization") ?? "";
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+}
+
+/**
+ * Limit na osobę: z Supabase w bazie (take_ai_quota, migracja v8 — wspólny dla wszystkich instancji serwera),
+ * bez bazy albo przed v8 — w pamięci procesu.
+ */
+export async function takeAiQuota(request: Request, who: string, kind: QuotaKind): Promise<boolean> {
+  const token = bearer(request);
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (isSupabaseConfigured() && token && url && key) {
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const sb = createClient(url, key, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: `Bearer ${token}` } },
+      });
+      const { limit, windowMs } = AI_QUOTA[kind];
+      const { data, error } = await sb.rpc("take_ai_quota", {
+        p_kind: kind,
+        p_limit: limit,
+        p_window_seconds: Math.round(windowMs / 1000),
+      });
+      if (!error && typeof data === "boolean") return data;
+      if (error) logServer("warn", "ai_quota_fallback", { kind, error: error.message });
+    } catch (err) {
+      logServer("warn", "ai_quota_fallback", { kind, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return takeMemoryQuota(who, kind);
+}
+
+/** Jedna linia JSON w logach serwera (Vercel → Logs). Bez treści rozmów i bez kluczy. */
+export function logServer(level: "info" | "warn" | "error", event: string, data: Record<string, unknown> = {}) {
+  const line = JSON.stringify({ level, event, at: new Date().toISOString(), ...data });
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
+  else console.info(line);
+}
+
 export function quotaMessage(kind: QuotaKind) {
   const { limit, label } = AI_QUOTA[kind];
   return `Limit ${limit} ${label} na godzinę. Spróbuj później.`;

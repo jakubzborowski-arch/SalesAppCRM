@@ -92,6 +92,50 @@ begin
   end if;
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- 4. Limity AI w bazie: wspólne dla wszystkich instancji serwera (Vercel), nie zerują się przy restarcie
+
+create table if not exists public.ai_usage (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  kind text not null check (kind in ('extract', 'draft')),
+  created_at timestamptz not null default now()
+);
+create index if not exists ai_usage_user_kind_idx on public.ai_usage (user_id, kind, created_at desc);
+alter table public.ai_usage enable row level security;
+revoke all on public.ai_usage from anon, authenticated;
+
+-- Jedno wywołanie = sprawdzenie i zapis próby (atomowo, z blokadą na użytkownika).
+create or replace function public.take_ai_quota(p_kind text, p_limit integer, p_window_seconds integer)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  used integer;
+begin
+  if uid is null then
+    return false;
+  end if;
+  if p_kind not in ('extract', 'draft') or p_limit < 1 or p_limit > 1000 or p_window_seconds < 60 or p_window_seconds > 86400 then
+    raise exception 'Nieprawidłowy limit AI.';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('ai_quota:' || uid::text || ':' || p_kind));
+  delete from ai_usage where user_id = uid and created_at < now() - interval '2 days';
+  select count(*) into used from ai_usage
+    where user_id = uid and kind = p_kind and created_at > now() - make_interval(secs => p_window_seconds);
+  if used >= p_limit then
+    return false;
+  end if;
+  insert into ai_usage (user_id, kind) values (uid, p_kind);
+  return true;
+end $$;
+
+revoke all on function public.take_ai_quota(text, integer, integer) from public, anon;
+grant execute on function public.take_ai_quota(text, integer, integer) to authenticated;
+
 -- Znacznik wersji: CRM wykrywa, gdy starsza migracja została odpalona po nowszej (trzeba wtedy powtórzyć kolejne).
 create table if not exists public.crm_migrations (
   version text primary key,

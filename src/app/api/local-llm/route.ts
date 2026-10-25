@@ -1,6 +1,6 @@
 import { completeDraftText, resolveDraftBackend } from "@/lib/draft-complete";
 import { briefForModel, systemForDraft, type LocalDraftMode } from "@/lib/local-llm";
-import { AI_DENIED, aiAccess, quotaMessage, takeMemoryQuota } from "@/lib/ai-access";
+import { AI_DENIED, aiAccess, logServer, quotaMessage, takeAiQuota } from "@/lib/ai-access";
 import type { Mission, Partner } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (backend.place === "zen" && !takeMemoryQuota(allowed.who, "draft")) {
+  if (backend.place === "zen" && !(await takeAiQuota(request, allowed.who, "draft"))) {
     return Response.json({ error: quotaMessage("draft") }, { status: 429 });
   }
 
@@ -71,6 +71,10 @@ export async function POST(request: Request) {
     user: `${brief.task}\n\n${brief.source}`,
     source: brief.source,
   });
-  if (!done.ok) return Response.json({ error: done.error }, { status: done.status });
+  if (!done.ok) {
+    logServer("error", "draft_failed", { place: backend.place, mode: body.mode, status: done.status });
+    return Response.json({ error: done.error }, { status: done.status });
+  }
+  logServer("info", "draft_done", { place: backend.place, mode: body.mode, chars: done.text.length });
   return Response.json({ ok: true, draft: done.text });
 }

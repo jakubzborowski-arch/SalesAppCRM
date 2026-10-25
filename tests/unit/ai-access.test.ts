@@ -6,8 +6,16 @@ vi.mock("@/lib/supabase", () => ({
   getSupabase: () => null,
   isMissingCrmTable: () => false,
 }));
+const quota = { answer: true as boolean | "error", calls: 0 };
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({
+    rpc: async (name: string) => {
+      quota.calls += 1;
+      if (name !== "take_ai_quota") return { data: null, error: { message: "unknown" } };
+      return quota.answer === "error"
+        ? { data: null, error: { message: "Could not find the function public.take_ai_quota" } }
+        : { data: quota.answer, error: null };
+    },
     auth: {
       getUser: async (token: string) => {
         const [kind, email] = token.split(":");
@@ -19,7 +27,7 @@ vi.mock("@supabase/supabase-js", () => ({
   }),
 }));
 
-const { aiAccess, takeMemoryQuota, AI_QUOTA } = await import("@/lib/ai-access");
+const { aiAccess, takeAiQuota, takeMemoryQuota, AI_QUOTA } = await import("@/lib/ai-access");
 const { emailAllowed } = await import("@/lib/sales-session");
 const draftRoute = await import("@/app/api/local-llm/route");
 
@@ -101,5 +109,22 @@ describe("szkice przez OpenCode Zen", () => {
     const big = { mode: "mail", padding: "x".repeat(250_000) };
     expect((await draftRoute.POST(req("ok:kuba@lutra.pl", "crm.example.com", "POST", big))).status).toBe(413);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("limit AI w bazie", () => {
+  it("z Supabase pyta bazę (wspólny licznik); błąd albo brak v8 → licznik w pamięci", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    quota.calls = 0;
+    quota.answer = false;
+    expect(await takeAiQuota(req("ok:kuba@lutra.pl"), "u-db", "extract")).toBe(false);
+    quota.answer = true;
+    expect(await takeAiQuota(req("ok:kuba@lutra.pl"), "u-db", "extract")).toBe(true);
+    expect(quota.calls).toBe(2);
+    quota.answer = "error";
+    expect(await takeAiQuota(req("ok:kuba@lutra.pl"), "u-db2", "extract")).toBe(true);
+    flags.supabase = false;
+    expect(await takeAiQuota(req(), "demo", "extract")).toBe(true);
+    expect(quota.calls).toBe(3);
   });
 });

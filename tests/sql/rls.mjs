@@ -618,6 +618,16 @@ await expectError("dopasowanie ujemne odrzucone", () => as(H, () => db.query("up
 await as(H, () => db.query("update partners set fit_area = null where id = $1", [pH]));
 ok((await one("select fit_area from partners where id = $1", [pH])).fit_area === null, "kryterium można wyczyścić");
 
+// Limit AI w bazie: atomowo, na osobę i rodzaj; anon nic; tabela niewidoczna z zewnątrz.
+const take = (user, kind = "extract", limit = 2) =>
+  as(user, async () => (await one("select public.take_ai_quota($1, $2, 3600) as ok", [kind, limit])).ok);
+ok((await take(H)) === true && (await take(H)) === true && (await take(H)) === false, "limit AI: dwa razy tak, trzeci raz nie");
+ok((await take(H, "draft")) === true, "limit AI liczy osobno szkice");
+ok((await take(G)) === true, "limit AI liczy osobno każdą osobę");
+await expectError("anon nie wywoła limitu AI", () => as(null, () => db.query("select public.take_ai_quota('extract', 2, 3600)")), /permission denied/);
+await expectError("limit AI odrzuca dziwne parametry", () => as(H, () => db.query("select public.take_ai_quota('extract', 0, 3600)")), /Nieprawidłowy limit/);
+await expectError("tabela użycia AI niewidoczna dla handlowca", () => as(H, () => db.query("select * from ai_usage")), /permission denied/);
+
 const good = await snapshot();
 ok((await versions()).at(-1) === "v8", "v8 zapisuje znacznik wersji");
 await db.exec(v23);
