@@ -9,6 +9,7 @@ const MIGRATIONS = [
   { id: "v5", file: "supabase/v5-company-data.sql" },
   { id: "v6", file: "supabase/v6-roles-contracts.sql" },
   { id: "v7", file: "supabase/v7-partner-types.sql" },
+  { id: "v8", file: "supabase/v8-quality-care.sql" },
 ] as const;
 
 export async function GET(request: Request) {

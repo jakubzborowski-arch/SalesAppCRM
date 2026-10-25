@@ -11,6 +11,7 @@ const v4 = readFileSync(`${REPO}/supabase/v4-team-timeline.sql`, "utf8");
 const v5 = readFileSync(`${REPO}/supabase/v5-company-data.sql`, "utf8");
 const v6 = readFileSync(`${REPO}/supabase/v6-roles-contracts.sql`, "utf8");
 const v7 = readFileSync(`${REPO}/supabase/v7-partner-types.sql`, "utf8");
+const v8 = readFileSync(`${REPO}/supabase/v8-quality-care.sql`, "utf8");
 
 const stub = `
 create role anon nologin;
@@ -553,6 +554,30 @@ await db.query("update partners set capacity = 0.4 where id = $1", [pH]);
 await db.exec(v7);
 const numeric = await all("select id, capacity from partners where id = any($1::uuid[])", [[pG, pH]]);
 ok(numeric.find((row) => row.id === pG)?.capacity === 40 && numeric.find((row) => row.id === pH)?.capacity === null, "40.4 → 40, 0.4 → puste");
+
+
+// --- v8 i ponowne odpalanie starszych migracji ---
+console.log("\n== v8 i kolejność migracji");
+await db.exec(v8);
+await db.exec(v8);
+const snapshot = async () => {
+  const pol = (await db.query("select schemaname||'.'||tablename||'.'||policyname as k, cmd||'|'||coalesce(qual,'')||'|'||coalesce(with_check,'') as v from pg_policies")).rows;
+  const fn = (await db.query("select p.proname||'('||pg_get_function_identity_arguments(p.oid)||')' as k, md5(pg_get_functiondef(p.oid)) as v from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'")).rows;
+  return new Map([...pol.map((r) => ["P " + r.k, r.v]), ...fn.map((r) => ["F " + r.k, r.v])]);
+};
+const versions = async () => (await all("select version from crm_migrations order by applied_at")).map((r) => r.version);
+const good = await snapshot();
+ok((await versions()).at(-1) === "v8", "v8 zapisuje znacznik wersji");
+await db.exec(v23);
+const legacyLeft = await all("select policyname from pg_policies where policyname like '%\\_all' escape '\\' and schemaname = 'public'");
+ok(legacyLeft.length === 0, "ponowne v2–v3 po v6 nie przywraca polityk „*_all”");
+ok((await versions()).at(-1) === "v3", "znacznik pokazuje, że v2–v3 poszło po nowszych (CRM każe powtórzyć v4–v8)");
+for (const sql of [v4, v5, v6, v7, v8]) await db.exec(sql);
+const rerunState = await snapshot();
+const changed = [...good.keys()].filter((k) => rerunState.get(k) !== good.get(k)).concat([...rerunState.keys()].filter((k) => !good.has(k)));
+ok(changed.length === 0, `po powtórzeniu v4–v8 uprawnienia i funkcje jak przed (${changed.join(", ") || "bez różnic"})`);
+const anonMigrations = await db.query("select has_table_privilege('anon', 'crm_migrations', 'insert') as ins");
+ok(anonMigrations.rows[0].ins === false, "znaczników wersji nie zapisze nikt z zewnątrz");
 
 console.log(`\nWynik: ${passes} ok, ${failures} błędów`);
 process.exit(failures ? 1 : 0);

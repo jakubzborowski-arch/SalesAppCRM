@@ -42,6 +42,7 @@ import {
   detectSchemaV5,
   detectSchemaV6,
   detectSchemaV7,
+  detectSchemaV8,
   saveAgreementTemplate as saveAgreementTemplateRow,
   saveContractTemplate as saveContractTemplateRow,
   V7_MISSING,
@@ -68,6 +69,7 @@ import {
   contractStatus,
   uploadContractPdf,
 } from "./mission-core";
+import { migrationDrift, type MigrationDrift } from "./migrations";
 import { getSupabase, isMissingCrmTable, isSupabaseConfigured } from "./supabase";
 import type {
   MissionTerms,
@@ -144,6 +146,10 @@ type Store = {
   saveAgreementTemplate: (template: string) => Promise<Result>;
   /** Czy baza ma typ partnera, pojemność i szablon porozumienia (migracja v7). */
   schemaV7: boolean | null;
+  /** Czy baza ma v8 (znaczniki wersji, jakość AI, opieka). */
+  schemaV8: boolean | null;
+  /** Starsza migracja odpalona po nowszej — trzeba powtórzyć kolejne. */
+  migrationDrift: MigrationDrift | null;
   /** Zmiana warunków współpracy: zniżka, miejsce, cykl albo pilotaż. */
   updateTerms: <K extends keyof MissionTerms>(missionId: string, section: K, patch: Partial<MissionTerms[K]>) => void;
   /** Forma zawarcia: porozumienie mailowe (do 3 miesięcy) albo umowa. */
@@ -447,6 +453,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [schemaV5, setSchemaV5] = useState<boolean | null>(null);
   const [schemaV6, setSchemaV6] = useState<boolean | null>(null);
   const [schemaV7, setSchemaV7] = useState<boolean | null>(null);
+  const [schemaV8, setSchemaV8] = useState<boolean | null>(null);
+  const [drift, setDrift] = useState<MigrationDrift | null>(null);
   const storeRef = useRef<Store | null>(null);
   /** Uprawnienia egzekwujemy w widoku tylko, gdy baza ma v6 (inaczej baza też nikogo nie ogranicza). */
   const enforceRef = useRef(false);
@@ -706,6 +714,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         void detectSchemaV5().then(setSchemaV5);
         void detectSchemaV6().then(setSchemaV6);
         void detectSchemaV7().then(setSchemaV7);
+        void detectSchemaV8().then(({ has, rows }) => {
+          setSchemaV8(has);
+          setDrift(migrationDrift(rows));
+        });
         setState(next);
         // Dane są w Supabase. Stara kopia w przeglądarce (z kontaktami) nie jest potrzebna.
         clearLocalCopy();
@@ -1076,6 +1088,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return result;
       },
       schemaV7,
+      schemaV8,
+      migrationDrift: drift,
       updateTerms: (missionId, section, patch) => {
         patchMission(missionId, (m) => ({
           ...m,
@@ -2138,6 +2152,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     schemaV5,
     schemaV6,
     schemaV7,
+    schemaV8,
+    drift,
     notice,
     invite,
     inspectInvite,

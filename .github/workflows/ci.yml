@@ -21,7 +21,7 @@ jobs:
         run: npm run typecheck
       - name: Testy jednostkowe (zapis, konflikty, NIP, terminy, raporty, umowy, warunki, opieka)
         run: npm test
-      - name: Testy SQL (migracje v2–v7, RLS, uprawnienia) na PGlite
+      - name: Testy SQL (migracje v2–v8, ponowne odpalanie, RLS, uprawnienia) na PGlite
         run: npm run test:sql
       - name: Build
         run: npm run build

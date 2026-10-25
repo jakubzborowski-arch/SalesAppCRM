@@ -1,3 +1,4 @@
+import type { MigrationRow } from "./migrations";
 import { isValidNip, normalizeNip } from "./company";
 import { loadMissionCore, syncMissionCore } from "./mission-core";
 import { mergeCare, mergeTerms } from "./terms";
@@ -1215,6 +1216,16 @@ export async function detectSchemaV7(): Promise<boolean | null> {
   if (!wsError) return true;
   if (isMissingColumn(wsError)) return false;
   return null;
+}
+
+/** Migracja v8 (znaczniki wersji, jakość AI, opieka). Zwraca też znaczniki, żeby wykryć zły porządek migracji. */
+export async function detectSchemaV8(): Promise<{ has: boolean | null; rows: MigrationRow[] }> {
+  const sb = getSupabase();
+  if (!sb) return { has: null, rows: [] };
+  const { data, error } = await sb.from("crm_migrations").select("version, applied_at");
+  if (error) return { has: isMissingCrmTable(error) || isMissingColumn(error) ? false : null, rows: [] };
+  const rows = (data ?? []) as MigrationRow[];
+  return { has: rows.some((row) => row.version === "v8"), rows };
 }
 
 /** Szablon porozumienia mailowego zespołu (admin, migracja v7). */
