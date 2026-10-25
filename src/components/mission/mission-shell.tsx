@@ -9,6 +9,7 @@ import { FollowUpBar } from "@/components/mission/follow-up-bar";
 import { MissionPanel } from "@/components/mission/mission-panel";
 import { TransferMission } from "@/components/mission/transfer-mission";
 import { DraftBubble } from "@/components/mission/draft-bubble";
+import { QuickVisitButton } from "@/components/mission/quick-visit";
 import { TalkBubble } from "@/components/mission/talk-bubble";
 import { MissionStepper } from "@/components/mission/stepper";
 import { ActivationStep } from "@/components/mission/steps/activation-step";
@@ -24,6 +25,7 @@ import { STAGES, type Mission, type Partner, type StageId } from "@/lib/types";
 import { MISSION_STATUS_LABEL, segmentLabel, STAGE_BADGE, STAGE_CTA, stageLabel } from "@/lib/playbook";
 import { canEnterStage, nextStage } from "@/lib/gates";
 import { careMissionOf } from "@/lib/care";
+import { quickVisitAvailable } from "@/lib/quick-visit";
 import { useStore } from "@/lib/store";
 
 function formatDate(iso?: string) {
@@ -305,6 +307,17 @@ export function MissionShell({ partnerId }: { partnerId: string }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {editable ? <TransferMission mission={mission} /> : null}
+            {editable && quickVisitAvailable(mission, partner) ? (
+              <QuickVisitButton
+                mission={mission}
+                partner={partner}
+                onDone={() => {
+                  setView(null);
+                  setError(null);
+                  window.scrollTo({ top: 0 });
+                }}
+              />
+            ) : null}
             {editable ? (
             <>
             <button

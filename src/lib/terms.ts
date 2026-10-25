@@ -106,6 +106,13 @@ export function addMonthsIso(iso: string, months: number) {
   return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/** Koniec okresu: start + N miesięcy − 1 dzień (1.11 + 3 mies. → 31.01). */
+export function periodEndIso(start: string, months: number) {
+  const [y, m, d] = addMonthsIso(start, months).split("-").map(Number);
+  const end = new Date(y, m - 1, d - 1);
+  return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+}
+
 /** Czy okres współpracy mieści się w 3 miesiącach. `null`, gdy brak dat. */
 export function isShortTerm(startAt: string, endAt: string): boolean | null {
   if (!isIsoDate(startAt) || !isIsoDate(endAt) || endAt < startAt) return null;

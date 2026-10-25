@@ -10,10 +10,34 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { activationBlockers, canEnterStage, contractBlockers, nextStage, offerBlockers } from "./gates";
-import { categoryLabel, suggestVariant } from "./playbook";
+import { activationBlockers, canEnterStage, contractBlockers } from "./gates";
+import { categoryLabel } from "./playbook";
+import {
+  advanceGate,
+  approveGate,
+  stepForward,
+  withAgreementForm,
+  withChecklistItem,
+  withConsent,
+  withContract,
+  withDecision,
+  withDiscovery,
+  withNeed,
+  withRecommended,
+  withTerms,
+} from "./mission-ops";
+import {
+  applyQuickVisit,
+  partnerAfterVisit,
+  QUICK_VISIT_SUBJECT,
+  quickVisitAvailable,
+  quickVisitErrors,
+  type QuickVisitInput,
+  type QuickVisitResult,
+} from "./quick-visit";
+import { toIsoDate } from "./dates";
 import { emptyCompany } from "./company";
-import { agreementFormOf, changeRulesFor, isDefaultChangeRules, isShortTerm, mergeCare, mergeTerms, termsChecks } from "./terms";
+import { discountSummary, mergeCare, mergeTerms } from "./terms";
 import {
   canDeletePartner as canDeletePartnerIn,
   canEditMission as canEditMissionIn,
@@ -232,6 +256,11 @@ type Store = {
   startMission: (partnerId: string) => string | null;
   goToStage: (missionId: string, stage: StageId) => GateResult;
   advance: (missionId: string) => GateResult;
+  /**
+   * Szybka ścieżka po wizycie w lokalu: wpis w dzienniku, rozmowa, fakt, decydent, warunki, okres, zgoda na logo,
+   * zatwierdzony wariant i przejście do Umowy. Bramki jak w krokach — gdy coś blokuje, zwraca listę braków.
+   */
+  quickVisit: (missionId: string, input: QuickVisitInput) => Promise<QuickVisitResult>;
   closeMission: (missionId: string, input: CloseMissionInput) => GateResult;
   reopenMission: (missionId: string) => GateResult;
   logActivity: (input: NewActivityInput) => Promise<Result>;
@@ -361,33 +390,11 @@ function mergeTasks(current: TaskItem[], incoming: TaskItem[]) {
   return next;
 }
 
-function syncDecisionFromDiscovery(mission: Mission): Mission {
-  const d = mission.discovery;
-  return {
-    ...mission,
-    decision: {
-      ...mission.decision,
-      problem: d.description || mission.decision.problem,
-      constraintSummary: d.constraints.join(", ") || mission.decision.constraintSummary,
-      decisionMakerId: d.decisionMakerId || mission.decision.decisionMakerId,
-      decisionDeadline: d.decisionDeadline || mission.decision.decisionDeadline,
-      previousAttempts: d.previousAttempts || mission.decision.previousAttempts,
-    },
-  };
-}
-
 /** Typ albo pojemność z formularza nie wróciły z bazy (brak migracji v7). */
 function lostV7Fields(input: NewPartnerInput, partner: Partner) {
   const segmentLost = Boolean(input.segment && input.segment !== partner.segment);
   const capacityLost = Boolean(input.capacity && input.capacity > 0 && partner.capacity !== Math.round(input.capacity));
   return segmentLost || capacityLost;
-}
-
-function withRecommended(mission: Mission, segment: Partner["segment"] = "venue"): Mission {
-  const cats = mission.needs
-    .filter((n) => n.confirmed && n.status === "fact")
-    .map((n) => n.category);
-  return { ...mission, recommendedVariant: suggestVariant(cats, segment) };
 }
 
 function readLocal(): AppState {
@@ -1116,21 +1123,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       schemaV8,
       migrationDrift: drift,
       updateTerms: (missionId, section, patch) => {
-        patchMission(missionId, (m) => ({
-          ...m,
-          terms: { ...m.terms, [section]: { ...m.terms[section], ...patch } },
-        }));
+        patchMission(missionId, (m) => withTerms(m, section, patch));
       },
       setAgreementForm: (missionId, form) => {
-        patchMission(missionId, (m) => {
-          const next = { ...m, agreementForm: form };
-          return { ...next, contract: { ...m.contract, status: contractStatus(m.contract, agreementFormOf(next)) } };
-        });
+        patchMission(missionId, (m) => withAgreementForm(m, form));
       },
       setChecklistItem: (missionId, key, done) => {
-        patchMission(missionId, (m) =>
-          Boolean(m.checklist[key]) === done ? m : { ...m, checklist: { ...m.checklist, [key]: done } },
-        );
+        patchMission(missionId, (m) => withChecklistItem(m, key, done));
       },
       addCareReview: (missionId, review) => {
         if (!review.attendance.trim() && !review.feedback.trim() && !review.note.trim()) {
@@ -1689,39 +1688,89 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const mission = state.missions.find((m) => m.id === missionId);
         const partner = mission ? partnerById(mission.partnerId) : undefined;
         if (!mission || !partner) return { ok: false, reason: "Brak misji." };
-        if (mission.status !== "active") return { ok: false, reason: "Misja jest zamknięta. Najpierw ją wznów." };
-        const nxt = nextStage(mission.currentStage);
-        if (!nxt) {
-          patchMission(missionId, (m) => ({
-            ...m,
-            status: "won",
-            outcome: "won",
-            closedAt: m.closedAt ?? new Date().toISOString(),
-            nextStepLabel: "Opieka: check-in 30 dni",
-          }));
-          return { ok: true };
-        }
-        if (mission.currentStage === "discovery") {
-          const toNeeds = canEnterStage("needs", mission, partner);
-          if (!toNeeds.ok) return toNeeds;
-          const missing = offerBlockers(mission);
-          if (missing.length) return { ok: false, reason: `Brakuje: ${missing.join(", ")}.` };
-          patchMission(missionId, (m) => ({
-            ...m,
-            completedStages: [...new Set([...m.completedStages, "discovery" as const, "needs" as const])],
-            currentStage: "offer",
-          }));
-          return { ok: true };
-        }
-        const gate = canEnterStage(nxt, mission, partner);
+        const gate = advanceGate(mission, partner);
         if (!gate.ok) return gate;
-        patchMission(missionId, (m) => ({
-          ...m,
-          completedStages: m.completedStages.includes(m.currentStage)
-            ? m.completedStages
-            : [...m.completedStages, m.currentStage],
-          currentStage: nxt,
-        }));
+        patchMission(missionId, stepForward);
+        return { ok: true };
+      },
+      quickVisit: async (missionId, input) => {
+        const fresh = () => {
+          const current = latest.current;
+          const mission = current.missions.find((m) => m.id === missionId);
+          const partner = mission ? current.partners.find((p) => p.id === mission.partnerId) : undefined;
+          return { current, mission, partner };
+        };
+        const before = fresh();
+        if (!before.mission || !before.partner) return { ok: false, reason: "Brak misji." };
+        if (!canEditMissionIn(before.current, before.mission, enforceRef.current)) return { ok: false, reason: READ_ONLY };
+        if (!quickVisitAvailable(before.mission, before.partner)) {
+          return { ok: false, reason: "Szybka wizyta działa dla lokalu w toku, na krokach od Kontaktu do Negocjacji." };
+        }
+        const errors = quickVisitErrors(input);
+        if (Object.keys(errors).length) return { ok: false, reason: "Popraw zaznaczone pola.", errors };
+        const today = toIsoDate(new Date());
+        const needId = crypto.randomUUID();
+        const partnerId = before.partner.id;
+        // Najpierw próba na sucho: jeśli bramka coś zablokuje, nic nie zapisujemy.
+        const dry = applyQuickVisit(before.mission, partnerAfterVisit(before.partner), input, {
+          makerId: input.makerId || "nowy-decydent",
+          needId,
+          today,
+        });
+        if (!dry.ok) return { ok: false, reason: dry.reason };
+
+        const actions = storeRef.current!;
+        let makerId = input.makerId;
+        if (makerId) {
+          const contact = before.partner.contacts.find((c) => c.id === makerId);
+          if (!contact) return { ok: false, reason: "Tej osoby nie ma już na karcie partnera.", errors: { maker: "Wybierz osobę jeszcze raz." } };
+          if (!contact.isDecisionMaker) actions.updatePartnerContact(partnerId, makerId, { isDecisionMaker: true });
+        } else {
+          const added = await actions.addPartnerContact(partnerId, {
+            name: input.makerName,
+            role: input.makerRole,
+            isDecisionMaker: true,
+          });
+          if (!added.ok || !added.id) return { ok: false, reason: added.error ?? "Nie udało się dodać decydenta." };
+          makerId = added.id;
+        }
+
+        const summary = [
+          input.problem.trim(),
+          input.quote.trim() ? `„${input.quote.trim()}”` : "",
+          discountSummary(input.discount) ? `Zniżka: ${discountSummary(input.discount)}` : "",
+          input.note.trim(),
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const occurredAt =
+          input.visitDate === today ? new Date().toISOString() : new Date(`${input.visitDate}T12:00:00`).toISOString();
+        const logged = await actions.logActivity({
+          missionId,
+          channel: "in_person",
+          direction: "outbound",
+          outcome: "connected",
+          subject: QUICK_VISIT_SUBJECT,
+          summary,
+          contactId: makerId,
+          occurredAt,
+          durationMin: null,
+        });
+        if (!logged.ok) return { ok: false, reason: logged.error ?? "Nie udało się zapisać wizyty w dzienniku." };
+
+        const after = fresh();
+        if (!after.mission || !after.partner) return { ok: false, reason: "Brak misji." };
+        const visitPartner = partnerAfterVisit(after.partner);
+        if (visitPartner !== after.partner) actions.setConsent(partnerId, "in_person", "granted");
+        const opts = { makerId, needId, today };
+        const result = applyQuickVisit(after.mission, visitPartner, input, opts);
+        if (!result.ok) {
+          return { ok: false, reason: `Wizyta jest w dzienniku, ale misja nie przeszła dalej. ${result.reason}` };
+        }
+        patchMission(missionId, (m) => {
+          const next = applyQuickVisit(m, visitPartner, input, opts);
+          return next.ok ? next.mission : m;
+        });
         return { ok: true };
       },
       closeMission: (missionId, input) => {
@@ -1899,15 +1948,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       setConsent: (partnerId, channel, status) => {
-        patchPartner(partnerId, (p) => {
-            const exists = p.consents.some((c) => c.channel === channel && c.purpose === "contact");
-            const consents = exists
-              ? p.consents.map((c) =>
-                  c.channel === channel && c.purpose === "contact" ? { ...c, status } : c,
-                )
-              : [...p.consents, { channel, purpose: "contact" as const, status }];
-            return { ...p, consents };
-        });
+        patchPartner(partnerId, (p) => withConsent(p, channel, status));
       },
       setChannel: (missionId, channel) => {
         patchMission(missionId, (m) => ({ ...m, selectedChannel: channel }));
@@ -1916,12 +1957,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         patchMission(missionId, (m) => ({ ...m, ...patch }));
       },
       updateDiscovery: (missionId, patch) => {
-        patchMission(missionId, (m) =>
-          syncDecisionFromDiscovery({
-            ...m,
-            discovery: { ...m.discovery, ...patch },
-          }),
-        );
+        patchMission(missionId, (m) => withDiscovery(m, patch));
       },
       seedNeedsIfEmpty: (missionId) => {
         patchMission(missionId, (m) => {
@@ -1945,17 +1981,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       },
       upsertNeed: (missionId, need) => {
-        patchMission(missionId, (m) =>
-          withRecommended(
-            {
-              ...m,
-              needs: m.needs.some((n) => n.id === need.id)
-                ? m.needs.map((n) => (n.id === need.id ? need : n))
-                : [...m.needs, need],
-            },
-            segmentFor(m.partnerId),
-          ),
-        );
+        patchMission(missionId, (m) => withNeed(m, need, segmentFor(m.partnerId)));
       },
       removeNeed: (missionId, needId) => {
         patchMission(missionId, (m) =>
@@ -1982,11 +2008,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
       },
       updateDecision: (missionId, patch) => {
-        patchMission(missionId, (m) => ({
-          ...m,
-          nextStepLabel: patch.nextStep !== undefined ? patch.nextStep : m.nextStepLabel,
-          decision: { ...m.decision, ...patch },
-        }));
+        patchMission(missionId, (m) => withDecision(m, patch));
       },
       setNextStepAt: (missionId, at) => {
         patchMission(missionId, (m) => ({ ...m, nextStepAt: at }));
@@ -1997,13 +2019,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       approveOffer: (missionId) => {
         const mission = state.missions.find((m) => m.id === missionId);
         if (!mission) return { ok: false, reason: "Brak misji." };
-        if (!mission.selectedVariant) return { ok: false, reason: "Wybierz wariant A, B albo C." };
-        const missing = offerBlockers(mission);
-        if (missing.length) return { ok: false, reason: `Brakuje: ${missing.join(", ")}.` };
-        const terms = termsChecks(mission, segmentFor(mission.partnerId)).filter((check) => !check.done);
-        if (terms.length) {
-          return { ok: false, reason: `Ustal warunki: ${terms.map((check) => check.label).join(", ")}.` };
-        }
+        const gate = approveGate(mission, segmentFor(mission.partnerId));
+        if (!gate.ok) return gate;
         patchMission(missionId, (m) => ({ ...m, offerApproved: true }));
         return { ok: true };
       },
@@ -2026,24 +2043,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       },
       updateContract: (missionId, patch) => {
-        patchMission(missionId, (m) => {
-          const form = agreementFormOf({ ...m, contract: { ...m.contract, ...patch } });
-          // Umowę podpisuje się na dokumencie; porozumienie mailowe zatwierdza się bez PDF.
-          if (patch.signedByHuman === true && form === "contract" && !m.contract.documentPath && !patch.documentPath) {
-            return m;
-          }
-          const contract = { ...m.contract, ...patch };
-          if (patch.signedByHuman === true) contract.signedAt = new Date().toISOString();
-          if (patch.signedByHuman === false) contract.signedAt = undefined;
-          // Okres ustalony, zasady puste albo gotowy wzór → zasady zgodne z okresem i typem partnera (7 dni).
-          const datesChanged = patch.startAt !== undefined || patch.endAt !== undefined;
-          const short = isShortTerm(contract.startAt, contract.endAt);
-          if (datesChanged && short !== null && isDefaultChangeRules(contract.changeRules) && patch.changeRules === undefined) {
-            contract.changeRules = changeRulesFor(short, segmentFor(m.partnerId));
-          }
-          contract.status = contractStatus(contract, agreementFormOf({ ...m, contract }));
-          return { ...m, contract };
-        });
+        patchMission(missionId, (m) => withContract(m, patch, segmentFor(m.partnerId)));
       },
       uploadContract: uploadContractFile,
       updateActivation: (missionId, patch) => {

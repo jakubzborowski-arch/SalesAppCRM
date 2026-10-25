@@ -163,6 +163,12 @@ export default function HelpPage() {
                   </li>
                 ))}
               </ol>
+              <p>
+                <strong>Szybka wizyta (lokal).</strong> Domknąłeś warunki w jednej wizycie? W nagłówku misji kliknij
+                „Szybka wizyta”. Jeden formularz zapisuje wizytę w dzienniku, problem jako potwierdzony fakt, decydenta,
+                zniżkę, okres i zgodę na logo, zatwierdza rekomendowany wariant i przenosi misję do kroku Umowa. Przycisk
+                jest na krokach od Kontaktu do Negocjacji.
+              </p>
               <p className="text-muted">
                 Wcześniejsze kroki możesz oglądać i poprawiać — postęp misji się nie cofa. Misję, która nie idzie, zamykasz
                 z powodem („Zamknij misję”), żeby raport przegranych miał sens.
@@ -199,6 +205,11 @@ export default function HelpPage() {
                 <strong>ograniczenia</strong>, <strong>decydenta</strong>, <strong>termin decyzji</strong> (jako datę),{" "}
                 <strong>wcześniejsze próby</strong> i <strong>następny krok</strong>. Potem wybierasz kategorię potrzeby i
                 klikasz „Potwierdź jako fakt”.
+              </p>
+              <p>
+                <strong>Lokal:</strong> oczekiwany rezultat, termin decyzji i wcześniejsze próby są opcjonalne — kawiarnię
+                często zamykasz w jednej wizycie. Przed ofertą wymagane są problem, ograniczenie, decydent, następny krok i
+                potwierdzony fakt. Dla społeczności i firm wymagane są wszystkie siedem.
               </p>
               <p>
                 Na <strong>mapie potrzeb</strong> może być kilka potrzeb. Każda ma kategorię, priorytet i status: fakt

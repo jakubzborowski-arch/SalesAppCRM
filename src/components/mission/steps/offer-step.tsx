@@ -48,7 +48,7 @@ export function OfferStep({ mission, partner }: { mission: Mission; partner: Par
   const [error, setError] = useState<string | null>(null);
   const segment = partner.segment;
   const variants = offerVariantsFor(segment);
-  const facts = offerChecks(mission);
+  const facts = offerChecks(mission, partner);
   const factsMissing = facts.filter((check) => !check.done);
   const terms = termsChecks(mission, segment);
   const warnings = termsWarnings(mission, segment);
