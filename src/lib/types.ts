@@ -1,3 +1,4 @@
+import type { CallPrep } from "./call-prep";
 export const STAGES = [
   { id: "research", label: "Research", short: "Research" },
   { id: "contact", label: "Kontakt", short: "Kontakt" },
@@ -423,6 +424,8 @@ export type Mission = {
   calls: CallRecord[];
   contract: ContractRecord;
   activation: ActivationRecord;
+  /** Przygotowanie AI do rozmowy (research, propozycja warunków, pytania). `null` = brak. */
+  callPrep: CallPrep | null;
 };
 
 export type AppState = {

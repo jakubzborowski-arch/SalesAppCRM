@@ -1,5 +1,6 @@
 "use client";
 
+import type { CallPrep } from "./call-prep";
 import {
   createContext,
   useCallback,
@@ -183,6 +184,8 @@ type Store = {
   migrationDrift: MigrationDrift | null;
   /** Zmiana warunków współpracy: zniżka, miejsce, cykl albo pilotaż. */
   updateTerms: <K extends keyof MissionTerms>(missionId: string, section: K, patch: Partial<MissionTerms[K]>) => void;
+  /** Zapis (albo usunięcie) przygotowania AI do rozmowy. */
+  saveCallPrep: (missionId: string, prep: CallPrep | null) => void;
   /** Forma zawarcia: porozumienie mailowe (do 3 miesięcy) albo umowa. */
   setAgreementForm: (missionId: string, form: AgreementForm) => void;
   /** Ustawia pozycję checklisty (z datą odhaczenia w bazie). */
@@ -342,6 +345,22 @@ export function rememberInvite(token: string) {
   } catch {
     /* prywatne okno bez sessionStorage — zaproszenie da się wkleić w Ustawieniach */
   }
+}
+
+/** Komunikaty Supabase Auth po polsku (reszta bez zmian). */
+export function authErrorText(message: string) {
+  if (/signups not allowed/i.test(message)) {
+    return "Rejestracja jest wyłączona w Supabase (Authentication → Sign In / Providers → „Allow new users to sign up”). Włącz ją — o tym, kto założy konto, decyduje zaproszenie.";
+  }
+  if (/invalid login credentials/i.test(message)) return "Nieprawidłowy e-mail albo hasło.";
+  if (/email not confirmed/i.test(message)) return "Najpierw potwierdź adres e-mail — kliknij link z maila rejestracyjnego.";
+  if (/user already registered/i.test(message)) return "To konto już istnieje — zaloguj się.";
+  if (/password should be at least/i.test(message)) return "Hasło jest za krótkie (min. 6 znaków).";
+  if (/rate limit|too many/i.test(message)) return "Za dużo prób. Odczekaj chwilę i spróbuj ponownie.";
+  if (/before.user.created|hook/i.test(message) && !/zaproszenia/i.test(message)) {
+    return "Konto w tym CRM zakłada się z linku zaproszenia do zespołu.";
+  }
+  return message;
 }
 
 function readPendingInvite() {
@@ -1179,6 +1198,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateTerms: (missionId, section, patch) => {
         patchMission(missionId, (m) => withTerms(m, section, patch));
       },
+      saveCallPrep: (missionId, prep) => {
+        patchMission(missionId, (m) => ({ ...m, callPrep: prep }));
+      },
       setAgreementForm: (missionId, form) => {
         patchMission(missionId, (m) => withAgreementForm(m, form));
       },
@@ -1327,7 +1349,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const sb = getSupabase();
         if (!sb) return { ok: false, error: "Brak konfiguracji Supabase." };
         const { error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) return { ok: false, error: error.message };
+        if (error) return { ok: false, error: authErrorText(error.message) };
         return { ok: true };
       },
       signUp: async (email, password, name) => {
@@ -1343,7 +1365,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             emailRedirectTo: `${window.location.origin}/login`,
           },
         });
-        if (error) return { ok: false, error: error.message };
+        if (error) return { ok: false, error: authErrorText(error.message) };
         // Z włączonym „Confirm email” sesja powstaje dopiero po kliknięciu linku w mailu.
         if (!data.session) return { ok: true, confirm: true };
         return { ok: true };

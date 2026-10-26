@@ -75,12 +75,12 @@ Twarde reguły promptu:
 Transkrypt ze Spinach AI (albo Zoom / Meet / Teams, także .vtt / .srt) + notatka misji → pola ekranu „Rozmowa i mapa potrzeb”.
 
 - Kod: `src/lib/discovery-extract.ts` (kontekst, polecenie, schemat JSON, walidacja, podgląd), `src/app/api/discovery-extract/route.ts`, UI w `src/components/mission/talk-bubble.tsx`.
-- Silnik: Claude API z `output_config.format` (JSON Schema, wszystkie pola wymagane, `additionalProperties: false`). Bez klucza: lokalny Qwen / Zen (JSON z tekstu) albo ręcznie przez Claude (polecenie do skopiowania, odpowiedź wklejana do CRM).
+- Silnik: Claude API z `output_config.format` (JSON Schema, wszystkie pola wymagane, `additionalProperties: false`). Schemat jest celowo płaski — bez enumów i opisów, dowody listą `{pole, cytat}` — bo Claude kompiluje go do gramatyki o ograniczonym rozmiarze. Gdy API mimo to odrzuci schemat („compiled grammar is too large”), zapytanie idzie raz jeszcze z opisem JSON w poleceniu (`JSON_ONLY`) i do końca działania serwera już tą drogą. Bez klucza: lokalny Qwen / Zen (JSON z tekstu) albo ręcznie przez Claude (polecenie do skopiowania, odpowiedź wklejana do CRM).
 - Przed wysyłką: `redactPrivate` (telefon, mail, NIP), limit 150 tys. znaków rozmów. Transkrypt i notatka są w znacznikach jako dane, nie polecenia.
 - Po odpowiedzi: cytat sprawdzany dosłownie w transkrypcie, pozostałe pola — czy dotyczą rozmowy; terminy liczone od dnia rozmowy (`parseDeadline`), daty spoza okna odrzucane; decydent dopasowany do karty partnera albo dopisany jako nowa osoba.
 - Nic nie zapisuje się samo: podgląd z checkboxami, potrzeby jako `ai_hypothesis`, „Potwierdź jako fakt” robi handlowiec.
 - Zakres to cała misja (`src/lib/mission-extract.ts`): warunki dla typu partnera, obiekcje z biblioteki (tylko które padły), dane do porozumienia i aktywacji. Zgody na markę nigdy nie są zaznaczone domyślnie; telefonów kontaktu awaryjnego AI nie widzi.
-- **Dowody** (`src/lib/evidence.ts`): model zwraca `dowody` — zdanie partnera dosłownie z rozmowy dla każdego pola. CRM dzieli transkrypt na mówców (handlowiec = imię/nazwisko z CRM albo „Lutra”), szuka zdania tylko w wypowiedziach partnera i notatce, a liczby (zniżka, grupa — także słownie) sprawdza w zdaniu, które naprawdę padło. Bez dowodu, z dowodem handlowca, z inną liczbą albo (dla warunków i umowy) przy nieznanych mówcach — wiersz odznaczony z ostrzeżeniem.
+- **Dowody** (`src/lib/evidence.ts`): model zwraca `dowody` — listę `{pole, cytat}` ze zdaniem partnera dosłownie z rozmowy dla każdego wypełnionego pola (ręczna ścieżka może też oddać obiekt pole → zdanie). CRM dzieli transkrypt na mówców (handlowiec = imię/nazwisko z CRM albo „Lutra”), szuka zdania tylko w wypowiedziach partnera i notatce, a liczby (zniżka, grupa — także słownie) sprawdza w zdaniu, które naprawdę padło. Bez dowodu, z dowodem handlowca, z inną liczbą albo (dla warunków i umowy) przy nieznanych mówcach — wiersz odznaczony z ostrzeżeniem.
 - **RODO**: rozmowa idzie do AI dopiero po zaznaczeniu, że partner wie o transkrypcji i analizie (zgoda `ai_analysis` partnera). Ścieżka ręczna „Przez Claude” kopiuje tylko zredagowane polecenie; dane partnera wklejać tylko do Claude w planie firmowym albo z wyłączonym „Pomagaj ulepszać Claude”. Wcześniejsze wnioski AI z notatki nie są źródłem dla modelu ani weryfikacji.
 - **Pomiar** (`src/lib/ai-log.ts`, tabela `ai_suggestions`, v8): każdy podgląd zakończony wstawieniem albo odrzuceniem zapisuje model, tokeny, czas, wersję polecenia i decyzje per pole (bez treści rozmowy). Raporty → „Podpowiedzi AI z rozmów”: akceptacja per pole, koszt, odsetek transkryptów bez mówców.
 - **Zestaw testowy** (`tests/eval/`): 22 opisane rozmowy z wzorcowymi odpowiedziami i dowodami. `npm test` sprawdza offline, że wzorce przechodzą przez weryfikację; `ANTHROPIC_API_KEY=… npm run eval:ai` ocenia model per pole. Dokładaj zanonimizowane prawdziwe rozmowy.
@@ -164,3 +164,12 @@ Każde wywołanie LLM dostaje:
 - instrukcję: „odpowiadaj tylko na podstawie dostarczonego kontekstu”
 
 Wyjście JSON walidowane schematem (Zod). Jeśli model zwróci wariant spoza biblioteki albo obietnicę z blacklisty — odrzucamy output i pokazujemy błąd, nie treść.
+
+## Przygotowanie do rozmowy (`/api/call-prep`, `src/lib/call-prep.ts`)
+
+- Przeglądarka składa kontekst: karta partnera (bez telefonów i maili), historia kontaktu, luki w misji (`discoveryGaps`) i warunki do 5 podobnych partnerów, którzy już się zgodzili (`similarDeals` — do modelu bez nazw).
+- Krok 1 — research: Claude z narzędziami serwerowymi `web_search_20250305` (do 4 wyszukań) i `web_fetch_20250910` (strona z karty, do 12 tys. tokenów). Obsługa `pause_turn`; gdy organizacja nie ma web fetch / web search (Claude Console → Settings → Capabilities), kolejno prostszy zestaw, a na końcu przygotowanie tylko z CRM z informacją dla handlowca.
+- Krok 2 — przygotowanie w stałym formacie (`PREP_SCHEMA`, płaski, ze ścieżką zapasową JSON w poleceniu).
+- `normalizePrep`: fakt zostaje tylko ze źródłem, które naprawdę padło (adres z wyników / strony partnera albo „karta partnera”), oferta przycięta do poprawnych wartości (dla społeczności i firm bez liczb), filtr obietnic z listy „Czego nie obiecywać”.
+- Wynik w `mission.details.callPrep` (bez migracji). „Wstaw propozycję jako szkic warunków” wypełnia tylko puste pola zniżki.
+- Limit: wspólny z odczytem rozmów (`extract`, 30/h). Koszt: ok. 1–4 centy za wyszukiwania + tokeny strony i odpowiedzi.
