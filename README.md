@@ -38,6 +38,7 @@ Na bazie, w której migracje odpalałeś ręcznie, pierwszy `db push` odpali wsz
 ### Przed wdrożeniem na Vercel (koszty AI)
 
 - Vercel → Environment Variables: `AI_ALLOWED_EMAILS` (adresy albo domeny handlowców). Bez tej listy AI na produkcji jest wyłączone.
+- Supabase na Vercelu: `NEXT_PUBLIC_SUPABASE_URL` i `NEXT_PUBLIC_SUPABASE_ANON_KEY` jako zwykłe (nie „Sensitive”) zmienne. Jeśli panel nie pozwala zapisać klucza z przedrostkiem `NEXT_PUBLIC_`, wpisz te same wartości jako `SUPABASE_URL` i `SUPABASE_ANON_KEY` — `next.config.ts` wstawi je do strony w czasie budowania. Build przerywa się, gdy to klucz `service_role` / `sb_secret_`. Po zmianie: Redeploy.
 - Claude Console → Settings → Limits: miesięczny limit wydatków dla organizacji albo workspace’u z kluczem CRM.
 - OpenCode Zen (jeśli używasz `HOSTED_LLM_API_KEY`): limit salda w panelu Zen.
 - Supabase → Authentication → Hooks → **Before User Created** → Postgres → `public.crm_before_user_created` (z v8). Od tej chwili konto założy tylko osoba z linkiem zaproszenia (pierwsze konto w pustym projekcie przechodzi zawsze). Bez hooka ukryty przycisk rejestracji nie wystarcza — API Supabase przyjmie rejestrację.

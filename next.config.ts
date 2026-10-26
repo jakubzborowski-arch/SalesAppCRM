@@ -5,6 +5,37 @@ import { fileURLToPath } from "node:url";
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const dev = process.env.NODE_ENV !== "production";
 
+/**
+ * Adres i klucz publiczny Supabase. Na Vercelu można je podać bez przedrostka (SUPABASE_URL, SUPABASE_ANON_KEY),
+ * gdy panel nie pozwala zapisać zmiennej NEXT_PUBLIC_ — wtedy wpisujemy je do strony tutaj, w czasie budowania.
+ */
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "").trim();
+
+/** Do przeglądarki wolno dać tylko klucz anon / publishable — nigdy service_role / secret. */
+function supabaseKeyRole(key: string): string | null {
+  if (!key) return null;
+  if (key.startsWith("sb_secret_")) return "service_role";
+  if (key.startsWith("sb_publishable_")) return "anon";
+  const payload = key.split(".")[1];
+  if (!payload) return null;
+  try {
+    const json = JSON.parse(Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as {
+      role?: unknown;
+    };
+    return typeof json.role === "string" ? json.role : null;
+  } catch {
+    return null;
+  }
+}
+if (supabaseKeyRole(supabaseAnonKey) === "service_role") {
+  throw new Error(
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_ANON_KEY to klucz service_role (sekretny). Wklej klucz anon / publishable z Supabase → Project Settings → API.",
+  );
+}
+if (supabaseUrl) process.env.NEXT_PUBLIC_SUPABASE_URL = supabaseUrl;
+if (supabaseAnonKey) process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = supabaseAnonKey;
+
 /** Adres Supabase z .env (w trybie demo — dowolny projekt *.supabase.co). */
 function supabaseOrigins() {
   try {
@@ -49,6 +80,10 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  env: {
+    ...(supabaseUrl ? { NEXT_PUBLIC_SUPABASE_URL: supabaseUrl } : {}),
+    ...(supabaseAnonKey ? { NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey } : {}),
+  },
   turbopack: {
     root: projectRoot,
   },
